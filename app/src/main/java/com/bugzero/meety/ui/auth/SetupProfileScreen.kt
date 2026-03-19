@@ -19,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.bugzero.meety.ui.theme.*
 
@@ -47,7 +49,11 @@ val FOOD_OPTIONS = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SetupProfileScreen(onComplete: () -> Unit = {}) {
+fun SetupProfileScreen(
+    onComplete: () -> Unit = {},
+    viewModel: AuthViewModel = viewModel()
+) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var age by remember { mutableStateOf("") }
     var department by remember { mutableStateOf("") }
@@ -61,7 +67,16 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
     var mbtiExpanded by remember { mutableStateOf(false) }
     var selectedImages by remember { mutableStateOf(listOf<Uri>()) }
 
-    // 갤러리에서 여러 장 선택
+    val profileSaveState by viewModel.profileSaveState.collectAsState()
+
+    // 저장 성공 시 다음 화면으로
+    LaunchedEffect(profileSaveState) {
+        if (profileSaveState is ProfileSaveState.Success) {
+            viewModel.resetProfileSaveState()
+            onComplete()
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris ->
@@ -76,13 +91,36 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
         bottomBar = {
             Box(modifier = Modifier.fillMaxWidth().background(Color.White).padding(16.dp)) {
                 Button(
-                    onClick = onComplete,
-                    enabled = isFormValid,
+                    onClick = {
+                        viewModel.saveProfile(
+                            name = name,
+                            age = age,
+                            department = department,
+                            mbti = selectedMbti,
+                            bio = bio,
+                            height = height,
+                            location = location,
+                            interests = selectedInterests.toList(),
+                            foodLikes = selectedFoodLikes.toList(),
+                            foodDislikes = selectedFoodDislikes.toList(),
+                            imageUris = selectedImages,
+                            context = context
+                        )
+                    },
+                    enabled = isFormValid && profileSaveState !is ProfileSaveState.Loading,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Purple)
                 ) {
-                    Text("완료하고 시작하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    if (profileSaveState is ProfileSaveState.Loading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("완료하고 시작하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -101,6 +139,16 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
                 Text("회원님을 소개해주세요", fontSize = 14.sp, color = Gray500)
             }
 
+            // 에러 메시지
+            if (profileSaveState is ProfileSaveState.Error) {
+                Text(
+                    (profileSaveState as ProfileSaveState.Error).message,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
             // 사진 업로드
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -116,7 +164,6 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // 선택된 사진 미리보기
                         selectedImages.forEach { uri ->
                             Box(
                                 modifier = Modifier
@@ -129,7 +176,6 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
-                                // X 버튼 (삭제)
                                 Box(
                                     modifier = Modifier
                                         .size(20.dp)
@@ -147,7 +193,6 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
                                 }
                             }
                         }
-                        // 추가 버튼 (6장 미만일 때만)
                         if (selectedImages.size < 6) {
                             Box(
                                 modifier = Modifier
@@ -205,7 +250,6 @@ fun SetupProfileScreen(onComplete: () -> Unit = {}) {
                         )
                     }
 
-                    // MBTI - 커스텀 드롭다운 (흰 배경 보장)
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = selectedMbti,

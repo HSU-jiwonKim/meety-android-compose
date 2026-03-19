@@ -22,7 +22,7 @@ import kotlinx.coroutines.delay
 fun PendingVerificationScreen(
     onCheckVerification: () -> Unit = {},
     onLogout: () -> Unit = {},
-    authViewModel: AuthViewModel = viewModel()
+    authViewModel: AuthViewModel  // ← viewModel() 기본값 제거!
 ) {
     val verificationState by authViewModel.verificationCheckState.collectAsState()
 

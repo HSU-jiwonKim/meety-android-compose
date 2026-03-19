@@ -12,13 +12,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.bugzero.meety.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -190,33 +192,40 @@ fun AdminRequestCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 학생증 사진 영역 (Storage 연결 전)
+            // 학생증 사진 영역
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp)
-                    .background(Color(0xFFF5F3FF), RoundedCornerShape(12.dp)),
+                    .height(200.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF5F3FF)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Image,
-                        contentDescription = null,
-                        tint = Gray400,
-                        modifier = Modifier.size(32.dp)
+                if (request.studentIdImageUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = request.studentIdImageUrl,
+                        contentDescription = "학생증 사진",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "Storage 연결 후 사진 표시",
-                        fontSize = 12.sp,
-                        color = Gray400,
-                        textAlign = TextAlign.Center
-                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = null,
+                            tint = Gray400,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "사진 없음",
+                            fontSize = 12.sp,
+                            color = Gray400
+                        )
+                    }
                 }
-                // TODO: Storage 연결 후 아래로 교체
-                // if (request.studentIdImageUrl.isNotEmpty()) {
-                //     AsyncImage(model = request.studentIdImageUrl, ...)
-                // }
             }
 
             Spacer(modifier = Modifier.height(12.dp))

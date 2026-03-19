@@ -49,28 +49,33 @@ object Routes {
     const val SCHEDULE_SYNC = "schedule_sync"
 }
 
-val bottomNavRoutes = listOf(
-    Routes.FEED,
-    Routes.CHAT_LIST,
-    Routes.MEETING_CREATE,
-    Routes.MY_PAGE
-)
-
 @Composable
 fun NavGraph(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBottomBar = bottomNavRoutes.any { currentRoute == it }
 
-    // NavGraph 전체에서 AuthViewModel 공유
     val authViewModel: AuthViewModel = viewModel()
     val verificationCheckState by authViewModel.verificationCheckState.collectAsState()
+    val isAdmin by authViewModel.isAdmin.collectAsState()
+
+    // 관리자면 admin도 bottom nav에 포함
+    val bottomNavRoutes = remember(isAdmin) {
+        buildList {
+            add(Routes.FEED)
+            add(Routes.CHAT_LIST)
+            add(Routes.MEETING_CREATE)
+            add(Routes.MY_PAGE)
+            if (isAdmin) add(Routes.ADMIN)
+        }
+    }
+
+    val showBottomBar = bottomNavRoutes.any { currentRoute == it }
 
     // 로그인 후 역할 분기 처리
     LaunchedEffect(verificationCheckState) {
         when (verificationCheckState) {
             is VerificationCheckState.Admin -> {
-                navController.navigate(Routes.ADMIN) {
+                navController.navigate(Routes.FEED) {
                     popUpTo(Routes.ONBOARDING) { inclusive = true }
                 }
                 authViewModel.resetVerificationCheckState()
@@ -95,12 +100,13 @@ fun NavGraph(navController: NavHostController) {
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {
-                    val items = listOf(
-                        Triple(Routes.FEED, Icons.Default.Home, "홈"),
-                        Triple(Routes.CHAT_LIST, Icons.Default.Chat, "매칭"),
-                        Triple(Routes.MEETING_CREATE, Icons.Default.Group, "팀 생성"),
-                        Triple(Routes.MY_PAGE, Icons.Default.Person, "프로필"),
-                    )
+                    val items = buildList {
+                        add(Triple(Routes.FEED, Icons.Default.Home, "홈"))
+                        add(Triple(Routes.CHAT_LIST, Icons.Default.Chat, "매칭"))
+                        add(Triple(Routes.MEETING_CREATE, Icons.Default.Group, "팀 생성"))
+                        add(Triple(Routes.MY_PAGE, Icons.Default.Person, "프로필"))
+                        if (isAdmin) add(Triple(Routes.ADMIN, Icons.Default.AdminPanelSettings, "관리자"))
+                    }
                     items.forEach { (route, icon, label) ->
                         NavigationBarItem(
                             icon = { Icon(icon, contentDescription = label) },
@@ -133,7 +139,6 @@ fun NavGraph(navController: NavHostController) {
             composable(Routes.LOGIN) {
                 LoginScreen(
                     onLoginSuccess = {
-                        // 로그인 성공 → isAdmin / isVerified 체크해서 분기
                         authViewModel.checkVerificationAndRole()
                     },
                     onSignUpClick = { navController.navigate(Routes.SIGNUP) },
@@ -168,23 +173,18 @@ fun NavGraph(navController: NavHostController) {
                     }
                 )
             }
-
-// NavGraph.kt의 PendingVerificationScreen composable 부분만 수정
-
             composable(Routes.PENDING_VERIFICATION) {
                 PendingVerificationScreen(
                     onCheckVerification = {
-                        android.util.Log.d("NAV", "🔔 onCheckVerification called from PendingScreen")
                         authViewModel.checkVerificationAndRole()
                     },
                     onLogout = {
-                        android.util.Log.d("NAV", "🚪 Logout clicked")
                         authViewModel.logout()
                         navController.navigate(Routes.ONBOARDING) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    authViewModel = authViewModel  // ⭐ 핵심! 같은 ViewModel 인스턴스 전달
+                    authViewModel = authViewModel
                 )
             }
             composable(Routes.ADMIN) {

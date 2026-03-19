@@ -20,12 +20,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.bugzero.meety.ui.theme.*
 
 @Composable
-fun StudentIdUploadScreen(onUploadSuccess: () -> Unit = {}) {
+fun StudentIdUploadScreen(
+    onUploadSuccess: () -> Unit = {},
+    viewModel: AuthViewModel = viewModel()
+) {
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    val uploadState by viewModel.uploadState.collectAsState()
+
+    // 업로드 성공 시 다음 화면으로
+    LaunchedEffect(uploadState) {
+        if (uploadState is UploadState.Success) {
+            viewModel.resetUploadState()
+            onUploadSuccess()
+        }
+    }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -117,6 +130,16 @@ fun StudentIdUploadScreen(onUploadSuccess: () -> Unit = {}) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
+        // 에러 메시지
+        if (uploadState is UploadState.Error) {
+            Text(
+                (uploadState as UploadState.Error).message,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 13.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         // 사진 선택 버튼
         OutlinedButton(
             onClick = { imagePicker.launch("image/*") },
@@ -157,13 +180,25 @@ fun StudentIdUploadScreen(onUploadSuccess: () -> Unit = {}) {
 
         // 인증 요청 버튼
         Button(
-            onClick = onUploadSuccess,
-            enabled = selectedImageUri != null,
+            onClick = {
+                selectedImageUri?.let { uri ->
+                    viewModel.requestStudentIdVerification(uri)
+                }
+            },
+            enabled = selectedImageUri != null && uploadState !is UploadState.Loading,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Purple)
         ) {
-            Text("인증 요청하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            if (uploadState is UploadState.Loading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("인증 요청하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -37,7 +38,6 @@ sealed class EmailVerificationState {
     data class Error(val message: String) : EmailVerificationState()
 }
 
-// 프로필 저장 상태
 sealed class ProfileSaveState {
     object Idle : ProfileSaveState()
     object Loading : ProfileSaveState()
@@ -45,13 +45,12 @@ sealed class ProfileSaveState {
     data class Error(val message: String) : ProfileSaveState()
 }
 
-// 인증 확인 상태 (PendingVerificationScreen용)
 sealed class VerificationCheckState {
     object Idle : VerificationCheckState()
     object Loading : VerificationCheckState()
-    object Verified : VerificationCheckState()       // 승인됨 → FEED로 이동
-    object NotYet : VerificationCheckState()         // 아직 대기 중
-    object Admin : VerificationCheckState()          // 관리자 → 관리자 화면으로
+    object Verified : VerificationCheckState()
+    object NotYet : VerificationCheckState()
+    object Admin : VerificationCheckState()
     data class Error(val message: String) : VerificationCheckState()
 }
 
@@ -59,6 +58,21 @@ class AuthViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
+    private val storage = FirebaseStorage.getInstance()
+
+    // =====================
+    // isAdmin 상태 (bottom nav용)
+    // =====================
+    private val _isAdmin = MutableStateFlow(false)
+    val isAdmin: StateFlow<Boolean> = _isAdmin
+
+    fun loadUserRole() {
+        val userId = auth.currentUser?.uid ?: return
+        db.collection("users").document(userId).get()
+            .addOnSuccessListener { doc ->
+                _isAdmin.value = doc.getBoolean("isAdmin") ?: false
+            }
+    }
 
     // =====================
     // LoginScreen 용
@@ -99,6 +113,7 @@ class AuthViewModel : ViewModel() {
 
     fun logout() {
         auth.signOut()
+        _isAdmin.value = false
         _authState.value = AuthState.Idle
     }
 
@@ -236,7 +251,9 @@ class AuthViewModel : ViewModel() {
         location: String,
         interests: List<String>,
         foodLikes: List<String>,
-        foodDislikes: List<String>
+        foodDislikes: List<String>,
+        imageUris: List<android.net.Uri>,
+        context: android.content.Context
     ) {
         val userId = auth.currentUser?.uid
         if (userId == null) {
@@ -246,6 +263,50 @@ class AuthViewModel : ViewModel() {
 
         _profileSaveState.value = ProfileSaveState.Loading
 
+        if (imageUris.isEmpty()) {
+            // 이미지 없으면 바로 저장
+            saveProfileData(userId, name, age, department, mbti, bio, height, location, interests, foodLikes, foodDislikes, emptyList())
+            return
+        }
+
+        // 이미지 있으면 Storage 업로드 후 저장
+        val imageUrls = mutableListOf<String>()
+        var uploadCount = 0
+
+        imageUris.forEach { uri ->
+            val fileName = "profile_${userId}_${System.currentTimeMillis()}_${uploadCount}.jpg"
+            val ref = storage.reference.child("profiles/$userId/$fileName")
+
+            ref.putFile(uri)
+                .addOnSuccessListener {
+                    ref.downloadUrl.addOnSuccessListener { downloadUri ->
+                        imageUrls.add(downloadUri.toString())
+                        uploadCount++
+                        if (uploadCount == imageUris.size) {
+                            saveProfileData(userId, name, age, department, mbti, bio, height, location, interests, foodLikes, foodDislikes, imageUrls)
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    _profileSaveState.value = ProfileSaveState.Error("이미지 업로드에 실패했습니다")
+                }
+        }
+    }
+
+    private fun saveProfileData(
+        userId: String,
+        name: String,
+        age: String,
+        department: String,
+        mbti: String,
+        bio: String,
+        height: String,
+        location: String,
+        interests: List<String>,
+        foodLikes: List<String>,
+        foodDislikes: List<String>,
+        profileImages: List<String>
+    ) {
         val profileMap = hashMapOf(
             "name" to name,
             "age" to (age.toIntOrNull() ?: 0),
@@ -257,7 +318,7 @@ class AuthViewModel : ViewModel() {
             "interests" to interests,
             "foodLikes" to foodLikes,
             "foodDislikes" to foodDislikes,
-            "profileImages" to listOf<String>()  // Storage 연결 후 업데이트
+            "profileImages" to profileImages
         )
 
         db.collection("users").document(userId)
@@ -280,7 +341,7 @@ class AuthViewModel : ViewModel() {
     private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
     val uploadState: StateFlow<UploadState> = _uploadState
 
-    fun requestStudentIdVerification() {
+    fun requestStudentIdVerification(imageUri: android.net.Uri) {
         val userId = auth.currentUser?.uid
         val userEmail = auth.currentUser?.email ?: ""
         if (userId == null) {
@@ -290,30 +351,45 @@ class AuthViewModel : ViewModel() {
 
         _uploadState.value = UploadState.Loading
 
-        // 유저 이름 가져온 후 adminQueue에 저장
-        db.collection("users").document(userId).get()
-            .addOnSuccessListener { document ->
-                val userName = document.getString("name") ?: ""
+        // 1. Storage에 학생증 이미지 업로드
+        val fileName = "studentId_${userId}_${System.currentTimeMillis()}.jpg"
+        val ref = storage.reference.child("studentIds/$userId/$fileName")
 
-                val requestMap = hashMapOf(
-                    "userId" to userId,
-                    "userName" to userName,
-                    "userEmail" to userEmail,
-                    "studentIdImageUrl" to "",  // TODO: Storage 연결 후 실제 URL로 교체
-                    "status" to "pending",
-                    "createdAt" to FieldValue.serverTimestamp()
-                )
+        ref.putFile(imageUri)
+            .addOnSuccessListener {
+                ref.downloadUrl.addOnSuccessListener { downloadUri ->
+                    val imageUrl = downloadUri.toString()
 
-                db.collection("adminQueue").add(requestMap)
-                    .addOnSuccessListener {
-                        _uploadState.value = UploadState.Success
-                    }
-                    .addOnFailureListener {
-                        _uploadState.value = UploadState.Error("인증 요청에 실패했습니다")
-                    }
+                    // 2. users 문서에 studentIdImageUrl 업데이트
+                    db.collection("users").document(userId)
+                        .update("studentIdImageUrl", imageUrl)
+
+                    // 3. adminQueue에 저장
+                    db.collection("users").document(userId).get()
+                        .addOnSuccessListener { document ->
+                            val userName = document.getString("name") ?: ""
+
+                            val requestMap = hashMapOf(
+                                "userId" to userId,
+                                "userName" to userName,
+                                "userEmail" to userEmail,
+                                "studentIdImageUrl" to imageUrl,
+                                "status" to "pending",
+                                "createdAt" to FieldValue.serverTimestamp()
+                            )
+
+                            db.collection("adminQueue").add(requestMap)
+                                .addOnSuccessListener {
+                                    _uploadState.value = UploadState.Success
+                                }
+                                .addOnFailureListener {
+                                    _uploadState.value = UploadState.Error("인증 요청에 실패했습니다")
+                                }
+                        }
+                }
             }
             .addOnFailureListener {
-                _uploadState.value = UploadState.Error("유저 정보를 가져오지 못했습니다")
+                _uploadState.value = UploadState.Error("이미지 업로드에 실패했습니다")
             }
     }
 
@@ -327,55 +403,34 @@ class AuthViewModel : ViewModel() {
     private val _verificationCheckState = MutableStateFlow<VerificationCheckState>(VerificationCheckState.Idle)
     val verificationCheckState: StateFlow<VerificationCheckState> = _verificationCheckState
 
-
-// checkVerificationAndRole() 함수만 수정
-
     fun checkVerificationAndRole() {
         val userId = auth.currentUser?.uid
         if (userId == null) {
-            android.util.Log.e("AUTH", "❌ userId is null - user not logged in")
             _verificationCheckState.value = VerificationCheckState.Error("로그인이 필요합니다")
             return
         }
 
-        android.util.Log.d("AUTH", "🔍 Checking verification for userId: $userId")
         _verificationCheckState.value = VerificationCheckState.Loading
 
-        // ⭐ Source.SERVER 추가 - 항상 서버에서 최신 데이터 가져오기
         db.collection("users").document(userId)
             .get(com.google.firebase.firestore.Source.SERVER)
             .addOnSuccessListener { document ->
-                android.util.Log.d("AUTH", "✅ Successfully fetched user document")
-                android.util.Log.d("AUTH", "📄 Document exists: ${document.exists()}")
-
                 val isAdmin = document.getBoolean("isAdmin") ?: false
                 val isVerified = document.getBoolean("isVerified") ?: false
 
-                android.util.Log.d("AUTH", "👤 User data:")
-                android.util.Log.d("AUTH", "   - isAdmin: $isAdmin")
-                android.util.Log.d("AUTH", "   - isVerified: $isVerified")
+                _isAdmin.value = isAdmin
 
                 _verificationCheckState.value = when {
-                    isAdmin -> {
-                        android.util.Log.d("AUTH", "🎯 Result: ADMIN")
-                        VerificationCheckState.Admin
-                    }
-                    isVerified -> {
-                        android.util.Log.d("AUTH", "🎯 Result: VERIFIED")
-                        VerificationCheckState.Verified
-                    }
-                    else -> {
-                        android.util.Log.d("AUTH", "🎯 Result: NOT YET")
-                        VerificationCheckState.NotYet
-                    }
+                    isAdmin -> VerificationCheckState.Admin
+                    isVerified -> VerificationCheckState.Verified
+                    else -> VerificationCheckState.NotYet
                 }
             }
-            .addOnFailureListener { e ->
-                android.util.Log.e("AUTH", "❌ Error fetching document: ${e.message}")
-                android.util.Log.e("AUTH", "❌ Exception: ${e.javaClass.simpleName}")
+            .addOnFailureListener {
                 _verificationCheckState.value = VerificationCheckState.Error("확인에 실패했습니다")
             }
     }
+
     fun resetVerificationCheckState() {
         _verificationCheckState.value = VerificationCheckState.Idle
     }
