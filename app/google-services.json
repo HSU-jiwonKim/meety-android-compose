@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "557709523509",
+    "project_id": "meety-compose",
+    "storage_bucket": "meety-compose.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:557709523509:android:a66773918b2d5f52034f7c",
+        "android_client_info": {
+          "package_name": "com.bugzero.meety"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDezvgZ0EFKwj8FZ6o-7L2VdHrJ_OvKFeo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

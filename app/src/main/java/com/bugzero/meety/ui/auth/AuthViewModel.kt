@@ -1,8 +1,382 @@
 package com.bugzero.meety.ui.auth
 
 import androidx.lifecycle.ViewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+sealed class AuthState {
+    object Idle : AuthState()
+    object Loading : AuthState()
+    object Success : AuthState()
+    data class Error(val message: String) : AuthState()
+}
+
+sealed class SignUpState {
+    object Idle : SignUpState()
+    object Loading : SignUpState()
+    object Success : SignUpState()
+    data class Error(val message: String) : SignUpState()
+}
+
+sealed class UploadState {
+    object Idle : UploadState()
+    object Loading : UploadState()
+    object Success : UploadState()
+    data class Error(val message: String) : UploadState()
+}
+
+sealed class EmailVerificationState {
+    object Idle : EmailVerificationState()
+    object Loading : EmailVerificationState()
+    object Verified : EmailVerificationState()
+    object NotVerified : EmailVerificationState()
+    object EmailSent : EmailVerificationState()
+    data class Error(val message: String) : EmailVerificationState()
+}
+
+// 프로필 저장 상태
+sealed class ProfileSaveState {
+    object Idle : ProfileSaveState()
+    object Loading : ProfileSaveState()
+    object Success : ProfileSaveState()
+    data class Error(val message: String) : ProfileSaveState()
+}
+
+// 인증 확인 상태 (PendingVerificationScreen용)
+sealed class VerificationCheckState {
+    object Idle : VerificationCheckState()
+    object Loading : VerificationCheckState()
+    object Verified : VerificationCheckState()       // 승인됨 → FEED로 이동
+    object NotYet : VerificationCheckState()         // 아직 대기 중
+    object Admin : VerificationCheckState()          // 관리자 → 관리자 화면으로
+    data class Error(val message: String) : VerificationCheckState()
+}
 
 class AuthViewModel : ViewModel() {
-    // TODO: A 담당 - 로그인, 온보딩, 학생증 업로드 로직 구현
-    // Firebase Auth 연동
+
+    private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
+
+    // =====================
+    // LoginScreen 용
+    // =====================
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
+    val authState: StateFlow<AuthState> = _authState
+
+    fun login(email: String, password: String) {
+        if (email.isEmpty() || password.isEmpty()) {
+            _authState.value = AuthState.Error("이메일과 비밀번호를 입력해주세요")
+            return
+        }
+        if (!email.endsWith("@hansung.ac.kr")) {
+            _authState.value = AuthState.Error("한성대학교 이메일만 사용 가능합니다")
+            return
+        }
+
+        _authState.value = AuthState.Loading
+
+        auth.signInWithEmailAndPassword(email, password)
+            .addOnSuccessListener {
+                val user = auth.currentUser
+                if (user?.isEmailVerified == true) {
+                    _authState.value = AuthState.Success
+                } else {
+                    auth.signOut()
+                    _authState.value = AuthState.Error("이메일 인증이 필요합니다\n받은 메일함을 확인해주세요")
+                }
+            }
+            .addOnFailureListener {
+                _authState.value = AuthState.Error("이메일 또는 비밀번호가 틀렸습니다")
+            }
+    }
+
+    fun checkAutoLogin(): Boolean {
+        return auth.currentUser?.isEmailVerified == true
+    }
+
+    fun logout() {
+        auth.signOut()
+        _authState.value = AuthState.Idle
+    }
+
+    fun resetAuthState() {
+        _authState.value = AuthState.Idle
+    }
+
+    // =====================
+    // SignUpScreen 용
+    // =====================
+    private val _signUpState = MutableStateFlow<SignUpState>(SignUpState.Idle)
+    val signUpState: StateFlow<SignUpState> = _signUpState
+
+    fun signUp(email: String, password: String, name: String) {
+        if (email.isEmpty() || password.isEmpty() || name.isEmpty()) {
+            _signUpState.value = SignUpState.Error("모든 항목을 입력해주세요")
+            return
+        }
+        if (!email.endsWith("@hansung.ac.kr")) {
+            _signUpState.value = SignUpState.Error("한성대학교 이메일만 사용 가능합니다")
+            return
+        }
+        if (password.length < 8) {
+            _signUpState.value = SignUpState.Error("비밀번호는 8자 이상이어야 합니다")
+            return
+        }
+
+        _signUpState.value = SignUpState.Loading
+
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnSuccessListener { result ->
+                val user = result.user ?: return@addOnSuccessListener
+                val userId = user.uid
+
+                user.sendEmailVerification()
+                    .addOnSuccessListener {
+                        val userMap = hashMapOf(
+                            "name" to name,
+                            "email" to email,
+                            "isVerified" to false,
+                            "isAdmin" to false,
+                            "teamId" to "",
+                            "fcmToken" to "",
+                            "studentIdImageUrl" to "",
+                            "profileImages" to listOf<String>(),
+                            "createdAt" to FieldValue.serverTimestamp()
+                        )
+                        db.collection("users").document(userId).set(userMap)
+                            .addOnSuccessListener {
+                                _signUpState.value = SignUpState.Success
+                            }
+                            .addOnFailureListener {
+                                _signUpState.value = SignUpState.Error("유저 정보 저장에 실패했습니다")
+                            }
+                    }
+                    .addOnFailureListener {
+                        _signUpState.value = SignUpState.Error("인증 이메일 발송에 실패했습니다")
+                    }
+            }
+            .addOnFailureListener { e ->
+                val message = when {
+                    e.message?.contains("email address is already in use") == true ->
+                        "이미 사용 중인 이메일입니다"
+                    else -> "회원가입에 실패했습니다"
+                }
+                _signUpState.value = SignUpState.Error(message)
+            }
+    }
+
+    fun resetSignUpState() {
+        _signUpState.value = SignUpState.Idle
+    }
+
+    // =====================
+    // EmailVerification 용
+    // =====================
+    private val _emailVerificationState = MutableStateFlow<EmailVerificationState>(EmailVerificationState.Idle)
+    val emailVerificationState: StateFlow<EmailVerificationState> = _emailVerificationState
+
+    fun checkEmailVerified() {
+        val user = auth.currentUser
+        if (user == null) {
+            _emailVerificationState.value = EmailVerificationState.Error("로그인이 필요합니다")
+            return
+        }
+
+        _emailVerificationState.value = EmailVerificationState.Loading
+
+        user.reload()
+            .addOnSuccessListener {
+                if (auth.currentUser?.isEmailVerified == true) {
+                    _emailVerificationState.value = EmailVerificationState.Verified
+                } else {
+                    _emailVerificationState.value = EmailVerificationState.NotVerified
+                }
+            }
+            .addOnFailureListener {
+                _emailVerificationState.value = EmailVerificationState.Error("확인에 실패했습니다")
+            }
+    }
+
+    fun resendVerificationEmail() {
+        val user = auth.currentUser
+        if (user == null) {
+            _emailVerificationState.value = EmailVerificationState.Error("로그인이 필요합니다")
+            return
+        }
+
+        user.sendEmailVerification()
+            .addOnSuccessListener {
+                _emailVerificationState.value = EmailVerificationState.EmailSent
+            }
+            .addOnFailureListener {
+                _emailVerificationState.value = EmailVerificationState.Error("이메일 재전송에 실패했습니다")
+            }
+    }
+
+    fun resetEmailVerificationState() {
+        _emailVerificationState.value = EmailVerificationState.Idle
+    }
+
+    // =====================
+    // SetupProfileScreen 용
+    // =====================
+    private val _profileSaveState = MutableStateFlow<ProfileSaveState>(ProfileSaveState.Idle)
+    val profileSaveState: StateFlow<ProfileSaveState> = _profileSaveState
+
+    fun saveProfile(
+        name: String,
+        age: String,
+        department: String,
+        mbti: String,
+        bio: String,
+        height: String,
+        location: String,
+        interests: List<String>,
+        foodLikes: List<String>,
+        foodDislikes: List<String>
+    ) {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            _profileSaveState.value = ProfileSaveState.Error("로그인이 필요합니다")
+            return
+        }
+
+        _profileSaveState.value = ProfileSaveState.Loading
+
+        val profileMap = hashMapOf(
+            "name" to name,
+            "age" to (age.toIntOrNull() ?: 0),
+            "department" to department,
+            "mbti" to mbti,
+            "bio" to bio,
+            "height" to (height.toIntOrNull() ?: 0),
+            "location" to location,
+            "interests" to interests,
+            "foodLikes" to foodLikes,
+            "foodDislikes" to foodDislikes,
+            "profileImages" to listOf<String>()  // Storage 연결 후 업데이트
+        )
+
+        db.collection("users").document(userId)
+            .update(profileMap as Map<String, Any>)
+            .addOnSuccessListener {
+                _profileSaveState.value = ProfileSaveState.Success
+            }
+            .addOnFailureListener {
+                _profileSaveState.value = ProfileSaveState.Error("프로필 저장에 실패했습니다")
+            }
+    }
+
+    fun resetProfileSaveState() {
+        _profileSaveState.value = ProfileSaveState.Idle
+    }
+
+    // =====================
+    // StudentIdUploadScreen 용
+    // =====================
+    private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
+    val uploadState: StateFlow<UploadState> = _uploadState
+
+    fun requestStudentIdVerification() {
+        val userId = auth.currentUser?.uid
+        val userEmail = auth.currentUser?.email ?: ""
+        if (userId == null) {
+            _uploadState.value = UploadState.Error("로그인이 필요합니다")
+            return
+        }
+
+        _uploadState.value = UploadState.Loading
+
+        // 유저 이름 가져온 후 adminQueue에 저장
+        db.collection("users").document(userId).get()
+            .addOnSuccessListener { document ->
+                val userName = document.getString("name") ?: ""
+
+                val requestMap = hashMapOf(
+                    "userId" to userId,
+                    "userName" to userName,
+                    "userEmail" to userEmail,
+                    "studentIdImageUrl" to "",  // TODO: Storage 연결 후 실제 URL로 교체
+                    "status" to "pending",
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+
+                db.collection("adminQueue").add(requestMap)
+                    .addOnSuccessListener {
+                        _uploadState.value = UploadState.Success
+                    }
+                    .addOnFailureListener {
+                        _uploadState.value = UploadState.Error("인증 요청에 실패했습니다")
+                    }
+            }
+            .addOnFailureListener {
+                _uploadState.value = UploadState.Error("유저 정보를 가져오지 못했습니다")
+            }
+    }
+
+    fun resetUploadState() {
+        _uploadState.value = UploadState.Idle
+    }
+
+    // =====================
+    // PendingVerificationScreen 용
+    // =====================
+    private val _verificationCheckState = MutableStateFlow<VerificationCheckState>(VerificationCheckState.Idle)
+    val verificationCheckState: StateFlow<VerificationCheckState> = _verificationCheckState
+
+
+// checkVerificationAndRole() 함수만 수정
+
+    fun checkVerificationAndRole() {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            android.util.Log.e("AUTH", "❌ userId is null - user not logged in")
+            _verificationCheckState.value = VerificationCheckState.Error("로그인이 필요합니다")
+            return
+        }
+
+        android.util.Log.d("AUTH", "🔍 Checking verification for userId: $userId")
+        _verificationCheckState.value = VerificationCheckState.Loading
+
+        // ⭐ Source.SERVER 추가 - 항상 서버에서 최신 데이터 가져오기
+        db.collection("users").document(userId)
+            .get(com.google.firebase.firestore.Source.SERVER)
+            .addOnSuccessListener { document ->
+                android.util.Log.d("AUTH", "✅ Successfully fetched user document")
+                android.util.Log.d("AUTH", "📄 Document exists: ${document.exists()}")
+
+                val isAdmin = document.getBoolean("isAdmin") ?: false
+                val isVerified = document.getBoolean("isVerified") ?: false
+
+                android.util.Log.d("AUTH", "👤 User data:")
+                android.util.Log.d("AUTH", "   - isAdmin: $isAdmin")
+                android.util.Log.d("AUTH", "   - isVerified: $isVerified")
+
+                _verificationCheckState.value = when {
+                    isAdmin -> {
+                        android.util.Log.d("AUTH", "🎯 Result: ADMIN")
+                        VerificationCheckState.Admin
+                    }
+                    isVerified -> {
+                        android.util.Log.d("AUTH", "🎯 Result: VERIFIED")
+                        VerificationCheckState.Verified
+                    }
+                    else -> {
+                        android.util.Log.d("AUTH", "🎯 Result: NOT YET")
+                        VerificationCheckState.NotYet
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                android.util.Log.e("AUTH", "❌ Error fetching document: ${e.message}")
+                android.util.Log.e("AUTH", "❌ Exception: ${e.javaClass.simpleName}")
+                _verificationCheckState.value = VerificationCheckState.Error("확인에 실패했습니다")
+            }
+    }
+    fun resetVerificationCheckState() {
+        _verificationCheckState.value = VerificationCheckState.Idle
+    }
 }
