@@ -1,14 +1,15 @@
 <div align="center">
 
 <br/>
-```
+
+<pre>
 ███╗   ███╗███████╗███████╗████████╗██╗   ██╗
 ████╗ ████║██╔════╝██╔════╝╚══██╔══╝╚██╗ ██╔╝
 ██╔████╔██║█████╗  █████╗     ██║    ╚████╔╝ 
 ██║╚██╔╝██║██╔══╝  ██╔══╝     ██║     ╚██╔╝  
 ██║ ╚═╝ ██║███████╗███████╗   ██║      ██║   
 ╚═╝     ╚═╝╚══════╝╚══════╝   ╚═╝      ╚═╝   
-```
+</pre>
 
 ### 🤝 한성대학교 대학생 팀 모임 매칭 서비스
 
@@ -77,27 +78,26 @@
 ## 🛠 기술 스택
 
 <br/>
-```
-📱 Client
-├── Language     Kotlin
-├── UI           Jetpack Compose
-├── Navigation   Navigation Compose
-├── Image        Coil
-└── Async        StateFlow / ViewModel
 
-🔥 Backend (Firebase)
-├── Auth         Firebase Authentication (이메일 인증)
-├── Database     Cloud Firestore
-├── Storage      Firebase Storage (프로필/학생증 사진)
-└── Push         Firebase Cloud Messaging (개발 중)
+**📱 Client**
+- Language: Kotlin
+- UI: Jetpack Compose
+- Navigation: Navigation Compose
+- Image: Coil
+- Async: StateFlow / ViewModel
 
-🤖 AI
-└── Recommend    Google Gemini API (개발 중)
+**🔥 Backend (Firebase)**
+- Auth: Firebase Authentication (이메일 인증)
+- Database: Cloud Firestore
+- Storage: Firebase Storage (프로필/학생증 사진)
+- Push: Firebase Cloud Messaging (개발 중)
 
-🔧 Tools
-├── Version      Git / GitHub
-└── Build        Gradle Kotlin DSL
-```
+**🤖 AI**
+- Recommend: Google Gemini API (개발 중)
+
+**🔧 Tools**
+- Version: Git / GitHub
+- Build: Gradle Kotlin DSL
 
 <br/>
 
@@ -108,31 +108,30 @@
 ## 🗂 프로젝트 구조
 
 <br/>
-```
-meety-android-compose/
-├── app/src/main/java/com/bugzero/meety/
-│   ├── MainActivity.kt
-│   ├── navigation/
-│   │   └── NavGraph.kt
-│   └── ui/
-│       ├── auth/          # 로그인 · 온보딩 · 학생증 인증 · 관리자
-│       │   ├── AuthViewModel.kt
-│       │   ├── AdminViewModel.kt
-│       │   ├── LoginScreen.kt
-│       │   ├── SignUpScreen.kt
-│       │   ├── OnboardingScreen.kt
-│       │   ├── SetupProfileScreen.kt
-│       │   ├── StudentIdUploadScreen.kt
-│       │   ├── PendingVerificationScreen.kt
-│       │   └── AdminScreen.kt
-│       ├── feed/          # 피드 · AI 추천 · 팀 상세 (개발 중)
-│       ├── team/          # 내 모임 · 모임 생성 · 마이페이지 (개발 중)
-│       ├── chat/          # 채팅 목록 · 채팅방 · 시간표 (개발 중)
-│       └── theme/         # Color · Theme · Type
-└── res/
-    ├── values/            # colors · strings · themes
-    └── drawable/          # 아이콘 · 런처 이미지
-```
+
+    meety-android-compose/
+    ├── app/src/main/java/com/bugzero/meety/
+    │   ├── MainActivity.kt
+    │   ├── navigation/
+    │   │   └── NavGraph.kt
+    │   └── ui/
+    │       ├── auth/          # 로그인 · 온보딩 · 학생증 인증 · 관리자
+    │       │   ├── AuthViewModel.kt
+    │       │   ├── AdminViewModel.kt
+    │       │   ├── LoginScreen.kt
+    │       │   ├── SignUpScreen.kt
+    │       │   ├── OnboardingScreen.kt
+    │       │   ├── SetupProfileScreen.kt
+    │       │   ├── StudentIdUploadScreen.kt
+    │       │   ├── PendingVerificationScreen.kt
+    │       │   └── AdminScreen.kt
+    │       ├── feed/          # 피드 · AI 추천 · 팀 상세 (개발 중)
+    │       ├── team/          # 내 모임 · 모임 생성 · 마이페이지 (개발 중)
+    │       ├── chat/          # 채팅 목록 · 채팅방 · 시간표 (개발 중)
+    │       └── theme/         # Color · Theme · Type
+    └── res/
+        ├── values/            # colors · strings · themes
+        └── drawable/          # 아이콘 · 런처 이미지
 
 <br/>
 
@@ -143,26 +142,25 @@ meety-android-compose/
 ## 🗃 Firebase 데이터 구조
 
 <br/>
-```
-users/{userId}
-├── name, email, isVerified, isAdmin, isBanned
-├── profileImages: List<String>   # Storage URL
-├── studentIdImageUrl: String
-├── age, department, mbti, bio, height, location
-├── interests, foodLikes, foodDislikes: List<String>
-└── createdAt: Timestamp
 
-adminQueue/{requestId}
-├── userId, userName, userEmail
-├── studentIdImageUrl: String
-├── status: pending / approved / rejected
-└── createdAt: Timestamp
+    users/{userId}
+    ├── name, email, isVerified, isAdmin, isBanned
+    ├── profileImages: List<String>   # Storage URL
+    ├── studentIdImageUrl: String
+    ├── age, department, mbti, bio, height, location
+    ├── interests, foodLikes, foodDislikes: List<String>
+    └── createdAt: Timestamp
 
-teams/{teamId}           # B 담당
-meetings/{meetingId}     # C 담당
-chats/{chatId}           # D 담당
-reports/{reportId}       # 신고 처리
-```
+    adminQueue/{requestId}
+    ├── userId, userName, userEmail
+    ├── studentIdImageUrl: String
+    ├── status: pending / approved / rejected
+    └── createdAt: Timestamp
+
+    teams/{teamId}           # B 담당
+    meetings/{meetingId}     # C 담당
+    chats/{chatId}           # D 담당
+    reports/{reportId}       # 신고 처리
 
 <br/>
 
@@ -173,14 +171,13 @@ reports/{reportId}       # 신고 처리
 ## 🌿 브랜치 전략
 
 <br/>
-```
-main              최종 발표용 (직접 push 금지)
- └── dev          통합 테스트 브랜치
-      ├── feature/auth-screen-A    팀장 · 로그인 · 인증 · 관리자 ✅
-      ├── feature/feed-B           피드 · AI 추천 🔨
-      ├── feature/team-C           내 모임 · 매칭 🔨
-      └── feature/chat-D           채팅 · 시간표 · FCM 🔨
-```
+
+    main              최종 발표용 (직접 push 금지)
+     └── dev          통합 테스트 브랜치
+          ├── feature/auth-screen-A    팀장 · 로그인 · 인증 · 관리자 ✅
+          ├── feature/feed-B           피드 · AI 추천 🔨
+          ├── feature/team-C           내 모임 · 매칭 🔨
+          └── feature/chat-D           채팅 · 시간표 · FCM 🔨
 
 <br/>
 
@@ -191,13 +188,12 @@ main              최종 발표용 (직접 push 금지)
 ## 🗓 개발 기간
 
 <br/>
-```
-2026.03.12  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  2026.06.05
 
-  1주차          2주차         3주차~5주차      6주차
-  세팅+인증UI → Firebase연동 → AI+매칭+채팅 → 통합+발표
-  ✅ 완료        ✅ 완료        🔨 진행중       📅 예정
-```
+    2026.03.12  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  2026.06.05
+
+      1주차          2주차         3주차~5주차      6주차
+      세팅+인증UI → Firebase연동 → AI+매칭+채팅 → 통합+발표
+      ✅ 완료        ✅ 완료        🔨 진행중       📅 예정
 
 <br/>
 
