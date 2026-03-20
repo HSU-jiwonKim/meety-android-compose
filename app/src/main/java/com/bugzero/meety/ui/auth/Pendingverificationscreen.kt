@@ -15,6 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.airbnb.lottie.compose.*
+import com.bugzero.meety.R
 import com.bugzero.meety.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -22,13 +24,21 @@ import kotlinx.coroutines.delay
 fun PendingVerificationScreen(
     onCheckVerification: () -> Unit = {},
     onLogout: () -> Unit = {},
-    onReupload: () -> Unit = {},  // 학생증 다시 올리기
+    onReupload: () -> Unit = {},
     authViewModel: AuthViewModel
 ) {
     val verificationState by authViewModel.verificationCheckState.collectAsState()
     var isRejected by remember { mutableStateOf(false) }
 
-    // 10초마다 자동으로 인증 상태 확인
+    // Lottie 애니메이션
+    val composition by rememberLottieComposition(
+        LottieCompositionSpec.RawRes(R.raw.please_wait)
+    )
+    val progress by animateLottieCompositionAsState(
+        composition = composition,
+        iterations = LottieConstants.IterateForever
+    )
+
     LaunchedEffect(Unit) {
         while (true) {
             delay(10000)
@@ -36,7 +46,6 @@ fun PendingVerificationScreen(
         }
     }
 
-    // 거절 상태 체크
     LaunchedEffect(Unit) {
         val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
         if (userId != null) {
@@ -61,7 +70,6 @@ fun PendingVerificationScreen(
         verticalArrangement = Arrangement.Center
     ) {
         if (isRejected) {
-            // 거절 화면
             Box(
                 modifier = Modifier
                     .size(100.dp)
@@ -116,12 +124,10 @@ fun PendingVerificationScreen(
 
             Button(
                 onClick = onReupload,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -151,22 +157,14 @@ fun PendingVerificationScreen(
             }
 
         } else {
-            // 대기 화면
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .background(Color(0xFFF5F3FF), androidx.compose.foundation.shape.CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.HourglassEmpty,
-                    contentDescription = null,
-                    tint = Purple,
-                    modifier = Modifier.size(50.dp)
-                )
-            }
+            // Lottie 모래시계 애니메이션
+            LottieAnimation(
+                composition = composition,
+                progress = { progress },
+                modifier = Modifier.size(180.dp)
+            )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 "인증 심사 중이에요",
