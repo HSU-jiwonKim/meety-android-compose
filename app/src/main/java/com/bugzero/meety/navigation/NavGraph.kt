@@ -298,6 +298,11 @@ fun NavGraph(
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                    onReupload = {
+                        navController.navigate(Routes.STUDENT_ID_UPLOAD) {
+                            popUpTo(Routes.PENDING_VERIFICATION) { inclusive = true }
+                        }
+                    },
                     authViewModel = authViewModel
                 )
             }

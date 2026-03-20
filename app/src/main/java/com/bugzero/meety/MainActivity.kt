@@ -23,14 +23,20 @@ class MainActivity : ComponentActivity() {
                 val isLoggedIn = remember { authViewModel.checkAutoLogin() }
                 val verificationState by authViewModel.verificationCheckState.collectAsState()
 
-                // 시작 화면 결정 (로그인 상태면 온보딩 스킵)
                 val startDestination = remember {
                     if (isLoggedIn) Routes.FEED else Routes.ONBOARDING
                 }
 
+                // 로그인 상태면 역할 확인 + 실시간 차단 감지 시작
                 LaunchedEffect(isLoggedIn) {
                     if (isLoggedIn) {
                         authViewModel.checkVerificationAndRole()
+                        authViewModel.startBanListener {
+                            // 차단되면 즉시 온보딩으로 이동
+                            navController.navigate(Routes.ONBOARDING) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
                     }
                 }
 

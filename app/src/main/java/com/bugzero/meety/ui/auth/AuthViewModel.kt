@@ -103,7 +103,20 @@ class AuthViewModel : ViewModel() {
             .addOnSuccessListener {
                 val user = auth.currentUser
                 if (user?.isEmailVerified == true) {
-                    _authState.value = AuthState.Success
+                    // 차단 여부 확인
+                    db.collection("users").document(user.uid).get()
+                        .addOnSuccessListener { doc ->
+                            val isBanned = doc.getBoolean("isBanned") ?: false
+                            if (isBanned) {
+                                auth.signOut()
+                                _authState.value = AuthState.Error("이용이 제한된 계정입니다\n문의: meety@hansung.ac.kr")
+                            } else {
+                                _authState.value = AuthState.Success
+                            }
+                        }
+                        .addOnFailureListener {
+                            _authState.value = AuthState.Error("로그인에 실패했습니다")
+                        }
                 } else {
                     auth.signOut()
                     _authState.value = AuthState.Error("이메일 인증이 필요합니다\n받은 메일함을 확인해주세요")
@@ -162,6 +175,7 @@ class AuthViewModel : ViewModel() {
                             "email" to email,
                             "isVerified" to false,
                             "isAdmin" to false,
+                            "isBanned" to false,
                             "teamId" to "",
                             "fcmToken" to "",
                             "studentIdImageUrl" to "",
@@ -466,5 +480,23 @@ class AuthViewModel : ViewModel() {
 
     fun resetPasswordResetState() {
         _passwordResetState.value = PasswordResetState.Idle
+    }
+
+    // =====================
+// 실시간 차단 감지
+// =====================
+    fun startBanListener(onBanned: () -> Unit) {
+        val userId = auth.currentUser?.uid ?: return
+        db.collection("users").document(userId)
+            .addSnapshotListener { doc, error ->
+                if (error != null) return@addSnapshotListener
+                val isBanned = doc?.getBoolean("isBanned") ?: false
+                if (isBanned) {
+                    auth.signOut()
+                    _isAdmin.value = false
+                    _authState.value = AuthState.Idle
+                    onBanned()
+                }
+            }
     }
 }
