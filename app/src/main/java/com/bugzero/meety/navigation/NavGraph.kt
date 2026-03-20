@@ -1,11 +1,19 @@
 package com.bugzero.meety.navigation
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -29,6 +37,7 @@ import com.bugzero.meety.ui.feed.ProfileEditScreen
 import com.bugzero.meety.ui.team.MeetingCreateScreen
 import com.bugzero.meety.ui.team.MyPageScreen
 import com.bugzero.meety.ui.team.MyTeamScreen
+import com.bugzero.meety.ui.theme.Gray500
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -47,48 +56,65 @@ object Routes {
     const val CHAT_LIST = "chat_list"
     const val CHAT_ROOM = "chat_room"
     const val SCHEDULE_SYNC = "schedule_sync"
+    const val CHAT_TEMP = "chat_temp"
 }
 
+data class NavItem(
+    val route: String,
+    val label: String,
+    val type: String
+)
+
 @Composable
-fun NavGraph(navController: NavHostController) {
+fun NavGraph(
+    navController: NavHostController,
+    startDestination: String = Routes.ONBOARDING
+) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
     val authViewModel: AuthViewModel = viewModel()
-    val verificationCheckState by authViewModel.verificationCheckState.collectAsState()
     val isAdmin by authViewModel.isAdmin.collectAsState()
+    val verificationCheckState by authViewModel.verificationCheckState.collectAsState()
 
-    // 관리자면 admin도 bottom nav에 포함
-    val bottomNavRoutes = remember(isAdmin) {
+    val bottomNavItems = remember(isAdmin) {
         buildList {
-            add(Routes.FEED)
-            add(Routes.CHAT_LIST)
-            add(Routes.MEETING_CREATE)
-            add(Routes.MY_PAGE)
-            if (isAdmin) add(Routes.ADMIN)
+            add(NavItem(Routes.FEED, "홈", "home"))
+            add(NavItem(Routes.CHAT_LIST, "매칭", "heart"))
+            add(NavItem(Routes.MEETING_CREATE, "팀 만들기", "plus"))
+            add(NavItem(Routes.CHAT_TEMP, "채팅", "chat"))
+            add(NavItem(Routes.MY_PAGE, "프로필", "person"))
+            if (isAdmin) add(NavItem(Routes.ADMIN, "관리자", "admin"))
         }
     }
 
+    val bottomNavRoutes = listOf(
+        Routes.FEED,
+        Routes.CHAT_LIST,
+        Routes.MEETING_CREATE,
+        Routes.CHAT_TEMP,
+        Routes.MY_PAGE,
+        Routes.ADMIN
+    )
     val showBottomBar = bottomNavRoutes.any { currentRoute == it }
 
-    // 로그인 후 역할 분기 처리
     LaunchedEffect(verificationCheckState) {
         when (verificationCheckState) {
             is VerificationCheckState.Admin -> {
                 navController.navigate(Routes.FEED) {
-                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    popUpTo(startDestination) { inclusive = true }
                 }
                 authViewModel.resetVerificationCheckState()
             }
             is VerificationCheckState.Verified -> {
                 navController.navigate(Routes.FEED) {
-                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    popUpTo(startDestination) { inclusive = true }
                 }
                 authViewModel.resetVerificationCheckState()
             }
             is VerificationCheckState.NotYet -> {
                 navController.navigate(Routes.PENDING_VERIFICATION) {
-                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    popUpTo(startDestination) { inclusive = true }
                 }
                 authViewModel.resetVerificationCheckState()
             }
@@ -99,26 +125,114 @@ fun NavGraph(navController: NavHostController) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
-                    val items = buildList {
-                        add(Triple(Routes.FEED, Icons.Default.Home, "홈"))
-                        add(Triple(Routes.CHAT_LIST, Icons.Default.Chat, "매칭"))
-                        add(Triple(Routes.MEETING_CREATE, Icons.Default.Group, "팀 생성"))
-                        add(Triple(Routes.MY_PAGE, Icons.Default.Person, "프로필"))
-                        if (isAdmin) add(Triple(Routes.ADMIN, Icons.Default.AdminPanelSettings, "관리자"))
-                    }
-                    items.forEach { (route, icon, label) ->
+                NavigationBar(
+                    containerColor = Color.White,
+                    tonalElevation = 0.dp
+                ) {
+                    bottomNavItems.forEach { item ->
+                        val isSelected = when (item.type) {
+                            "home" -> currentRoute == Routes.FEED
+                            "heart" -> currentRoute == Routes.CHAT_LIST
+                            "plus" -> currentRoute == Routes.MEETING_CREATE
+                            "chat" -> currentRoute == Routes.CHAT_TEMP
+                            "person" -> currentRoute == Routes.MY_PAGE
+                            "admin" -> currentRoute == Routes.ADMIN
+                            else -> false
+                        }
+
+                        val isPlus = item.type == "plus"
+                        val isAdminItem = item.type == "admin"
+
                         NavigationBarItem(
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label) },
-                            selected = currentRoute == route,
+                            icon = {
+                                when {
+                                    isPlus -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .background(
+                                                    if (isSelected)
+                                                        Brush.linearGradient(
+                                                            listOf(Color(0xFF7C3AED), Color(0xFFEC4899))
+                                                        )
+                                                    else
+                                                        Brush.linearGradient(
+                                                            listOf(Color(0xFFEDE9FE), Color(0xFFFCE7F3))
+                                                        ),
+                                                    RoundedCornerShape(14.dp)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Add,
+                                                contentDescription = item.label,
+                                                tint = if (isSelected) Color.White else Color(0xFF7C3AED),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                    isAdminItem -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .background(
+                                                    if (isSelected)
+                                                        Brush.linearGradient(
+                                                            listOf(Color(0xFF7C3AED), Color(0xFFEC4899))
+                                                        )
+                                                    else
+                                                        Brush.linearGradient(
+                                                            listOf(Color(0xFFF5F3FF), Color(0xFFFDF2F8))
+                                                        ),
+                                                    RoundedCornerShape(14.dp)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Shield,
+                                                contentDescription = item.label,
+                                                tint = if (isSelected) Color.White else Color(0xFF7C3AED),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                    else -> {
+                                        val icon = when (item.type) {
+                                            "home" -> Icons.Default.Home
+                                            "heart" -> Icons.Default.Favorite
+                                            "chat" -> Icons.Default.ChatBubble
+                                            else -> Icons.Default.Person
+                                        }
+                                        Icon(
+                                            icon,
+                                            contentDescription = item.label,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            label = {
+                                Text(
+                                    item.label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            selected = isSelected,
                             onClick = {
-                                navController.navigate(route) {
+                                navController.navigate(item.route) {
                                     popUpTo(Routes.FEED) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            }
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color(0xFF7C3AED),
+                                selectedTextColor = Color(0xFF7C3AED),
+                                unselectedIconColor = Color(0xFF9CA3AF),
+                                unselectedTextColor = Color(0xFF9CA3AF),
+                                indicatorColor = Color.Transparent
+                            )
                         )
                     }
                 }
@@ -127,7 +241,7 @@ fun NavGraph(navController: NavHostController) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.ONBOARDING,
+            startDestination = startDestination,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.ONBOARDING) {
@@ -247,6 +361,31 @@ fun NavGraph(navController: NavHostController) {
                 ScheduleSyncScreen(
                     onBackClick = { navController.popBackStack() }
                 )
+            }
+            composable(Routes.CHAT_TEMP) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFFF9FAFB)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("💬", fontSize = 56.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "채팅 기능 준비 중이에요",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF374151)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "매칭 성사 후 채팅이 열립니다",
+                            fontSize = 14.sp,
+                            color = Gray500
+                        )
+                    }
+                }
             }
         }
     }

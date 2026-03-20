@@ -20,57 +20,47 @@ class MainActivity : ComponentActivity() {
         setContent {
             MeetyTheme {
                 val navController = rememberNavController()
-
-                // ⭐ 자동 로그인 체크
                 val isLoggedIn = remember { authViewModel.checkAutoLogin() }
                 val verificationState by authViewModel.verificationCheckState.collectAsState()
 
-                // ⭐ 로그인 상태라면 역할 확인
+                // 시작 화면 결정 (로그인 상태면 온보딩 스킵)
+                val startDestination = remember {
+                    if (isLoggedIn) Routes.FEED else Routes.ONBOARDING
+                }
+
                 LaunchedEffect(isLoggedIn) {
                     if (isLoggedIn) {
-                        android.util.Log.d("MAIN", "🔐 User is logged in, checking role...")
                         authViewModel.checkVerificationAndRole()
-                    } else {
-                        android.util.Log.d("MAIN", "👤 User not logged in, staying at ONBOARDING")
                     }
                 }
 
-                // ⭐ 역할 확인 후 적절한 화면으로 이동
                 LaunchedEffect(verificationState) {
                     if (isLoggedIn) {
                         when (verificationState) {
                             is VerificationCheckState.Admin -> {
-                                android.util.Log.d("MAIN", "👑 Admin detected → navigating to ADMIN")
-                                navController.navigate(Routes.ADMIN) {
-                                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                                navController.navigate(Routes.FEED) {
+                                    popUpTo(startDestination) { inclusive = true }
                                 }
                             }
                             is VerificationCheckState.Verified -> {
-                                android.util.Log.d("MAIN", "✅ Verified user → navigating to FEED")
                                 navController.navigate(Routes.FEED) {
-                                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                                    popUpTo(startDestination) { inclusive = true }
                                 }
                             }
                             is VerificationCheckState.NotYet -> {
-                                android.util.Log.d("MAIN", "⏳ Not verified yet → navigating to PENDING_VERIFICATION")
                                 navController.navigate(Routes.PENDING_VERIFICATION) {
-                                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                                    popUpTo(startDestination) { inclusive = true }
                                 }
                             }
-                            is VerificationCheckState.Loading -> {
-                                android.util.Log.d("MAIN", "⏳ Loading verification status...")
-                            }
-                            is VerificationCheckState.Error -> {
-                                android.util.Log.e("MAIN", "❌ Error checking verification: ${(verificationState as VerificationCheckState.Error).message}")
-                            }
-                            else -> {
-                                android.util.Log.d("MAIN", "🤷 Idle state")
-                            }
+                            else -> {}
                         }
                     }
                 }
 
-                NavGraph(navController = navController)
+                NavGraph(
+                    navController = navController,
+                    startDestination = startDestination
+                )
             }
         }
     }

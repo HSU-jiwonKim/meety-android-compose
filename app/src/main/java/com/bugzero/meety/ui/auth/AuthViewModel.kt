@@ -54,6 +54,13 @@ sealed class VerificationCheckState {
     data class Error(val message: String) : VerificationCheckState()
 }
 
+sealed class PasswordResetState {
+    object Idle : PasswordResetState()
+    object Loading : PasswordResetState()
+    object Success : PasswordResetState()
+    data class Error(val message: String) : PasswordResetState()
+}
+
 class AuthViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
@@ -264,12 +271,10 @@ class AuthViewModel : ViewModel() {
         _profileSaveState.value = ProfileSaveState.Loading
 
         if (imageUris.isEmpty()) {
-            // 이미지 없으면 바로 저장
             saveProfileData(userId, name, age, department, mbti, bio, height, location, interests, foodLikes, foodDislikes, emptyList())
             return
         }
 
-        // 이미지 있으면 Storage 업로드 후 저장
         val imageUrls = mutableListOf<String>()
         var uploadCount = 0
 
@@ -351,7 +356,6 @@ class AuthViewModel : ViewModel() {
 
         _uploadState.value = UploadState.Loading
 
-        // 1. Storage에 학생증 이미지 업로드
         val fileName = "studentId_${userId}_${System.currentTimeMillis()}.jpg"
         val ref = storage.reference.child("studentIds/$userId/$fileName")
 
@@ -360,11 +364,9 @@ class AuthViewModel : ViewModel() {
                 ref.downloadUrl.addOnSuccessListener { downloadUri ->
                     val imageUrl = downloadUri.toString()
 
-                    // 2. users 문서에 studentIdImageUrl 업데이트
                     db.collection("users").document(userId)
                         .update("studentIdImageUrl", imageUrl)
 
-                    // 3. adminQueue에 저장
                     db.collection("users").document(userId).get()
                         .addOnSuccessListener { document ->
                             val userName = document.getString("name") ?: ""
@@ -433,5 +435,36 @@ class AuthViewModel : ViewModel() {
 
     fun resetVerificationCheckState() {
         _verificationCheckState.value = VerificationCheckState.Idle
+    }
+
+    // =====================
+    // 비밀번호 찾기 용
+    // =====================
+    private val _passwordResetState = MutableStateFlow<PasswordResetState>(PasswordResetState.Idle)
+    val passwordResetState: StateFlow<PasswordResetState> = _passwordResetState
+
+    fun sendPasswordResetEmail(email: String) {
+        if (email.isEmpty()) {
+            _passwordResetState.value = PasswordResetState.Error("이메일을 입력해주세요")
+            return
+        }
+        if (!email.endsWith("@hansung.ac.kr")) {
+            _passwordResetState.value = PasswordResetState.Error("한성대학교 이메일만 사용 가능합니다")
+            return
+        }
+
+        _passwordResetState.value = PasswordResetState.Loading
+
+        auth.sendPasswordResetEmail(email)
+            .addOnSuccessListener {
+                _passwordResetState.value = PasswordResetState.Success
+            }
+            .addOnFailureListener {
+                _passwordResetState.value = PasswordResetState.Error("이메일 전송에 실패했습니다")
+            }
+    }
+
+    fun resetPasswordResetState() {
+        _passwordResetState.value = PasswordResetState.Idle
     }
 }

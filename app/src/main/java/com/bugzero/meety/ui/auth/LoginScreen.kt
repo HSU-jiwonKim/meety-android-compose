@@ -33,17 +33,132 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+    var resetEmail by remember { mutableStateOf("") }
 
     val authState by viewModel.authState.collectAsState()
+    val passwordResetState by viewModel.passwordResetState.collectAsState()
 
     LaunchedEffect(authState) {
         if (authState is AuthState.Success) onLoginSuccess()
     }
 
-    // 로고 scale 애니메이션
     val logoScale = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         logoScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
+    // 비밀번호 찾기 다이얼로그
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showResetDialog = false
+                resetEmail = ""
+                viewModel.resetPasswordResetState()
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "비밀번호 찾기",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Gray900
+                    )
+                    IconButton(
+                        onClick = {
+                            showResetDialog = false
+                            resetEmail = ""
+                            viewModel.resetPasswordResetState()
+                        }
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "닫기", tint = Gray500)
+                    }
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "가입한 한성대 이메일을 입력하면\n비밀번호 재설정 링크를 보내드려요",
+                        fontSize = 14.sp,
+                        color = Gray500,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = { resetEmail = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("name@hansung.ac.kr", color = Gray400) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Email, contentDescription = null, tint = Gray400)
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Purple,
+                            unfocusedContainerColor = Color(0xFFF9FAFB),
+                            focusedContainerColor = Color(0xFFF9FAFB)
+                        )
+                    )
+                    when (passwordResetState) {
+                        is PasswordResetState.Error -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                (passwordResetState as PasswordResetState.Error).message,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 13.sp
+                            )
+                        }
+                        is PasswordResetState.Success -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "✅ 이메일을 전송했습니다\n받은 메일함을 확인해주세요",
+                                color = Color(0xFF22C55E),
+                                fontSize = 13.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.sendPasswordResetEmail(resetEmail) },
+                    enabled = passwordResetState !is PasswordResetState.Loading,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Purple)
+                ) {
+                    if (passwordResetState is PasswordResetState.Loading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("전송", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showResetDialog = false
+                        resetEmail = ""
+                        viewModel.resetPasswordResetState()
+                    }
+                ) {
+                    Text("취소", color = Gray500)
+                }
+            }
+        )
     }
 
     Box(
@@ -51,7 +166,6 @@ fun LoginScreen(
             .fillMaxSize()
             .background(Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFEC4899), Color(0xFF7C3AED))))
     ) {
-        // 배경 블러 원
         Box(
             modifier = Modifier.size(280.dp).offset(x = (-40).dp, y = 80.dp)
                 .background(Color(0x4DF9A8D4), androidx.compose.foundation.shape.CircleShape)
@@ -66,7 +180,6 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // 카드
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),
@@ -77,7 +190,6 @@ fun LoginScreen(
                     modifier = Modifier.padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 로고
                     Box(
                         modifier = Modifier
                             .size(80.dp)
@@ -88,8 +200,12 @@ fun LoginScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Favorite, contentDescription = null,
-                            tint = Color.White, modifier = Modifier.size(40.dp))
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(40.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -108,7 +224,6 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // 이메일
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text("이메일", fontSize = 14.sp, color = Gray700, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -117,7 +232,9 @@ fun LoginScreen(
                             onValueChange = { email = it },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("name@hansung.ac.kr", color = Gray400) },
-                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Gray400) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Email, contentDescription = null, tint = Gray400)
+                            },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             shape = RoundedCornerShape(14.dp),
                             singleLine = true,
@@ -131,7 +248,6 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // 비밀번호
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text("비밀번호", fontSize = 14.sp, color = Gray700, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -140,12 +256,15 @@ fun LoginScreen(
                             onValueChange = { password = it },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("비밀번호를 입력하세요", color = Gray400) },
-                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Gray400) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = Gray400)
+                            },
                             trailingIcon = {
                                 IconButton(onClick = { showPassword = !showPassword }) {
                                     Icon(
                                         if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = null, tint = Gray400
+                                        contentDescription = null,
+                                        tint = Gray400
                                     )
                                 }
                             },
@@ -161,26 +280,36 @@ fun LoginScreen(
                         )
                     }
 
-                    // 에러
                     if (authState is AuthState.Error) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             (authState as AuthState.Error).message,
-                            color = MaterialTheme.colorScheme.error, fontSize = 13.sp
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp
                         )
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = {}) {
-                            Text("비밀번호를 잊으셨나요?", color = Purple, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        TextButton(
+                            onClick = {
+                                resetEmail = email
+                                viewModel.resetPasswordResetState()
+                                showResetDialog = true
+                            }
+                        ) {
+                            Text(
+                                "비밀번호를 잊으셨나요?",
+                                color = Purple,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 로그인 버튼
                     Button(
                         onClick = { viewModel.login(email, password) },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -190,12 +319,20 @@ fun LoginScreen(
                         enabled = authState !is AuthState.Loading
                     ) {
                         Box(
-                            modifier = Modifier.fillMaxSize()
-                                .background(Brush.horizontalGradient(listOf(Purple, Color(0xFFF472B6))), RoundedCornerShape(14.dp)),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.horizontalGradient(listOf(Purple, Color(0xFFF472B6))),
+                                    RoundedCornerShape(14.dp)
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             if (authState is AuthState.Loading) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(22.dp),
+                                    strokeWidth = 2.dp
+                                )
                             } else {
                                 Text("로그인 ✨", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
