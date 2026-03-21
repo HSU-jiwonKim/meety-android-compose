@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "131195204246",
+    "project_id": "bugzero-b3d50",
+    "storage_bucket": "bugzero-b3d50.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:131195204246:android:8b5c15cc182b05a911c8b7",
+        "android_client_info": {
+          "package_name": "com.bugzero.meety"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLrbdPsflXA7mRdWB8fLMHofj0kzIsiJ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
