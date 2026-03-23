@@ -74,7 +74,6 @@ fun FeedScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 좌측: 로고 + Meety 그라데이션 텍스트
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.graphicsLayer {
@@ -111,7 +110,6 @@ fun FeedScreen(
                     )
                 }
 
-                // 우측: 돋보기 + 알림 + 프로필
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -131,7 +129,6 @@ fun FeedScreen(
                                 .offset(x = (-10).dp, y = 10.dp)
                         )
                     }
-                    // 프로필 버튼 - 흰 배경
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -161,7 +158,6 @@ fun FeedScreen(
                 val isRecommend = uiState.viewMode == "recommend"
                 val isList = uiState.viewMode == "list"
 
-                // 추천 + 전체목록을 하나의 pill 컨테이너로 묶기
                 Box(
                     modifier = Modifier
                         .border(BorderStroke(1.5.dp, Color(0xFFD1B8E8)), RoundedCornerShape(25.dp))
@@ -169,15 +165,13 @@ fun FeedScreen(
                         .padding(4.dp)
                 ) {
                     Row {
-                        // 추천 탭
                         Box(
                             modifier = Modifier
                                 .height(36.dp)
                                 .then(
                                     if (isRecommend)
                                         Modifier.background(gradientBrush, RoundedCornerShape(20.dp))
-                                    else
-                                        Modifier
+                                    else Modifier
                                 )
                                 .clickable { viewModel.setViewMode("recommend") }
                                 .padding(horizontal = 18.dp),
@@ -202,15 +196,13 @@ fun FeedScreen(
                             }
                         }
 
-                        // 전체 목록 탭
                         Box(
                             modifier = Modifier
                                 .height(36.dp)
                                 .then(
                                     if (isList)
                                         Modifier.background(gradientBrush, RoundedCornerShape(20.dp))
-                                    else
-                                        Modifier
+                                    else Modifier
                                 )
                                 .clickable { viewModel.setViewMode("list") }
                                 .padding(horizontal = 18.dp),
@@ -278,6 +270,7 @@ fun FeedScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 뒤로가기
                         Box(
                             modifier = Modifier
                                 .size(52.dp)
@@ -289,22 +282,28 @@ fun FeedScreen(
                             Icon(Icons.Default.Undo, "뒤로가기", tint = Gray500, modifier = Modifier.size(26.dp))
                         }
                         Spacer(Modifier.width(20.dp))
+
+                        // X 버튼 - 핑크 테두리
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
                                 .shadow(6.dp, CircleShape)
                                 .background(Color.White, CircleShape)
+                                .border(2.dp, Color(0xFFFF4B6E).copy(alpha = 0.4f), CircleShape)
                                 .clickable { viewModel.onCardSwiped(false) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Close, "패스", tint = Color(0xFFFF4B6E), modifier = Modifier.size(32.dp))
                         }
                         Spacer(Modifier.width(20.dp))
+
+                        // 하트 버튼 - background 먼저, border 나중에 (테두리가 위에 표시됨)
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
                                 .shadow(6.dp, CircleShape)
                                 .background(gradientBrush, CircleShape)
+                                .border(2.dp, Color(0xFFFF4B6E).copy(alpha = 0.4f), CircleShape)
                                 .clickable { viewModel.onCardSwiped(true) },
                             contentAlignment = Alignment.Center
                         ) {
