@@ -11,12 +11,11 @@ import com.bugzero.meety.ui.feed.FeedScreen
 import com.bugzero.meety.ui.feed.MeetingDetailScreen
 import com.bugzero.meety.ui.feed.ProfileEditScreen
 import com.bugzero.meety.ui.team.MyTeamScreen
-import com.bugzero.meety.ui.team.MyPageScreen
+import com.bugzero.meety.ui.team.MyPageRoute
 import com.bugzero.meety.ui.team.MeetingCreateScreen
 import com.bugzero.meety.ui.chat.ChatListScreen
 import com.bugzero.meety.ui.chat.ChatRoomScreen
 import com.bugzero.meety.ui.chat.ScheduleSyncScreen
-
 object Routes {
     const val LOGIN = "login"
     const val ONBOARDING = "onboarding"
@@ -36,7 +35,7 @@ object Routes {
 fun NavGraph(navController: NavHostController) {
     NavHost(
         navController = navController,
-        startDestination = Routes.LOGIN
+        startDestination = Routes.MY_TEAM
     ) {
         composable(Routes.LOGIN) { LoginScreen() }
         composable(Routes.ONBOARDING) { OnboardingScreen() }
@@ -45,7 +44,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Routes.MEETING_DETAIL) { MeetingDetailScreen() }
         composable(Routes.PROFILE_EDIT) { ProfileEditScreen() }
         composable(Routes.MY_TEAM) { MyTeamScreen() }
-        composable(Routes.MY_PAGE) { MyPageScreen() }
+        composable(Routes.MY_PAGE) { MyPageRoute() }
         composable(Routes.MEETING_CREATE) { MeetingCreateScreen() }
         composable(Routes.CHAT_LIST) { ChatListScreen() }
         composable(Routes.CHAT_ROOM) { ChatRoomScreen() }
