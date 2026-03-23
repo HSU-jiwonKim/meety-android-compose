@@ -52,4 +52,15 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // 머티리얼 확장 아이콘 라이브러리 추가
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
+
+    // (참고) ViewModel을 Compose에서 사용하기 위해 필요한 라이브러리 (아직 없다면 추가)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+
+    // Firebase 관련 의존성 추가
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore-ktx")
 }
