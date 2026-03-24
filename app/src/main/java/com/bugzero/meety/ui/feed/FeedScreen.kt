@@ -1,8 +1,9 @@
 package com.bugzero.meety.ui.feed
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -17,10 +18,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -31,7 +36,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bugzero.meety.ui.theme.*
 import kotlin.math.roundToInt
 
-// 1. 데이터 모델 정의
 data class MockTeam(
     val id: String,
     val name: String,
@@ -52,65 +56,186 @@ fun FeedScreen(
     viewModel: FeedViewModel = viewModel(),
     onNavigateToProfile: () -> Unit = {}
 ) {
-    // ViewModel 상태 관찰
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTeam = uiState.teams.getOrNull(uiState.currentIndex)
+    val gradientBrush = Brush.linearGradient(listOf(Color(0xFFB44FD3), Color(0xFFEC4899)))
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 메인 피드 레이아웃
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF9FAFB))
         ) {
-            // 상단 탭 및 프로필 버튼
+            // ── 상단 앱바 ──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 추천/리스트 전환 버튼
                 Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("recommend" to "추천", "list" to "전체").forEach { (mode, label) ->
-                        val isSelected = uiState.viewMode == mode
-                        Button(
-                            onClick = { viewModel.setViewMode(mode) },
-                            modifier = Modifier.weight(1f).height(42.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSelected) Purple else Color.White,
-                                contentColor = if (isSelected) Color.White else Gray500
-                            ),
-                            contentPadding = PaddingValues(0.dp),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
-                        ) {
-                            Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
                     }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(gradientBrush, RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Meety",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.drawWithCache {
+                            val brush = Brush.linearGradient(
+                                listOf(Color(0xFFB44FD3), Color(0xFFEC4899))
+                            )
+                            onDrawWithContent {
+                                drawContent()
+                                drawRect(brush, blendMode = BlendMode.SrcAtop)
+                            }
+                        }
+                    )
                 }
 
-                // 프로필 편집 이동 버튼
-                IconButton(
-                    onClick = onNavigateToProfile,
-                    modifier = Modifier.size(42.dp).background(Color.White, CircleShape).shadow(1.dp, CircleShape)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.Person, contentDescription = "프로필", tint = Purple)
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Default.Search, contentDescription = "검색", tint = Color(0xFF4B4B4B))
+                    }
+                    Box {
+                        IconButton(onClick = {}) {
+                            Icon(Icons.Default.Notifications, contentDescription = "알림", tint = Color(0xFF4B4B4B))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(Color(0xFFEC4899), CircleShape)
+                                .align(Alignment.TopEnd)
+                                .offset(x = (-10).dp, y = 10.dp)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .shadow(3.dp, CircleShape)
+                            .background(Color.White, CircleShape)
+                            .clickable { onNavigateToProfile() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = "프로필",
+                            tint = Color(0xFF9B59B6),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 
-            // 뷰 모드에 따른 컨텐츠
+            // ── 탭 버튼 ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val isRecommend = uiState.viewMode == "recommend"
+                val isList = uiState.viewMode == "list"
+
+                Box(
+                    modifier = Modifier
+                        .border(BorderStroke(1.5.dp, Color(0xFFD1B8E8)), RoundedCornerShape(25.dp))
+                        .background(Color.White, RoundedCornerShape(25.dp))
+                        .padding(4.dp)
+                ) {
+                    Row {
+                        Box(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .then(
+                                    if (isRecommend)
+                                        Modifier.background(gradientBrush, RoundedCornerShape(20.dp))
+                                    else Modifier
+                                )
+                                .clickable { viewModel.setViewMode("recommend") }
+                                .padding(horizontal = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (isRecommend) Color.White else Color(0xFF9B59B6)
+                                )
+                                Text(
+                                    "추천",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = if (isRecommend) Color.White else Color(0xFF9B59B6)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .then(
+                                    if (isList)
+                                        Modifier.background(gradientBrush, RoundedCornerShape(20.dp))
+                                    else Modifier
+                                )
+                                .clickable { viewModel.setViewMode("list") }
+                                .padding(horizontal = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.FormatListBulleted,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (isList) Color.White else Color(0xFF9B59B6)
+                                )
+                                Text(
+                                    "전체 목록",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = if (isList) Color.White else Color(0xFF9B59B6)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             if (uiState.viewMode == "recommend") {
-                // 추천 스와이프 모드
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
                 ) {
                     if (currentTeam != null) {
                         SwipeCard(
@@ -120,7 +245,6 @@ fun FeedScreen(
                             onInfo = { viewModel.selectTeam(currentTeam.id) }
                         )
                     } else {
-                        // 모든 카드를 다 봤을 때
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.Center,
@@ -128,42 +252,66 @@ fun FeedScreen(
                         ) {
                             Text("모든 팀을 확인했습니다!", color = Gray500)
                             Spacer(Modifier.height(16.dp))
-                            Button(onClick = { viewModel.resetFeed() }, colors = ButtonDefaults.buttonColors(containerColor = Purple)) {
+                            Button(
+                                onClick = { viewModel.resetFeed() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Purple)
+                            ) {
                                 Text("처음부터 다시보기")
                             }
                         }
                     }
                 }
 
-                // 하단 조작 버튼
                 if (currentTeam != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { viewModel.undoSwipe() },
-                            modifier = Modifier.size(48.dp).background(Color.White, CircleShape).shadow(2.dp, CircleShape)
-                        ) { Icon(Icons.Default.Undo, "되돌리기", tint = Gray500) }
+                        // 뒤로가기
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .shadow(4.dp, CircleShape)
+                                .background(Color.White, CircleShape)
+                                .clickable { viewModel.undoSwipe() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Undo, "뒤로가기", tint = Gray500, modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(Modifier.width(20.dp))
 
-                        Spacer(Modifier.width(24.dp))
+                        // X 버튼 - 핑크 테두리
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .shadow(6.dp, CircleShape)
+                                .background(Color.White, CircleShape)
+                                .border(2.dp, Color(0xFFFF4B6E).copy(alpha = 0.4f), CircleShape)
+                                .clickable { viewModel.onCardSwiped(false) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Close, "패스", tint = Color(0xFFFF4B6E), modifier = Modifier.size(32.dp))
+                        }
+                        Spacer(Modifier.width(20.dp))
 
-                        IconButton(
-                            onClick = { viewModel.onCardSwiped(false) },
-                            modifier = Modifier.size(64.dp).background(Color.White, CircleShape).shadow(4.dp, CircleShape)
-                        ) { Icon(Icons.Default.Close, "패스", tint = Color.Red, modifier = Modifier.size(32.dp)) }
-
-                        Spacer(Modifier.width(24.dp))
-
-                        IconButton(
-                            onClick = { viewModel.onCardSwiped(true) },
-                            modifier = Modifier.size(64.dp).background(Purple, CircleShape).shadow(4.dp, CircleShape)
-                        ) { Icon(Icons.Default.Favorite, "좋아요", tint = Color.White, modifier = Modifier.size(32.dp)) }
+                        // 하트 버튼 - background 먼저, border 나중에 (테두리가 위에 표시됨)
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .shadow(6.dp, CircleShape)
+                                .background(gradientBrush, CircleShape)
+                                .border(2.dp, Color(0xFFFF4B6E).copy(alpha = 0.4f), CircleShape)
+                                .clickable { viewModel.onCardSwiped(true) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Favorite, "좋아요", tint = Color.White, modifier = Modifier.size(32.dp))
+                        }
                     }
                 }
             } else {
-                // 전체 목록 모드
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
@@ -176,7 +324,6 @@ fun FeedScreen(
             }
         }
 
-        // 상세 화면 오버레이 (selectedTeam이 null이 아닐 때만 표시)
         AnimatedVisibility(
             visible = uiState.selectedTeam != null,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -186,7 +333,7 @@ fun FeedScreen(
                 team = uiState.selectedTeam,
                 onLikeClick = { viewModel.onCardSwiped(true) },
                 onPassClick = { viewModel.onCardSwiped(false) },
-                onBackClick = { viewModel.selectTeam("") } // id를 빈값으로 보내 null 처리
+                onBackClick = { viewModel.selectTeam("") }
             )
         }
     }
@@ -200,8 +347,6 @@ fun SwipeCard(
     onInfo: () -> Unit
 ) {
     var offsetX by remember { mutableStateOf(0f) }
-
-    // 카드 드래그 시 회전 각도 계산
     val rotation = (offsetX / 60f)
 
     Box(
@@ -212,7 +357,7 @@ fun SwipeCard(
             .shadow(12.dp, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
             .background(Color.White)
-            .pointerInput(team.id) { // team.id가 바뀌면 상태 초기화
+            .pointerInput(team.id) {
                 detectDragGestures(
                     onDragEnd = {
                         when {
@@ -229,32 +374,62 @@ fun SwipeCard(
             }
             .clickable { onInfo() }
     ) {
-        // 배경 이미지 대신 색상 그라데이션 (임시)
+        val bgColors = when (team.id) {
+            "1" -> listOf(Color(0xFFB39DDB), Color(0xFF7E57C2))
+            "2" -> listOf(Color(0xFF80CBC4), Color(0xFF26A69A))
+            "3" -> listOf(Color(0xFFF48FB1), Color(0xFFEC407A))
+            else -> listOf(Color(0xFF90CAF9), Color(0xFF1E88E5))
+        }
+        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
         Box(
             modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))
+                Brush.verticalGradient(0.4f to Color.Transparent, 1.0f to Color.Black.copy(alpha = 0.7f))
             )
         )
 
-        // 카드 정보 영역
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart).padding(24.dp)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 16.dp, top = 16.dp)
+                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                .clickable { onInfo() }
+                .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(team.name, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("👆", fontSize = 13.sp)
+                Spacer(Modifier.width(4.dp))
+                Text("탭하여 자세히 보기", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(24.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(team.name, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.width(8.dp))
                 Box(
-                    modifier = Modifier.background(Purple.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
+                    modifier = Modifier
+                        .background(Purple.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(team.size, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(team.size, fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
-            Text(team.department, fontSize = 18.sp, color = Color.LightGray)
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(team.department, fontSize = 16.sp, color = Color.LightGray)
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 team.tags.take(3).forEach { tag ->
-                    Text("#$tag", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+                    Box(
+                        modifier = Modifier
+                            .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text("#$tag", color = Color.White, fontSize = 13.sp)
+                    }
                 }
             }
         }
@@ -273,21 +448,20 @@ fun TeamListItem(team: MockTeam, onTeamClick: (String) -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 팀 아이콘 (임시)
             Box(
-                modifier = Modifier.size(50.dp).clip(CircleShape).background(Color(0xFFEDE9FE)),
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEDE9FE)),
                 contentAlignment = Alignment.Center
             ) {
                 Text("👥", fontSize = 24.sp)
             }
-
             Spacer(modifier = Modifier.width(16.dp))
-
             Column(modifier = Modifier.weight(1f)) {
                 Text(team.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Gray900)
                 Text("${team.department} · ${team.size}", fontSize = 13.sp, color = Gray500)
             }
-
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Gray400)
         }
     }
