@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.bugzero.meety.ui.auth.InfoRow
 
 /**
  * 마이페이지 화면에 사용할 UI 상태 모델
@@ -89,16 +90,6 @@ fun MyPageScreen(
             TeamCommonTopBar(
                 onSearchClick = onSearchClick,
                 onNotificationClick = onNotificationClick
-            )
-        },
-        bottomBar = {
-            TeamCommonBottomBar(
-                selectedTab = selectedBottomTab,
-                onHomeClick = onHomeClick,
-                onMatchingClick = onMatchingClick,
-                onCreateTeamClick = onCreateTeamClick,
-                onChatClick = onChatClick,
-                onProfileClick = onProfileClick
             )
         },
         containerColor = Color(0xFFF8F1F8)

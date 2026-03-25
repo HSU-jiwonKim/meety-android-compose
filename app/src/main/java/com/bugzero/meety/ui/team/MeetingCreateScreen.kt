@@ -72,16 +72,6 @@ fun MeetingCreateScreen(
                 onNotificationClick = onNotificationClick
             )
         },
-        bottomBar = {
-            TeamCommonBottomBar(
-                selectedTab = TeamBottomTab.CREATE_TEAM,
-                onHomeClick = onHomeClick,
-                onMatchingClick = onMatchingClick,
-                onCreateTeamClick = onCreateTeamTabClick,
-                onChatClick = onChatClick,
-                onProfileClick = onProfileClick
-            )
-        },
         containerColor = Color(0xFFF8F1F8)
     ) { innerPadding ->
         LazyColumn(

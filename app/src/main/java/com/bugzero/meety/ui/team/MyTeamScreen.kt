@@ -138,16 +138,6 @@ fun MyTeamScreen(
                 onNotificationClick = onNotificationClick
             )
         },
-        bottomBar = {
-            TeamCommonBottomBar(
-                selectedTab = TeamBottomTab.MATCHING,
-                onHomeClick = onHomeClick,
-                onMatchingClick = onMatchingClick,
-                onCreateTeamClick = onCreateTeamClick,
-                onChatClick = onChatClick,
-                onProfileClick = onProfileClick
-            )
-        },
         containerColor = Color(0xFFF8F1F8)
     ) { innerPadding ->
 
