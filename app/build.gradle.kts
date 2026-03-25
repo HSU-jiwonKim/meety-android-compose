@@ -58,6 +58,9 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.google.firebase:firebase-storage")
 
+    // FCM (푸시 알림)
+    implementation("com.google.firebase:firebase-messaging")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

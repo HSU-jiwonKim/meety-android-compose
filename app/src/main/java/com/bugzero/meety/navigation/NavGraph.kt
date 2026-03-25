@@ -16,9 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.navArgument
 import com.bugzero.meety.ui.admin.AdminScreen
 import com.bugzero.meety.ui.auth.AuthViewModel
 import com.bugzero.meety.ui.auth.LoginScreen
@@ -35,9 +37,8 @@ import com.bugzero.meety.ui.feed.FeedScreen
 import com.bugzero.meety.ui.feed.MeetingDetailScreen
 import com.bugzero.meety.ui.feed.ProfileEditScreen
 import com.bugzero.meety.ui.team.MeetingCreateScreen
-import com.bugzero.meety.ui.team.MyPageScreen
+import com.bugzero.meety.ui.team.MyPageRoute
 import com.bugzero.meety.ui.team.MyTeamScreen
-import com.bugzero.meety.ui.theme.Gray500
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -56,7 +57,6 @@ object Routes {
     const val CHAT_LIST = "chat_list"
     const val CHAT_ROOM = "chat_room"
     const val SCHEDULE_SYNC = "schedule_sync"
-    const val CHAT_TEMP = "chat_temp"
 }
 
 data class NavItem(
@@ -80,9 +80,9 @@ fun NavGraph(
     val bottomNavItems = remember(isAdmin) {
         buildList {
             add(NavItem(Routes.FEED, "홈", "home"))
-            add(NavItem(Routes.CHAT_LIST, "매칭", "heart"))
+            add(NavItem(Routes.MY_TEAM, "매칭", "heart"))
             add(NavItem(Routes.MEETING_CREATE, "팀 만들기", "plus"))
-            add(NavItem(Routes.CHAT_TEMP, "채팅", "chat"))
+            add(NavItem(Routes.CHAT_LIST, "채팅", "chat"))
             add(NavItem(Routes.MY_PAGE, "프로필", "person"))
             if (isAdmin) add(NavItem(Routes.ADMIN, "관리자", "admin"))
         }
@@ -92,7 +92,7 @@ fun NavGraph(
         Routes.FEED,
         Routes.CHAT_LIST,
         Routes.MEETING_CREATE,
-        Routes.CHAT_TEMP,
+        Routes.MY_TEAM,
         Routes.MY_PAGE,
         Routes.ADMIN
     )
@@ -101,21 +101,15 @@ fun NavGraph(
     LaunchedEffect(verificationCheckState) {
         when (verificationCheckState) {
             is VerificationCheckState.Admin -> {
-                navController.navigate(Routes.FEED) {
-                    popUpTo(startDestination) { inclusive = true }
-                }
+                navController.navigate(Routes.FEED) { popUpTo(startDestination) { inclusive = true } }
                 authViewModel.resetVerificationCheckState()
             }
             is VerificationCheckState.Verified -> {
-                navController.navigate(Routes.FEED) {
-                    popUpTo(startDestination) { inclusive = true }
-                }
+                navController.navigate(Routes.FEED) { popUpTo(startDestination) { inclusive = true } }
                 authViewModel.resetVerificationCheckState()
             }
             is VerificationCheckState.NotYet -> {
-                navController.navigate(Routes.PENDING_VERIFICATION) {
-                    popUpTo(startDestination) { inclusive = true }
-                }
+                navController.navigate(Routes.PENDING_VERIFICATION) { popUpTo(startDestination) { inclusive = true } }
                 authViewModel.resetVerificationCheckState()
             }
             else -> {}
@@ -125,103 +119,65 @@ fun NavGraph(
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(
-                    containerColor = Color.White,
-                    tonalElevation = 0.dp
-                ) {
+                NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
                     bottomNavItems.forEach { item ->
                         val isSelected = when (item.type) {
-                            "home" -> currentRoute == Routes.FEED
-                            "heart" -> currentRoute == Routes.CHAT_LIST
-                            "plus" -> currentRoute == Routes.MEETING_CREATE
-                            "chat" -> currentRoute == Routes.CHAT_TEMP
+                            "home"   -> currentRoute == Routes.FEED
+                            "chat"   -> currentRoute == Routes.CHAT_LIST
+                            "plus"   -> currentRoute == Routes.MEETING_CREATE
+                            "heart"  -> currentRoute == Routes.MY_TEAM
                             "person" -> currentRoute == Routes.MY_PAGE
-                            "admin" -> currentRoute == Routes.ADMIN
+                            "admin"  -> currentRoute == Routes.ADMIN
                             else -> false
                         }
-
                         val isPlus = item.type == "plus"
                         val isAdminItem = item.type == "admin"
 
                         NavigationBarItem(
                             icon = {
                                 when {
-                                    isPlus -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .background(
-                                                    if (isSelected)
-                                                        Brush.linearGradient(
-                                                            listOf(Color(0xFF7C3AED), Color(0xFFEC4899))
-                                                        )
-                                                    else
-                                                        Brush.linearGradient(
-                                                            listOf(Color(0xFFEDE9FE), Color(0xFFFCE7F3))
-                                                        ),
-                                                    RoundedCornerShape(14.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Add,
-                                                contentDescription = item.label,
-                                                tint = if (isSelected) Color.White else Color(0xFF7C3AED),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
+                                    isPlus -> Box(
+                                        modifier = Modifier.size(44.dp).background(
+                                            if (isSelected) Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFEC4899)))
+                                            else Brush.linearGradient(listOf(Color(0xFFEDE9FE), Color(0xFFFCE7F3))),
+                                            RoundedCornerShape(14.dp)
+                                        ), contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = item.label,
+                                            tint = if (isSelected) Color.White else Color(0xFF7C3AED),
+                                            modifier = Modifier.size(22.dp))
                                     }
-                                    isAdminItem -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .background(
-                                                    if (isSelected)
-                                                        Brush.linearGradient(
-                                                            listOf(Color(0xFF7C3AED), Color(0xFFEC4899))
-                                                        )
-                                                    else
-                                                        Brush.linearGradient(
-                                                            listOf(Color(0xFFF5F3FF), Color(0xFFFDF2F8))
-                                                        ),
-                                                    RoundedCornerShape(14.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Shield,
-                                                contentDescription = item.label,
-                                                tint = if (isSelected) Color.White else Color(0xFF7C3AED),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
+                                    isAdminItem -> Box(
+                                        modifier = Modifier.size(44.dp).background(
+                                            if (isSelected) Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFEC4899)))
+                                            else Brush.linearGradient(listOf(Color(0xFFF5F3FF), Color(0xFFFDF2F8))),
+                                            RoundedCornerShape(14.dp)
+                                        ), contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Shield, contentDescription = item.label,
+                                            tint = if (isSelected) Color.White else Color(0xFF7C3AED),
+                                            modifier = Modifier.size(22.dp))
                                     }
-                                    else -> {
-                                        val icon = when (item.type) {
-                                            "home" -> Icons.Default.Home
+                                    else -> Icon(
+                                        when (item.type) {
+                                            "home"  -> Icons.Default.Home
+                                            "chat"  -> Icons.Default.ChatBubble
                                             "heart" -> Icons.Default.Favorite
-                                            "chat" -> Icons.Default.ChatBubble
-                                            else -> Icons.Default.Person
-                                        }
-                                        Icon(
-                                            icon,
-                                            contentDescription = item.label,
-                                            modifier = Modifier.size(26.dp)
-                                        )
-                                    }
+                                            else    -> Icons.Default.Person
+                                        },
+                                        contentDescription = item.label,
+                                        modifier = Modifier.size(26.dp)
+                                    )
                                 }
                             },
                             label = {
-                                Text(
-                                    item.label,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
+                                Text(item.label, fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                             },
                             selected = isSelected,
                             onClick = {
                                 navController.navigate(item.route) {
-                                    popUpTo(Routes.FEED) { saveState = true }
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -239,11 +195,9 @@ fun NavGraph(
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = startDestination,
-            modifier = Modifier.padding(innerPadding)
-        ) {
+        NavHost(navController = navController, startDestination = startDestination,
+            modifier = Modifier.padding(innerPadding)) {
+
             composable(Routes.ONBOARDING) {
                 OnboardingScreen(
                     onLoginClick = { navController.navigate(Routes.LOGIN) },
@@ -252,9 +206,7 @@ fun NavGraph(
             }
             composable(Routes.LOGIN) {
                 LoginScreen(
-                    onLoginSuccess = {
-                        authViewModel.checkVerificationAndRole()
-                    },
+                    onLoginSuccess = { authViewModel.checkVerificationAndRole() },
                     onSignUpClick = { navController.navigate(Routes.SIGNUP) },
                     viewModel = authViewModel
                 )
@@ -289,14 +241,10 @@ fun NavGraph(
             }
             composable(Routes.PENDING_VERIFICATION) {
                 PendingVerificationScreen(
-                    onCheckVerification = {
-                        authViewModel.checkVerificationAndRole()
-                    },
+                    onCheckVerification = { authViewModel.checkVerificationAndRole() },
                     onLogout = {
                         authViewModel.logout()
-                        navController.navigate(Routes.ONBOARDING) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                        navController.navigate(Routes.ONBOARDING) { popUpTo(0) { inclusive = true } }
                     },
                     onReupload = {
                         navController.navigate(Routes.STUDENT_ID_UPLOAD) {
@@ -310,87 +258,160 @@ fun NavGraph(
                 AdminScreen(
                     onLogout = {
                         authViewModel.logout()
-                        navController.navigate(Routes.ONBOARDING) {
-                            popUpTo(0) { inclusive = true }
-                        }
+                        navController.navigate(Routes.ONBOARDING) { popUpTo(0) { inclusive = true } }
                     }
                 )
             }
             composable(Routes.FEED) {
                 FeedScreen(
-                    onTeamClick = { teamId ->
-                        navController.navigate("${Routes.MEETING_DETAIL}/$teamId")
+                    onNavigateToProfile = {
+                        navController.navigate(Routes.MY_PAGE) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 )
             }
-            composable("${Routes.MEETING_DETAIL}/{teamId}") {
-                MeetingDetailScreen(
-                    onBackClick = { navController.popBackStack() }
-                )
+            composable(
+                route = "${Routes.MEETING_DETAIL}/{teamId}",
+                arguments = listOf(navArgument("teamId") { type = NavType.StringType })
+            ) {
+                MeetingDetailScreen(onBackClick = { navController.popBackStack() })
             }
             composable(Routes.PROFILE_EDIT) {
-                ProfileEditScreen(
-                    onBackClick = { navController.popBackStack() }
-                )
+                ProfileEditScreen(onBackClick = { navController.popBackStack() })
             }
             composable(Routes.MY_TEAM) {
                 MyTeamScreen(
-                    onCreateTeamClick = { navController.navigate(Routes.MEETING_CREATE) }
+                    onHomeClick = {
+                        navController.navigate(Routes.FEED) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onMatchingClick = {
+                        navController.navigate(Routes.MY_TEAM) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onCreateTeamClick = {
+                        navController.navigate(Routes.MEETING_CREATE) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onChatClick = {
+                        navController.navigate(Routes.CHAT_LIST) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onProfileClick = {
+                        navController.navigate(Routes.MY_PAGE) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onCreateNewTeamClick = { navController.navigate(Routes.MEETING_CREATE) }
                 )
             }
             composable(Routes.MY_PAGE) {
-                MyPageScreen(
-                    onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) },
-                    onScheduleClick = { navController.navigate(Routes.SCHEDULE_SYNC) }
+                MyPageRoute(
+                    onHomeClick = {
+                        navController.navigate(Routes.FEED) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onMatchingClick = {
+                        navController.navigate(Routes.MY_TEAM) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onCreateTeamClick = {
+                        navController.navigate(Routes.MEETING_CREATE) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onChatClick = {
+                        navController.navigate(Routes.CHAT_LIST) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onProfileClick = {},
+                    onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) }
                 )
             }
             composable(Routes.MEETING_CREATE) {
                 MeetingCreateScreen(
-                    onBackClick = { navController.popBackStack() },
-                    onCreateSuccess = { navController.popBackStack() }
+                    onHomeClick = {
+                        navController.navigate(Routes.FEED) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onMatchingClick = {
+                        navController.navigate(Routes.MY_TEAM) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onCreateTeamTabClick = {},
+                    onChatClick = {
+                        navController.navigate(Routes.CHAT_LIST) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onProfileClick = {
+                        navController.navigate(Routes.MY_PAGE) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onCreateTeamClick = { navController.popBackStack() }
                 )
             }
             composable(Routes.CHAT_LIST) {
                 ChatListScreen(
-                    onChatClick = { chatId ->
-                        navController.navigate("${Routes.CHAT_ROOM}/$chatId")
+                    onChatClick = { chatId, roomName ->
+                        navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName")
                     }
                 )
             }
-            composable("${Routes.CHAT_ROOM}/{chatId}") {
+            composable(
+                route = "${Routes.CHAT_ROOM}/{chatId}?roomName={roomName}",
+                arguments = listOf(
+                    navArgument("chatId")   { type = NavType.StringType; defaultValue = "" },
+                    navArgument("roomName") { type = NavType.StringType; defaultValue = "채팅방" }
+                )
+            ) { backStackEntry ->
                 ChatRoomScreen(
+                    chatId      = backStackEntry.arguments?.getString("chatId") ?: "",
+                    roomName    = backStackEntry.arguments?.getString("roomName") ?: "채팅방",
                     onBackClick = { navController.popBackStack() }
                 )
             }
             composable(Routes.SCHEDULE_SYNC) {
-                ScheduleSyncScreen(
-                    onBackClick = { navController.popBackStack() }
-                )
-            }
-            composable(Routes.CHAT_TEMP) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFFF9FAFB)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("💬", fontSize = 56.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "채팅 기능 준비 중이에요",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF374151)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "매칭 성사 후 채팅이 열립니다",
-                            fontSize = 14.sp,
-                            color = Gray500
-                        )
-                    }
-                }
+                ScheduleSyncScreen()
             }
         }
     }
