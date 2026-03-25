@@ -1,10 +1,7 @@
 package com.bugzero.meety.ui.auth
 
 import androidx.lifecycle.ViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
+import com.bugzero.meety.data.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -63,9 +60,7 @@ sealed class PasswordResetState {
 
 class AuthViewModel : ViewModel() {
 
-    private val auth = FirebaseAuth.getInstance()
-    private val db = FirebaseFirestore.getInstance()
-    private val storage = FirebaseStorage.getInstance()
+    private val userRepository = UserRepository()
 
     // =====================
     // isAdmin 상태 (bottom nav용)
@@ -74,11 +69,9 @@ class AuthViewModel : ViewModel() {
     val isAdmin: StateFlow<Boolean> = _isAdmin
 
     fun loadUserRole() {
-        val userId = auth.currentUser?.uid ?: return
-        db.collection("users").document(userId).get()
-            .addOnSuccessListener { doc ->
-                _isAdmin.value = doc.getBoolean("isAdmin") ?: false
-            }
+        userRepository.loadUserRole { isAdmin ->
+            _isAdmin.value = isAdmin
+        }
     }
 
     // =====================
@@ -96,50 +89,27 @@ class AuthViewModel : ViewModel() {
             _authState.value = AuthState.Error("한성대학교 이메일만 사용 가능합니다")
             return
         }
-
         _authState.value = AuthState.Loading
-
-        auth.signInWithEmailAndPassword(email, password)
-            .addOnSuccessListener {
-                val user = auth.currentUser
-                if (user?.isEmailVerified == true) {
-                    // 차단 여부 확인
-                    db.collection("users").document(user.uid).get()
-                        .addOnSuccessListener { doc ->
-                            val isBanned = doc.getBoolean("isBanned") ?: false
-                            if (isBanned) {
-                                auth.signOut()
-                                _authState.value = AuthState.Error("이용이 제한된 계정입니다\n문의: meety@hansung.ac.kr")
-                            } else {
-                                _authState.value = AuthState.Success
-                            }
-                        }
-                        .addOnFailureListener {
-                            _authState.value = AuthState.Error("로그인에 실패했습니다")
-                        }
-                } else {
-                    auth.signOut()
-                    _authState.value = AuthState.Error("이메일 인증이 필요합니다\n받은 메일함을 확인해주세요")
-                }
-            }
-            .addOnFailureListener {
-                _authState.value = AuthState.Error("이메일 또는 비밀번호가 틀렸습니다")
-            }
+        userRepository.login(
+            email = email,
+            password = password,
+            onSuccess = { _authState.value = AuthState.Success },
+            onBanned = {
+                _authState.value = AuthState.Error("이용이 제한된 계정입니다\n문의: meety@hansung.ac.kr")
+            },
+            onFailure = { _authState.value = AuthState.Error(it) }
+        )
     }
 
-    fun checkAutoLogin(): Boolean {
-        return auth.currentUser?.isEmailVerified == true
-    }
+    fun checkAutoLogin(): Boolean = userRepository.checkAutoLogin()
 
     fun logout() {
-        auth.signOut()
+        userRepository.logout()
         _isAdmin.value = false
         _authState.value = AuthState.Idle
     }
 
-    fun resetAuthState() {
-        _authState.value = AuthState.Idle
-    }
+    fun resetAuthState() { _authState.value = AuthState.Idle }
 
     // =====================
     // SignUpScreen 용
@@ -160,53 +130,17 @@ class AuthViewModel : ViewModel() {
             _signUpState.value = SignUpState.Error("비밀번호는 8자 이상이어야 합니다")
             return
         }
-
         _signUpState.value = SignUpState.Loading
-
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnSuccessListener { result ->
-                val user = result.user ?: return@addOnSuccessListener
-                val userId = user.uid
-
-                user.sendEmailVerification()
-                    .addOnSuccessListener {
-                        val userMap = hashMapOf(
-                            "name" to name,
-                            "email" to email,
-                            "isVerified" to false,
-                            "isAdmin" to false,
-                            "isBanned" to false,
-                            "teamId" to "",
-                            "fcmToken" to "",
-                            "studentIdImageUrl" to "",
-                            "profileImages" to listOf<String>(),
-                            "createdAt" to FieldValue.serverTimestamp()
-                        )
-                        db.collection("users").document(userId).set(userMap)
-                            .addOnSuccessListener {
-                                _signUpState.value = SignUpState.Success
-                            }
-                            .addOnFailureListener {
-                                _signUpState.value = SignUpState.Error("유저 정보 저장에 실패했습니다")
-                            }
-                    }
-                    .addOnFailureListener {
-                        _signUpState.value = SignUpState.Error("인증 이메일 발송에 실패했습니다")
-                    }
-            }
-            .addOnFailureListener { e ->
-                val message = when {
-                    e.message?.contains("email address is already in use") == true ->
-                        "이미 사용 중인 이메일입니다"
-                    else -> "회원가입에 실패했습니다"
-                }
-                _signUpState.value = SignUpState.Error(message)
-            }
+        userRepository.signUp(
+            email = email,
+            password = password,
+            name = name,
+            onSuccess = { _signUpState.value = SignUpState.Success },
+            onFailure = { _signUpState.value = SignUpState.Error(it) }
+        )
     }
 
-    fun resetSignUpState() {
-        _signUpState.value = SignUpState.Idle
-    }
+    fun resetSignUpState() { _signUpState.value = SignUpState.Idle }
 
     // =====================
     // EmailVerification 용
@@ -215,46 +149,22 @@ class AuthViewModel : ViewModel() {
     val emailVerificationState: StateFlow<EmailVerificationState> = _emailVerificationState
 
     fun checkEmailVerified() {
-        val user = auth.currentUser
-        if (user == null) {
-            _emailVerificationState.value = EmailVerificationState.Error("로그인이 필요합니다")
-            return
-        }
-
         _emailVerificationState.value = EmailVerificationState.Loading
-
-        user.reload()
-            .addOnSuccessListener {
-                if (auth.currentUser?.isEmailVerified == true) {
-                    _emailVerificationState.value = EmailVerificationState.Verified
-                } else {
-                    _emailVerificationState.value = EmailVerificationState.NotVerified
-                }
-            }
-            .addOnFailureListener {
-                _emailVerificationState.value = EmailVerificationState.Error("확인에 실패했습니다")
-            }
+        userRepository.checkEmailVerified(
+            onVerified = { _emailVerificationState.value = EmailVerificationState.Verified },
+            onNotVerified = { _emailVerificationState.value = EmailVerificationState.NotVerified },
+            onFailure = { _emailVerificationState.value = EmailVerificationState.Error(it) }
+        )
     }
 
     fun resendVerificationEmail() {
-        val user = auth.currentUser
-        if (user == null) {
-            _emailVerificationState.value = EmailVerificationState.Error("로그인이 필요합니다")
-            return
-        }
-
-        user.sendEmailVerification()
-            .addOnSuccessListener {
-                _emailVerificationState.value = EmailVerificationState.EmailSent
-            }
-            .addOnFailureListener {
-                _emailVerificationState.value = EmailVerificationState.Error("이메일 재전송에 실패했습니다")
-            }
+        userRepository.resendVerificationEmail(
+            onSuccess = { _emailVerificationState.value = EmailVerificationState.EmailSent },
+            onFailure = { _emailVerificationState.value = EmailVerificationState.Error(it) }
+        )
     }
 
-    fun resetEmailVerificationState() {
-        _emailVerificationState.value = EmailVerificationState.Idle
-    }
+    fun resetEmailVerificationState() { _emailVerificationState.value = EmailVerificationState.Idle }
 
     // =====================
     // SetupProfileScreen 용
@@ -276,83 +186,25 @@ class AuthViewModel : ViewModel() {
         imageUris: List<android.net.Uri>,
         context: android.content.Context
     ) {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            _profileSaveState.value = ProfileSaveState.Error("로그인이 필요합니다")
-            return
-        }
-
         _profileSaveState.value = ProfileSaveState.Loading
-
-        if (imageUris.isEmpty()) {
-            saveProfileData(userId, name, age, department, mbti, bio, height, location, interests, foodLikes, foodDislikes, emptyList())
-            return
-        }
-
-        val imageUrls = mutableListOf<String>()
-        var uploadCount = 0
-
-        imageUris.forEach { uri ->
-            val fileName = "profile_${userId}_${System.currentTimeMillis()}_${uploadCount}.jpg"
-            val ref = storage.reference.child("profiles/$userId/$fileName")
-
-            ref.putFile(uri)
-                .addOnSuccessListener {
-                    ref.downloadUrl.addOnSuccessListener { downloadUri ->
-                        imageUrls.add(downloadUri.toString())
-                        uploadCount++
-                        if (uploadCount == imageUris.size) {
-                            saveProfileData(userId, name, age, department, mbti, bio, height, location, interests, foodLikes, foodDislikes, imageUrls)
-                        }
-                    }
-                }
-                .addOnFailureListener {
-                    _profileSaveState.value = ProfileSaveState.Error("이미지 업로드에 실패했습니다")
-                }
-        }
-    }
-
-    private fun saveProfileData(
-        userId: String,
-        name: String,
-        age: String,
-        department: String,
-        mbti: String,
-        bio: String,
-        height: String,
-        location: String,
-        interests: List<String>,
-        foodLikes: List<String>,
-        foodDislikes: List<String>,
-        profileImages: List<String>
-    ) {
-        val profileMap = hashMapOf(
-            "name" to name,
-            "age" to (age.toIntOrNull() ?: 0),
-            "department" to department,
-            "mbti" to mbti,
-            "bio" to bio,
-            "height" to (height.toIntOrNull() ?: 0),
-            "location" to location,
-            "interests" to interests,
-            "foodLikes" to foodLikes,
-            "foodDislikes" to foodDislikes,
-            "profileImages" to profileImages
+        userRepository.saveProfile(
+            name = name,
+            age = age,
+            department = department,
+            mbti = mbti,
+            bio = bio,
+            height = height,
+            location = location,
+            interests = interests,
+            foodLikes = foodLikes,
+            foodDislikes = foodDislikes,
+            imageUris = imageUris,
+            onSuccess = { _profileSaveState.value = ProfileSaveState.Success },
+            onFailure = { _profileSaveState.value = ProfileSaveState.Error(it) }
         )
-
-        db.collection("users").document(userId)
-            .update(profileMap as Map<String, Any>)
-            .addOnSuccessListener {
-                _profileSaveState.value = ProfileSaveState.Success
-            }
-            .addOnFailureListener {
-                _profileSaveState.value = ProfileSaveState.Error("프로필 저장에 실패했습니다")
-            }
     }
 
-    fun resetProfileSaveState() {
-        _profileSaveState.value = ProfileSaveState.Idle
-    }
+    fun resetProfileSaveState() { _profileSaveState.value = ProfileSaveState.Idle }
 
     // =====================
     // StudentIdUploadScreen 용
@@ -361,57 +213,15 @@ class AuthViewModel : ViewModel() {
     val uploadState: StateFlow<UploadState> = _uploadState
 
     fun requestStudentIdVerification(imageUri: android.net.Uri) {
-        val userId = auth.currentUser?.uid
-        val userEmail = auth.currentUser?.email ?: ""
-        if (userId == null) {
-            _uploadState.value = UploadState.Error("로그인이 필요합니다")
-            return
-        }
-
         _uploadState.value = UploadState.Loading
-
-        val fileName = "studentId_${userId}_${System.currentTimeMillis()}.jpg"
-        val ref = storage.reference.child("studentIds/$userId/$fileName")
-
-        ref.putFile(imageUri)
-            .addOnSuccessListener {
-                ref.downloadUrl.addOnSuccessListener { downloadUri ->
-                    val imageUrl = downloadUri.toString()
-
-                    db.collection("users").document(userId)
-                        .update("studentIdImageUrl", imageUrl)
-
-                    db.collection("users").document(userId).get()
-                        .addOnSuccessListener { document ->
-                            val userName = document.getString("name") ?: ""
-
-                            val requestMap = hashMapOf(
-                                "userId" to userId,
-                                "userName" to userName,
-                                "userEmail" to userEmail,
-                                "studentIdImageUrl" to imageUrl,
-                                "status" to "pending",
-                                "createdAt" to FieldValue.serverTimestamp()
-                            )
-
-                            db.collection("adminQueue").add(requestMap)
-                                .addOnSuccessListener {
-                                    _uploadState.value = UploadState.Success
-                                }
-                                .addOnFailureListener {
-                                    _uploadState.value = UploadState.Error("인증 요청에 실패했습니다")
-                                }
-                        }
-                }
-            }
-            .addOnFailureListener {
-                _uploadState.value = UploadState.Error("이미지 업로드에 실패했습니다")
-            }
+        userRepository.requestStudentIdVerification(
+            imageUri = imageUri,
+            onSuccess = { _uploadState.value = UploadState.Success },
+            onFailure = { _uploadState.value = UploadState.Error(it) }
+        )
     }
 
-    fun resetUploadState() {
-        _uploadState.value = UploadState.Idle
-    }
+    fun resetUploadState() { _uploadState.value = UploadState.Idle }
 
     // =====================
     // PendingVerificationScreen 용
@@ -420,36 +230,25 @@ class AuthViewModel : ViewModel() {
     val verificationCheckState: StateFlow<VerificationCheckState> = _verificationCheckState
 
     fun checkVerificationAndRole() {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            _verificationCheckState.value = VerificationCheckState.Error("로그인이 필요합니다")
-            return
-        }
-
         _verificationCheckState.value = VerificationCheckState.Loading
-
-        db.collection("users").document(userId)
-            .get(com.google.firebase.firestore.Source.SERVER)
-            .addOnSuccessListener { document ->
-                val isAdmin = document.getBoolean("isAdmin") ?: false
-                val isVerified = document.getBoolean("isVerified") ?: false
-
-                _isAdmin.value = isAdmin
-
-                _verificationCheckState.value = when {
-                    isAdmin -> VerificationCheckState.Admin
-                    isVerified -> VerificationCheckState.Verified
-                    else -> VerificationCheckState.NotYet
-                }
+        userRepository.checkVerificationAndRole(
+            onAdmin = {
+                _isAdmin.value = true
+                _verificationCheckState.value = VerificationCheckState.Admin
+            },
+            onVerified = {
+                _verificationCheckState.value = VerificationCheckState.Verified
+            },
+            onNotYet = {
+                _verificationCheckState.value = VerificationCheckState.NotYet
+            },
+            onFailure = {
+                _verificationCheckState.value = VerificationCheckState.Error(it)
             }
-            .addOnFailureListener {
-                _verificationCheckState.value = VerificationCheckState.Error("확인에 실패했습니다")
-            }
+        )
     }
 
-    fun resetVerificationCheckState() {
-        _verificationCheckState.value = VerificationCheckState.Idle
-    }
+    fun resetVerificationCheckState() { _verificationCheckState.value = VerificationCheckState.Idle }
 
     // =====================
     // 비밀번호 찾기 용
@@ -466,37 +265,24 @@ class AuthViewModel : ViewModel() {
             _passwordResetState.value = PasswordResetState.Error("한성대학교 이메일만 사용 가능합니다")
             return
         }
-
         _passwordResetState.value = PasswordResetState.Loading
-
-        auth.sendPasswordResetEmail(email)
-            .addOnSuccessListener {
-                _passwordResetState.value = PasswordResetState.Success
-            }
-            .addOnFailureListener {
-                _passwordResetState.value = PasswordResetState.Error("이메일 전송에 실패했습니다")
-            }
+        userRepository.sendPasswordResetEmail(
+            email = email,
+            onSuccess = { _passwordResetState.value = PasswordResetState.Success },
+            onFailure = { _passwordResetState.value = PasswordResetState.Error(it) }
+        )
     }
 
-    fun resetPasswordResetState() {
-        _passwordResetState.value = PasswordResetState.Idle
-    }
+    fun resetPasswordResetState() { _passwordResetState.value = PasswordResetState.Idle }
 
     // =====================
-// 실시간 차단 감지
-// =====================
+    // 실시간 차단 감지
+    // =====================
     fun startBanListener(onBanned: () -> Unit) {
-        val userId = auth.currentUser?.uid ?: return
-        db.collection("users").document(userId)
-            .addSnapshotListener { doc, error ->
-                if (error != null) return@addSnapshotListener
-                val isBanned = doc?.getBoolean("isBanned") ?: false
-                if (isBanned) {
-                    auth.signOut()
-                    _isAdmin.value = false
-                    _authState.value = AuthState.Idle
-                    onBanned()
-                }
-            }
+        userRepository.startBanListener {
+            _isAdmin.value = false
+            _authState.value = AuthState.Idle
+            onBanned()
+        }
     }
 }
