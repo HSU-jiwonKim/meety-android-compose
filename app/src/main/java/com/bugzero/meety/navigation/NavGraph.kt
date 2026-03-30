@@ -263,15 +263,7 @@ fun NavGraph(
                 )
             }
             composable(Routes.FEED) {
-                FeedScreen(
-                    onNavigateToProfile = {
-                        navController.navigate(Routes.MY_PAGE) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
+                FeedScreen()
             }
             composable(
                 route = "${Routes.MEETING_DETAIL}/{teamId}",
