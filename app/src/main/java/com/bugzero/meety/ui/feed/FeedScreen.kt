@@ -27,8 +27,7 @@ import com.bugzero.meety.ui.theme.*
  */
 @Composable
 fun FeedScreen(
-    viewModel: FeedViewModel = viewModel(),
-    onNavigateToProfile: () -> Unit = {}
+    viewModel: FeedViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTeam = uiState.teams.getOrNull(uiState.currentIndex)
@@ -40,7 +39,7 @@ fun FeedScreen(
                 .background(FeedConstants.BackgroundGray)
         ) {
             // ── 상단 앱바 ──
-            FeedTopBar(onProfileClick = onNavigateToProfile)
+            FeedTopBar()
 
             // ── 탭 전환 ──
             FeedTabBar(

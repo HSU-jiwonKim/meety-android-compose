@@ -1,14 +1,12 @@
 package com.bugzero.meety.ui.feed.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -17,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -30,13 +27,12 @@ import com.bugzero.meety.ui.feed.FeedConstants
 /**
  * 피드 화면 상단의 앱바
  *
- * Meety 로고 + 검색/알림/프로필 아이콘을 보여준다.
+ * Meety 로고 + 검색 / 알림 아이콘
  */
 @Composable
 fun FeedTopBar(
     onSearchClick: () -> Unit = {},
-    onNotificationClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {}
+    onNotificationClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -99,21 +95,6 @@ fun FeedTopBar(
                         .background(FeedConstants.AccentPink, CircleShape)
                         .align(Alignment.TopEnd)
                         .offset(x = (-10).dp, y = 10.dp)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .shadow(3.dp, CircleShape)
-                    .background(Color.White, CircleShape)
-                    .clickable { onProfileClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = "프로필",
-                    tint = FeedConstants.GradientStart,
-                    modifier = Modifier.size(20.dp)
                 )
             }
         }
