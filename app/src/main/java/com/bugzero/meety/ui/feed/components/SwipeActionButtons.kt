@@ -70,7 +70,6 @@ fun SwipeActionButtons(
                 .size(64.dp)
                 .shadow(6.dp, CircleShape)
                 .background(FeedConstants.GradientPurplePink, CircleShape)
-                .border(2.dp, FeedConstants.PassRed.copy(alpha = 0.4f), CircleShape)
                 .clickable(onClick = onLike),
             contentAlignment = Alignment.Center
         ) {
