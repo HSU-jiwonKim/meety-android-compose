@@ -73,31 +73,57 @@ class FirebaseTeamRepository : TeamRepository {
         onFailure: (String) -> Unit
     ) {
         val userId = auth.currentUser?.uid
+
         if (userId == null) {
             onFailure("로그인된 사용자가 없습니다.")
             return
         }
 
-        db.collection("users").document(userId).get()
-            .addOnSuccessListener { userDoc ->
-                val teamId = userDoc.getString("teamId") ?: ""
+        db.collection("users")
+            .document(userId)
+            .get()
+            .addOnSuccessListener { userSnapshot ->
 
-                if (teamId.isEmpty()) {
+                val teamId = userSnapshot.getString("teamId").orEmpty()
+
+                // 사용자가 아직 팀이 없으면 null 반환
+                if (teamId.isBlank()) {
                     onSuccess(null)
                     return@addOnSuccessListener
                 }
 
-                db.collection("teams").document(teamId).get()
-                    .addOnSuccessListener { teamDoc ->
-                        val team = teamDoc.toObject(Team::class.java)
+                db.collection("teams")
+                    .document(teamId)
+                    .get()
+                    .addOnSuccessListener { teamSnapshot ->
+
+                        if (!teamSnapshot.exists()) {
+                            onFailure("팀 정보를 찾을 수 없습니다.")
+                            return@addOnSuccessListener
+                        }
+
+                        val team = Team(
+                            teamId = teamSnapshot.getString("teamId").orEmpty(),
+                            leaderId = teamSnapshot.getString("leaderId").orEmpty(),
+                            memberIds = teamSnapshot.get("memberIds") as? List<String> ?: emptyList(),
+                            mbtiTags = teamSnapshot.get("mbtiTags") as? List<String> ?: emptyList(),
+                            profileImages = teamSnapshot.get("profileImages") as? List<String> ?: emptyList(),
+                            tags = teamSnapshot.get("tags") as? List<String> ?: emptyList(),
+                            teamProfileImage = teamSnapshot.getString("teamProfileImage").orEmpty(),
+                            status = teamSnapshot.getString("status").orEmpty().ifBlank { "active" },
+                            teamName = teamSnapshot.getString("teamName").orEmpty(),
+                            description = teamSnapshot.getString("description").orEmpty(),
+                            createdAt = teamSnapshot.getLong("createdAt") ?: 0L
+                        )
+
                         onSuccess(team)
                     }
-                    .addOnFailureListener {
-                        onFailure(it.message ?: "teams 조회 실패")
+                    .addOnFailureListener { e ->
+                        onFailure(e.message ?: "팀 정보 조회에 실패했습니다.")
                     }
             }
-            .addOnFailureListener {
-                onFailure(it.message ?: "users 조회 실패")
+            .addOnFailureListener { e ->
+                onFailure(e.message ?: "사용자 정보 조회에 실패했습니다.")
             }
     }
 
@@ -191,7 +217,38 @@ class FirebaseTeamRepository : TeamRepository {
                 onFailure(it.message ?: "초대장 조회 실패")
             }
     }
+    override fun loadMemberNames(
+        memberIds: List<String>,
+        onSuccess: (List<String>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (memberIds.isEmpty()) {
+            onSuccess(emptyList())
+            return
+        }
 
+        db.collection("users")
+            .whereIn(com.google.firebase.firestore.FieldPath.documentId(), memberIds)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val nameMap = mutableMapOf<String, String>()
+
+                for (doc in snapshot.documents) {
+                    val name = doc.getString("name").orEmpty().ifBlank { "이름 없음" }
+                    nameMap[doc.id] = name
+                }
+
+                // memberIds 순서대로 이름 리스트 만들기
+                val memberNames = memberIds.map { userId ->
+                    nameMap[userId] ?: "이름 없음"
+                }
+
+                onSuccess(memberNames)
+            }
+            .addOnFailureListener { e ->
+                onFailure(e.message ?: "팀원 이름 조회에 실패했습니다.")
+            }
+    }
     override fun rejectInvitation(
         invitationId: String,
         onSuccess: () -> Unit,

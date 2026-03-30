@@ -16,7 +16,11 @@ interface TeamRepository {
         onSuccess: (Team?) -> Unit,
         onFailure: (String) -> Unit
     )
-
+    fun loadMemberNames(
+        memberIds: List<String>,
+        onSuccess: (List<String>) -> Unit,
+        onFailure: (String) -> Unit
+    )
     fun inviteMember(
         teamId: String,
         toUserId: String,

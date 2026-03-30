@@ -41,6 +41,11 @@ class TeamViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _memberNames = MutableStateFlow<List<String>>(emptyList())
+    val memberNames: StateFlow<List<String>> = _memberNames
+
+
+
     fun createTeam(
         teamName: String,
         description: String,
@@ -74,6 +79,13 @@ class TeamViewModel(
         repository.loadMyTeam(
             onSuccess = { team ->
                 _myTeam.value = team
+
+                if (team == null) {
+                    _memberNames.value = emptyList()
+                } else {
+                    loadMemberNames(team.memberIds)
+                }
+
                 _isLoading.value = false
             },
             onFailure = {
@@ -82,7 +94,18 @@ class TeamViewModel(
             }
         )
     }
-
+    fun loadMemberNames(memberIds: List<String>) {
+        repository.loadMemberNames(
+            memberIds = memberIds,
+            onSuccess = { names ->
+                _memberNames.value = names
+            },
+            onFailure = {
+                _message.value = it
+                _memberNames.value = emptyList()
+            }
+        )
+    }
     fun inviteMember(teamId: String, toUserId: String) {
         repository.inviteMember(
             teamId = teamId,

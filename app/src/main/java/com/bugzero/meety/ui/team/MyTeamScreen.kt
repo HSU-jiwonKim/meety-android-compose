@@ -23,22 +23,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +49,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+
 
 private enum class MyTeamTab {
     RECEIVED, SENT, MY_TEAM
@@ -64,7 +65,6 @@ data class InterestTeamUiState(
 
 data class MyTeamUiState(
     val teamName: String,
-    val teamSize: String,
     val tags: List<String>,
     val members: List<String>,
     val bio: String
@@ -72,6 +72,7 @@ data class MyTeamUiState(
 
 @Composable
 fun MyTeamScreen(
+    viewModel: TeamViewModel = viewModel(),
     onHomeClick: () -> Unit = {},
     onMatchingClick: () -> Unit = {},
     onCreateTeamClick: () -> Unit = {},
@@ -87,18 +88,28 @@ fun MyTeamScreen(
 ) {
     var selectedTab by remember { mutableStateOf(MyTeamTab.RECEIVED) }
 
+    val myTeam by viewModel.myTeam.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val memberNames by viewModel.memberNames.collectAsState()
+
+    // 화면 진입 시 내 팀 정보 로드
+    LaunchedEffect(Unit) {
+        viewModel.loadMyTeam()
+    }
+
+    // 받은 관심 / 보낸 관심은 아직 더미 데이터 유지
     val receivedList = remember {
         listOf(
             InterestTeamUiState(
                 id = "received_1",
                 teamName = "컴공 개발자들",
-                teamSize = "3:3",
+                teamSize = "",
                 tags = listOf("#개발좋아", "#게임러버", "#운동좋아")
             ),
             InterestTeamUiState(
                 id = "received_2",
                 teamName = "디자인과 크루",
-                teamSize = "2:2",
+                teamSize = "",
                 tags = listOf("#예술좋아", "#전시회", "#감성적")
             )
         )
@@ -109,25 +120,24 @@ fun MyTeamScreen(
             InterestTeamUiState(
                 id = "sent_1",
                 teamName = "한강 러너스",
-                teamSize = "4:4",
+                teamSize = "",
                 tags = listOf("#운동좋아", "#활발한", "#맛집탐방")
             ),
             InterestTeamUiState(
                 id = "sent_2",
                 teamName = "영화 보는 사람들",
-                teamSize = "2:2",
+                teamSize = "",
                 tags = listOf("#영화매니아", "#조용한", "#카페좋아")
             )
         )
     }
 
-    val myTeam = remember {
+    val myTeamUiState = myTeam?.let { team ->
         MyTeamUiState(
-            teamName = "버그제로",
-            teamSize = "3:3",
-            tags = listOf("#개발좋아", "#카페좋아", "#게임러버"),
-            members = listOf("이상혁", "김민수", "박지은"),
-            bio = "같이 편하게 대화하고, 밥이나 카페 가면서 친해질 팀을 찾고 있어요."
+            teamName = team.teamName,
+            tags = team.tags,
+            members = memberNames,
+            bio = team.description
         )
     }
 
@@ -155,9 +165,7 @@ fun MyTeamScreen(
                         bottom = 120.dp
                     )
                 ) {
-                    item {
-                        MyTeamTitleSection()
-                    }
+                    item { MyTeamTitleSection() }
 
                     item {
                         MyTeamTabRow(
@@ -193,9 +201,7 @@ fun MyTeamScreen(
                         bottom = 120.dp
                     )
                 ) {
-                    item {
-                        MyTeamTitleSection()
-                    }
+                    item { MyTeamTitleSection() }
 
                     item {
                         MyTeamTabRow(
@@ -228,9 +234,7 @@ fun MyTeamScreen(
                         bottom = 120.dp
                     )
                 ) {
-                    item {
-                        MyTeamTitleSection()
-                    }
+                    item { MyTeamTitleSection() }
 
                     item {
                         MyTeamTabRow(
@@ -242,10 +246,29 @@ fun MyTeamScreen(
                     }
 
                     item {
-                        MyTeamInfoCard(
-                            team = myTeam,
-                            onEditTeamClick = onEditTeamClick
-                        )
+                        when {
+                            isLoading -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+
+                            myTeamUiState != null -> {
+                                MyTeamInfoCard(
+                                    team = myTeamUiState,
+                                    onEditTeamClick = { }
+                                )
+                            }
+
+                            else -> {
+                                NoTeamCard()
+                            }
+                        }
                     }
 
                     item {
@@ -401,12 +424,8 @@ private fun InterestTeamCard(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.Top
-            ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
                 Box(
                     modifier = Modifier
                         .size(94.dp)
@@ -424,9 +443,7 @@ private fun InterestTeamCard(
 
                 Spacer(modifier = Modifier.width(14.dp))
 
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = team.teamName,
                         style = MaterialTheme.typography.titleLarge,
@@ -436,13 +453,17 @@ private fun InterestTeamCard(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    Text(
-                        text = team.teamSize,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF666666)
-                    )
+                    if (team.teamSize.isNotBlank()) {
+                        Text(
+                            text = team.teamSize,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF666666)
+                        )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
 
                     TagRow(tags = team.tags)
                 }
@@ -465,10 +486,7 @@ private fun InterestTeamCard(
                             containerColor = Color.White,
                             contentColor = Color.Black
                         ),
-                        border = BorderStroke(
-                            1.dp,
-                            Color(0xFFD8D8E0)
-                        )
+                        border = BorderStroke(1.dp, Color(0xFFD8D8E0))
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Close,
@@ -508,9 +526,7 @@ private fun InterestTeamCard(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = Icons.Outlined.Check,
                                     contentDescription = "수락",
@@ -542,12 +558,8 @@ private fun SentInterestTeamCard(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.Top
-            ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
                 Box(
                     modifier = Modifier
                         .size(94.dp)
@@ -565,9 +577,7 @@ private fun SentInterestTeamCard(
 
                 Spacer(modifier = Modifier.width(14.dp))
 
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = team.teamName,
                         style = MaterialTheme.typography.titleLarge,
@@ -577,13 +587,17 @@ private fun SentInterestTeamCard(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    Text(
-                        text = team.teamSize,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF666666)
-                    )
+                    if (team.teamSize.isNotBlank()) {
+                        Text(
+                            text = team.teamSize,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF666666)
+                        )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
 
                     TagRow(tags = team.tags)
                 }
@@ -635,7 +649,7 @@ private fun MyTeamInfoCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = team.teamName,
+                text = team.teamName.ifBlank { "팀 이름 없음" },
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF111111)
@@ -644,7 +658,7 @@ private fun MyTeamInfoCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "팀 구성 ${team.teamSize}",
+                text = "팀 구성",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF666666)
             )
@@ -664,33 +678,41 @@ private fun MyTeamInfoCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            team.members.forEach { member ->
-                Row(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFF1E2FF)),
-                        contentAlignment = Alignment.Center
+            if (team.members.isEmpty()) {
+                Text(
+                    text = "팀원이 없습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF555555)
+                )
+            } else {
+                team.members.forEach { member ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "팀원",
-                            tint = Color(0xFFA020F0),
-                            modifier = Modifier.size(16.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF1E2FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "팀원",
+                                tint = Color(0xFFA020F0),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Text(
+                            text = member,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF333333)
                         )
                     }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Text(
-                        text = member,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF333333)
-                    )
                 }
             }
 
@@ -706,7 +728,7 @@ private fun MyTeamInfoCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = team.bio,
+                text = team.bio.ifBlank { "팀 소개가 없습니다." },
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFF555555)
             )
@@ -729,6 +751,36 @@ private fun MyTeamInfoCard(
                     fontWeight = FontWeight.Bold
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun NoTeamCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "아직 소속된 팀이 없습니다.",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFA020F0)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "팀을 만들면 여기에 내 팀 정보가 표시됩니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF666666)
+            )
         }
     }
 }
