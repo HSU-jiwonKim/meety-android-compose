@@ -56,6 +56,7 @@ fun MyPageRoute(
         screenState.uiState != null -> {
             MyPageScreen(
                 uiState = screenState.uiState!!,
+                viewModel = viewModel,
 
                 // 하단바
                 onHomeClick = onHomeClick,

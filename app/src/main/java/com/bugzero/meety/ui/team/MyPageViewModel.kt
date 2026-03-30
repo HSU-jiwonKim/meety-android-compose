@@ -1,10 +1,14 @@
 package com.bugzero.meety.ui.team
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+
 
 data class MyPageScreenState(
     val isLoading: Boolean = true,
@@ -16,6 +20,7 @@ class MyPageViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
     private val firestore = FirebaseFirestore.getInstance()
+    private val storage = FirebaseStorage.getInstance()
 
     private val _screenState = MutableStateFlow(MyPageScreenState())
     val screenState: StateFlow<MyPageScreenState> = _screenState
@@ -25,7 +30,7 @@ class MyPageViewModel : ViewModel() {
     }
 
     fun loadMyProfile() {
-        val userId = FirebaseAuth.getInstance().currentUser?.uid
+        val userId = auth.currentUser?.uid
 
         if (userId == null) {
             _screenState.value = MyPageScreenState(
@@ -98,6 +103,58 @@ class MyPageViewModel : ViewModel() {
                     isLoading = false,
                     uiState = null,
                     errorMessage = e.message ?: "프로필 정보를 불러오지 못했습니다."
+                )
+            }
+    }
+
+    fun onAddPhotoClick(imageUri: Uri) {
+        val userId = auth.currentUser?.uid
+
+        if (userId == null) {
+            _screenState.value = _screenState.value.copy(
+                isLoading = false,
+                errorMessage = "로그인된 사용자가 없습니다."
+            )
+            return
+        }
+
+        _screenState.value = _screenState.value.copy(isLoading = true)
+
+        val fileName = "profile_${System.currentTimeMillis()}.jpg"
+        val imageRef = storage.reference
+            .child("users")
+            .child(userId)
+            .child("profileImages")
+            .child(fileName)
+
+        imageRef.putFile(imageUri)
+            .addOnSuccessListener {
+                imageRef.downloadUrl
+                    .addOnSuccessListener { uri ->
+                        firestore.collection("users")
+                            .document(userId)
+                            .update("profileImages", FieldValue.arrayUnion(uri.toString()))
+                            .addOnSuccessListener {
+                                loadMyProfile()
+                            }
+                            .addOnFailureListener { e ->
+                                _screenState.value = _screenState.value.copy(
+                                    isLoading = false,
+                                    errorMessage = e.message ?: "프로필 사진 저장에 실패했습니다."
+                                )
+                            }
+                    }
+                    .addOnFailureListener { e ->
+                        _screenState.value = _screenState.value.copy(
+                            isLoading = false,
+                            errorMessage = e.message ?: "이미지 URL을 가져오지 못했습니다."
+                        )
+                    }
+            }
+            .addOnFailureListener { e ->
+                _screenState.value = _screenState.value.copy(
+                    isLoading = false,
+                    errorMessage = e.message ?: "이미지 업로드에 실패했습니다."
                 )
             }
     }

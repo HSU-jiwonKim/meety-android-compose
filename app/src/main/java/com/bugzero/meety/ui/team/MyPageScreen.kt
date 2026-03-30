@@ -43,6 +43,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bugzero.meety.ui.auth.InfoRow
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 /**
  * 마이페이지 화면에 사용할 UI 상태 모델
@@ -74,6 +79,7 @@ private val scheduleTimes = listOf("09:00", "10:00", "11:00", "12:00", "13:00", 
 @Composable
 fun MyPageScreen(
     uiState: UserProfileUiState,
+    viewModel: MyPageViewModel,
     selectedBottomTab: TeamBottomTab = TeamBottomTab.PROFILE,
     onHomeClick: () -> Unit = {},
     onMatchingClick: () -> Unit = {},
@@ -84,6 +90,14 @@ fun MyPageScreen(
     onNotificationClick: () -> Unit = {},
     onEditProfileClick: () -> Unit = {}
 ) {
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.onAddPhotoClick(uri)
+        }
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -97,6 +111,9 @@ fun MyPageScreen(
         MyPageBody(
             uiState = uiState,
             onEditProfileClick = onEditProfileClick,
+            onAddPhotoClick = {
+                imagePickerLauncher.launch("image/*")
+            },
             modifier = Modifier.padding(innerPadding)
         )
     }
@@ -109,6 +126,7 @@ fun MyPageScreen(
 fun MyPageBody(
     uiState: UserProfileUiState,
     onEditProfileClick: () -> Unit,
+    onAddPhotoClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -140,7 +158,10 @@ fun MyPageBody(
         }
 
         item {
-            PhotoSection(imageUrls = uiState.profileImages)
+            PhotoSection(
+                imageUrls = uiState.profileImages,
+                onAddPhotoClick = onAddPhotoClick
+            )
         }
 
         item {
@@ -274,19 +295,32 @@ private fun ProfileHeaderSection(
                 .border(4.dp, Color.White, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(108.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFE8D6F7)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
+            val profileImageUrl = uiState.profileImages.firstOrNull().orEmpty()
+
+            if (profileImageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = profileImageUrl,
                     contentDescription = "프로필 이미지",
-                    tint = Color(0xFF8E24AA),
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier
+                        .size(108.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(108.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE8D6F7)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "프로필 이미지 없음",
+                        tint = Color(0xFF8E24AA),
+                        modifier = Modifier.size(44.dp)
+                    )
+                }
             }
         }
     }
@@ -389,41 +423,52 @@ private fun TagChip(
 
 @Composable
 private fun PhotoSection(
-    imageUrls: List<String>
+    imageUrls: List<String>,
+    onAddPhotoClick: () -> Unit
 ) {
-    SectionCard(title = "사진") {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            val photos = if (imageUrls.isEmpty()) listOf("", "", "") else imageUrls.take(3)
+    val photos = imageUrls.filter { it.isNotBlank() }
+    val maxPhotoCount = 9
 
-            photos.forEachIndexed { index, _ ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            when (index) {
-                                0 -> Color(0xFFFFE3EE)
-                                1 -> Color(0xFFEAD9FF)
-                                else -> Color(0xFFFFF0D9)
-                            }
-                        ),
-                    contentAlignment = Alignment.Center
+    val items = mutableListOf<String>()
+    items.addAll(photos)
+
+    if (photos.size < maxPhotoCount) {
+        items.add("ADD_BUTTON")
+    }
+
+    val rows = items.chunked(3)
+
+    SectionCard(title = "사진") {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            rows.forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "사진 ${index + 1}",
-                        color = Color(0xFF666666),
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    rowItems.forEach { item ->
+                        if (item == "ADD_BUTTON") {
+                            AddPhotoItem(
+                                onClick = onAddPhotoClick,
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            PhotoItem(
+                                imageUrl = item,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    repeat(3 - rowItems.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
     }
 }
-
 @Composable
 private fun ScheduleSection(
     schedule: Map<String, List<String>>
@@ -586,5 +631,54 @@ private fun EditProfileButton(
             color = Color.White,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+@Composable
+private fun PhotoItem(
+    imageUrl: String,
+    modifier: Modifier = Modifier
+) {
+    AsyncImage(
+        model = imageUrl,
+        contentDescription = "프로필 사진",
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(16.dp)),
+        contentScale = ContentScale.Crop
+    )
+}
+@Composable
+private fun AddPhotoItem(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.aspectRatio(1f),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFF1E7F7)
+        ),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "+",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color(0xFF8E24AA),
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "사진 추가",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF8E24AA)
+            )
+        }
     }
 }
