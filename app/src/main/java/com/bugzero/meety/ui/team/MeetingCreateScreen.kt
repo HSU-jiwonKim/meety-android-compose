@@ -1,5 +1,6 @@
 package com.bugzero.meety.ui.team
 
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,8 +56,10 @@ fun MeetingCreateScreen(
     onUploadPhotoClick: () -> Unit = {},
     onCreateTeamClick: () -> Unit = {}
 ) {
+    val teamViewModel: TeamViewModel = viewModel()
     var teamName by remember { mutableStateOf("") }
     var selectedTeamSize by remember { mutableIntStateOf(1) }
+    var teamDescription by remember { mutableStateOf("") }
     val selectedTags = remember { mutableStateListOf<String>() }
 
     val allTags = listOf(
@@ -97,6 +100,12 @@ fun MeetingCreateScreen(
                     onTeamNameChange = { teamName = it }
                 )
             }
+            item {
+                TeamDescriptionSection(
+                    teamDescription = teamDescription,
+                    onTeamDescriptionChange = { teamDescription = it }
+                )
+            }
 
             item {
                 TeamSizeSection(
@@ -129,7 +138,19 @@ fun MeetingCreateScreen(
 
             item {
                 Button(
-                    onClick = onCreateTeamClick,
+                    onClick = {
+                        teamViewModel.createTeam(
+                            teamName = teamName.trim(),
+                            description = teamDescription.trim(),
+                            tags = selectedTags,
+                            onSuccess = {
+                                onCreateTeamClick()
+                            },
+                            onFailure = { errorMessage ->
+                                println("팀 생성 실패: $errorMessage")
+                            }
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
@@ -186,7 +207,40 @@ private fun TeamNameSection(
         }
     }
 }
-
+@Composable
+private fun TeamDescriptionSection(
+    teamDescription: String,
+    onTeamDescriptionChange: (String) -> Unit
+) {
+    WhiteCardSection(title = "팀 소개") {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFFF2F2F5))
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            BasicTextField(
+                value = teamDescription,
+                onValueChange = onTeamDescriptionChange,
+                textStyle = TextStyle(
+                    color = Color(0xFF222222)
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                decorationBox = { innerTextField ->
+                    if (teamDescription.isEmpty()) {
+                        Text(
+                            text = "예: 함께 카페 가고 영화 볼 팀원을 구해요",
+                            color = Color(0xFF9A9AA3),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    innerTextField()
+                }
+            )
+        }
+    }
+}
 @Composable
 private fun TeamSizeSection(
     selectedIndex: Int,
