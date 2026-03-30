@@ -91,47 +91,32 @@ fun MyTeamScreen(
     val myTeam by viewModel.myTeam.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val memberNames by viewModel.memberNames.collectAsState()
+    val receivedList by viewModel.receivedLikes.collectAsState()
+    val sentList by viewModel.sentLikes.collectAsState()
 
     // 화면 진입 시 내 팀 정보 로드
     LaunchedEffect(Unit) {
-        viewModel.loadMyTeam()
+        viewModel.loadMatchingTabData()
     }
-
-    // 받은 관심 / 보낸 관심은 아직 더미 데이터 유지
-    val receivedList = remember {
-        listOf(
-            InterestTeamUiState(
-                id = "received_1",
-                teamName = "컴공 개발자들",
-                teamSize = "",
-                tags = listOf("#개발좋아", "#게임러버", "#운동좋아")
-            ),
-            InterestTeamUiState(
-                id = "received_2",
-                teamName = "디자인과 크루",
-                teamSize = "",
-                tags = listOf("#예술좋아", "#전시회", "#감성적")
+    val receivedUiList = receivedList.map { item ->
+        InterestTeamUiState(
+            id = item.likeId,
+            teamName = item.fromUserName,
+            teamSize = item.fromUserDepartment,
+            tags = listOfNotNull(
+                item.fromUserMbti.takeIf { it.isNotBlank() }?.let { "#$it" }
             )
         )
     }
 
-    val sentList = remember {
-        listOf(
-            InterestTeamUiState(
-                id = "sent_1",
-                teamName = "한강 러너스",
-                teamSize = "",
-                tags = listOf("#운동좋아", "#활발한", "#맛집탐방")
-            ),
-            InterestTeamUiState(
-                id = "sent_2",
-                teamName = "영화 보는 사람들",
-                teamSize = "",
-                tags = listOf("#영화매니아", "#조용한", "#카페좋아")
-            )
+    val sentUiList = sentList.map { item ->
+        InterestTeamUiState(
+            id = item.likeId,
+            teamName = item.toTeamName,
+            teamSize = "",
+            tags = item.toTeamTags.map { "#$it" }
         )
     }
-
     val myTeamUiState = myTeam?.let { team ->
         MyTeamUiState(
             teamName = team.teamName,
@@ -176,14 +161,20 @@ fun MyTeamScreen(
                         )
                     }
 
-                    items(receivedList) { team ->
-                        InterestTeamCard(
-                            team = team,
-                            showAcceptButton = true,
-                            showRejectButton = true,
-                            onAcceptClick = { onAcceptClick(team.id) },
-                            onRejectClick = { onRejectClick(team.id) }
-                        )
+                    if (receivedUiList.isEmpty()) {
+                        item {
+                            EmptyInterestCard(text = "아직 받은 관심이 없습니다.")
+                        }
+                    } else {
+                        items(receivedUiList) { team ->
+                            InterestTeamCard(
+                                team = team,
+                                showAcceptButton = true,
+                                showRejectButton = true,
+                                onAcceptClick = { onAcceptClick(team.id) },
+                                onRejectClick = { onRejectClick(team.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -212,11 +203,17 @@ fun MyTeamScreen(
                         )
                     }
 
-                    items(sentList) { team ->
-                        SentInterestTeamCard(
-                            team = team,
-                            onCancelClick = { onCancelSentClick(team.id) }
-                        )
+                    if (sentUiList.isEmpty()) {
+                        item {
+                            EmptyInterestCard(text = "아직 보낸 관심이 없습니다.")
+                        }
+                    } else {
+                        items(sentUiList) { team ->
+                            SentInterestTeamCard(
+                                team = team,
+                                onCancelClick = { onCancelSentClick(team.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -261,7 +258,7 @@ fun MyTeamScreen(
                             myTeamUiState != null -> {
                                 MyTeamInfoCard(
                                     team = myTeamUiState,
-                                    onEditTeamClick = { }
+                                    onEditTeamClick = onEditTeamClick
                                 )
                             }
 
@@ -810,7 +807,31 @@ private fun CreateNewTeamButton(
         )
     }
 }
-
+@Composable
+private fun EmptyInterestCard(
+    text: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF666666),
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
 @Composable
 private fun TagRow(
     tags: List<String>

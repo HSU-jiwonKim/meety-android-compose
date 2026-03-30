@@ -6,6 +6,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import java.util.UUID
+import com.google.firebase.firestore.Query
 
 class FirebaseTeamRepository : TeamRepository {
 
@@ -127,6 +128,139 @@ class FirebaseTeamRepository : TeamRepository {
             }
     }
 
+    override fun loadReceivedLikes(
+        onSuccess: (List<ReceivedLikeItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) {
+            onFailure("로그인된 사용자가 없습니다.")
+            return
+        }
+
+        // 1. 현재 사용자의 teamId 조회
+        db.collection("users").document(currentUserId).get()
+            .addOnSuccessListener { userDoc ->
+                val myTeamId = userDoc.getString("teamId").orEmpty()
+
+                if (myTeamId.isBlank()) {
+                    onSuccess(emptyList())
+                    return@addOnSuccessListener
+                }
+
+                // 2. 내 팀이 받은 likes 조회
+                db.collection("likes")
+                    .whereEqualTo("toTeamId", myTeamId)
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .get()
+                    .addOnSuccessListener { likeSnapshot ->
+
+                        if (likeSnapshot.isEmpty) {
+                            onSuccess(emptyList())
+                            return@addOnSuccessListener
+                        }
+
+                        val results = mutableListOf<ReceivedLikeItem>()
+                        val docs = likeSnapshot.documents
+                        var completedCount = 0
+
+                        for (likeDoc in docs) {
+                            val likeId = likeDoc.getString("likeId").orEmpty().ifBlank { likeDoc.id }
+                            val fromUserId = likeDoc.getString("fromUserId").orEmpty()
+                            val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
+                            val createdAt = likeDoc.getLong("createdAt") ?: 0L
+
+                            if (fromUserId.isBlank()) {
+                                completedCount++
+                                if (completedCount == docs.size) {
+                                    onSuccess(results.sortedByDescending { it.createdAt })
+                                }
+                                continue
+                            }
+
+                            // 3. 보낸 사람 users 문서 조회
+                            db.collection("users").document(fromUserId).get()
+                                .addOnSuccessListener { senderDoc ->
+                                    val item = ReceivedLikeItem(
+                                        likeId = likeId,
+                                        fromUserId = fromUserId,
+                                        fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
+                                        fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
+                                        fromUserMbti = senderDoc.getString("mbti").orEmpty(),
+                                        fromUserDepartment = senderDoc.getString("department").orEmpty(),
+                                        fromTeamId = fromTeamId,
+                                        createdAt = createdAt
+                                    )
+
+                                    results.add(item)
+
+                                    completedCount++
+                                    if (completedCount == docs.size) {
+                                        onSuccess(results.sortedByDescending { it.createdAt })
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    // users 조회 실패해도 목록 자체는 보여주기 위해 기본값 처리
+                                    val item = ReceivedLikeItem(
+                                        likeId = likeId,
+                                        fromUserId = fromUserId,
+                                        fromUserName = "이름 없음",
+                                        fromUserProfileImage = "",
+                                        fromUserMbti = "",
+                                        fromUserDepartment = "",
+                                        fromTeamId = fromTeamId,
+                                        createdAt = createdAt
+                                    )
+
+                                    results.add(item)
+
+                                    completedCount++
+                                    if (completedCount == docs.size) {
+                                        onSuccess(results.sortedByDescending { it.createdAt })
+                                    }
+                                }
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        onFailure(e.message ?: "받은 관심 조회 실패")
+                    }
+            }
+            .addOnFailureListener { e ->
+                onFailure(e.message ?: "사용자 정보 조회 실패")
+            }
+    }
+
+    override fun loadSentLikes(
+        onSuccess: (List<SentLikeItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) {
+            onFailure("로그인된 사용자가 없습니다.")
+            return
+        }
+
+        db.collection("likes")
+            .whereEqualTo("fromUserId", currentUserId)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val sentList = snapshot.documents.map { doc ->
+                    SentLikeItem(
+                        likeId = doc.getString("likeId").orEmpty().ifBlank { doc.id },
+                        toTeamId = doc.getString("toTeamId").orEmpty(),
+                        toTeamName = doc.getString("toTeamName").orEmpty(),
+                        toTeamTags = doc.get("toTeamTags") as? List<String> ?: emptyList(),
+                        createdAt = doc.getLong("createdAt") ?: 0L
+                    )
+                }
+
+                onSuccess(sentList)
+            }
+            .addOnFailureListener { e ->
+                onFailure(e.message ?: "보낸 관심 조회 실패")
+            }
+    }
     override fun inviteMember(
         teamId: String,
         toUserId: String,

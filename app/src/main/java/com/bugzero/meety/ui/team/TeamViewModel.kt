@@ -44,6 +44,11 @@ class TeamViewModel(
     private val _memberNames = MutableStateFlow<List<String>>(emptyList())
     val memberNames: StateFlow<List<String>> = _memberNames
 
+    private val _receivedLikes = MutableStateFlow<List<ReceivedLikeItem>>(emptyList())
+    val receivedLikes: StateFlow<List<ReceivedLikeItem>> = _receivedLikes
+
+    private val _sentLikes = MutableStateFlow<List<SentLikeItem>>(emptyList())
+    val sentLikes: StateFlow<List<SentLikeItem>> = _sentLikes
 
 
     fun createTeam(
@@ -105,6 +110,35 @@ class TeamViewModel(
                 _memberNames.value = emptyList()
             }
         )
+    }
+    fun loadReceivedLikes() {
+        repository.loadReceivedLikes(
+            onSuccess = { list ->
+                _receivedLikes.value = list
+            },
+            onFailure = {
+                _message.value = it
+                _receivedLikes.value = emptyList()
+            }
+        )
+    }
+
+    fun loadSentLikes() {
+        repository.loadSentLikes(
+            onSuccess = { list ->
+                _sentLikes.value = list
+            },
+            onFailure = {
+                _message.value = it
+                _sentLikes.value = emptyList()
+            }
+        )
+    }
+
+    fun loadMatchingTabData() {
+        loadMyTeam()
+        loadReceivedLikes()
+        loadSentLikes()
     }
     fun inviteMember(teamId: String, toUserId: String) {
         repository.inviteMember(
