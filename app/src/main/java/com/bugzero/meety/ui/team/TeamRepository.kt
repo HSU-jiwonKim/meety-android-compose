@@ -45,9 +45,19 @@ interface TeamRepository {
         onFailure: (String) -> Unit
     )
 
-    // 보낸 관심 목록
     fun loadSentLikes(
         onSuccess: (List<SentLikeItem>) -> Unit,
+        onFailure: (String) -> Unit
+    )
+    fun acceptReceivedLike(
+        likeId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    )
+
+    fun rejectReceivedLike(
+        likeId: String,
+        onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     )
     fun inviteMember(

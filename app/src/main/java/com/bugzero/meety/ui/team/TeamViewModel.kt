@@ -140,6 +140,28 @@ class TeamViewModel(
         loadReceivedLikes()
         loadSentLikes()
     }
+    fun acceptReceivedLike(likeId: String) {
+        repository.acceptReceivedLike(
+            likeId = likeId,
+            onSuccess = {
+                loadMatchingTabData()
+            },
+            onFailure = {
+                _message.value = it
+            }
+        )
+    }
+    fun rejectReceivedLike(likeId: String) {
+        repository.rejectReceivedLike(
+            likeId = likeId,
+            onSuccess = {
+                loadMatchingTabData()
+            },
+            onFailure = {
+                _message.value = it
+            }
+        )
+    }
     fun inviteMember(teamId: String, toUserId: String) {
         repository.inviteMember(
             teamId = teamId,

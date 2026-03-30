@@ -136,7 +136,10 @@ class FeedRepository(
                 toTeamName = team.teamName,
                 toTeamTags = team.tags,
                 toTeamMbtiTags = team.mbtiTags,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+
+                // 추가
+                status = "pending"
             )
             likeRef.set(like).await()
 

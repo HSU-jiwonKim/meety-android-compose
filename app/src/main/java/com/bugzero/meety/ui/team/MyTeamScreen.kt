@@ -80,8 +80,6 @@ fun MyTeamScreen(
     onProfileClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    onAcceptClick: (String) -> Unit = {},
-    onRejectClick: (String) -> Unit = {},
     onCancelSentClick: (String) -> Unit = {},
     onEditTeamClick: () -> Unit = {},
     onCreateNewTeamClick: () -> Unit = {}
@@ -171,8 +169,8 @@ fun MyTeamScreen(
                                 team = team,
                                 showAcceptButton = true,
                                 showRejectButton = true,
-                                onAcceptClick = { onAcceptClick(team.id) },
-                                onRejectClick = { onRejectClick(team.id) }
+                                onAcceptClick = { viewModel.acceptReceivedLike(team.id) },
+                                onRejectClick = { viewModel.rejectReceivedLike(team.id) }
                             )
                         }
                     }

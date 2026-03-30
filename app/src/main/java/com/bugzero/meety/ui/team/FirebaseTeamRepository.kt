@@ -151,6 +151,7 @@ class FirebaseTeamRepository : TeamRepository {
                 // 2. 내 팀이 받은 likes 조회
                 db.collection("likes")
                     .whereEqualTo("toTeamId", myTeamId)
+                    .whereEqualTo("status", "pending")
                     .orderBy("createdAt", Query.Direction.DESCENDING)
                     .get()
                     .addOnSuccessListener { likeSnapshot ->
@@ -242,6 +243,7 @@ class FirebaseTeamRepository : TeamRepository {
 
         db.collection("likes")
             .whereEqualTo("fromUserId", currentUserId)
+            .whereEqualTo("status", "pending")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .get()
             .addOnSuccessListener { snapshot ->
@@ -259,6 +261,85 @@ class FirebaseTeamRepository : TeamRepository {
             }
             .addOnFailureListener { e ->
                 onFailure(e.message ?: "보낸 관심 조회 실패")
+            }
+    }
+    override fun acceptReceivedLike(
+        likeId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection("likes").document(likeId).get()
+            .addOnSuccessListener { likeDoc ->
+                val fromUserId = likeDoc.getString("fromUserId").orEmpty()
+                val toTeamId = likeDoc.getString("toTeamId").orEmpty()
+
+                if (fromUserId.isBlank() || toTeamId.isBlank()) {
+                    onFailure("좋아요 정보가 올바르지 않습니다.")
+                    return@addOnSuccessListener
+                }
+
+                db.collection("users").document(fromUserId).get()
+                    .addOnSuccessListener { userDoc ->
+                        val mbti = userDoc.getString("mbti").orEmpty()
+                        val profileImage = userDoc.getString("profileImage").orEmpty()
+
+                        db.collection("teams").document(toTeamId)
+                            .update(
+                                mapOf(
+                                    "memberIds" to FieldValue.arrayUnion(fromUserId),
+                                    "mbtiTags" to FieldValue.arrayUnion(mbti),
+                                    "profileImages" to FieldValue.arrayUnion(profileImage)
+                                )
+                            )
+                            .addOnSuccessListener {
+                                db.collection("users").document(fromUserId)
+                                    .update("teamId", toTeamId)
+                                    .addOnSuccessListener {
+                                        db.collection("likes").document(likeId)
+                                            .update(
+                                                mapOf(
+                                                    "status" to "accepted",
+                                                    "respondedAt" to System.currentTimeMillis()
+                                                )
+                                            )
+                                            .addOnSuccessListener {
+                                                onSuccess()
+                                            }
+                                            .addOnFailureListener {
+                                                onFailure(it.message ?: "좋아요 상태 업데이트 실패")
+                                            }
+                                    }
+                                    .addOnFailureListener {
+                                        onFailure(it.message ?: "사용자 teamId 업데이트 실패")
+                                    }
+                            }
+                            .addOnFailureListener {
+                                onFailure(it.message ?: "팀원 추가 실패")
+                            }
+                    }
+                    .addOnFailureListener {
+                        onFailure(it.message ?: "사용자 정보 조회 실패")
+                    }
+            }
+            .addOnFailureListener {
+                onFailure(it.message ?: "좋아요 조회 실패")
+            }
+    }
+    override fun rejectReceivedLike(
+        likeId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        db.collection("likes").document(likeId)
+            .update(
+                mapOf(
+                    "status" to "rejected",
+                    "respondedAt" to System.currentTimeMillis()
+                )
+            )
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener {
+                onFailure(it.message ?: "거절 처리 실패")
             }
     }
     override fun inviteMember(
