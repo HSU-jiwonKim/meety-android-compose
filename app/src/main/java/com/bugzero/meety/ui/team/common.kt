@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -51,7 +50,6 @@ fun TeamCommonTopBar(
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 피드와 동일한 로고 + 그라데이션 텍스트
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.graphicsLayer {
@@ -90,9 +88,7 @@ fun TeamCommonTopBar(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        IconButton(onClick = onSearchClick) {
-            Icon(Icons.Default.Search, contentDescription = "검색", tint = Color(0xFF4B4B4B))
-        }
+        // 검색 버튼 제거
 
         Box {
             IconButton(onClick = onNotificationClick) {

@@ -345,7 +345,8 @@ fun NavGraph(
                         }
                     },
                     onProfileClick = {},
-                    onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) }
+                    onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) },
+                    onScheduleClick = { navController.navigate(Routes.SCHEDULE_SYNC) }
                 )
             }
             composable(Routes.MEETING_CREATE) {
@@ -403,7 +404,9 @@ fun NavGraph(
                 )
             }
             composable(Routes.SCHEDULE_SYNC) {
-                ScheduleSyncScreen()
+                ScheduleSyncScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
             }
         }
     }

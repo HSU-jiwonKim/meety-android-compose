@@ -1,27 +1,33 @@
 package com.bugzero.meety.ui.chat
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,10 +70,7 @@ fun ChatRoomScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "뒤로가기"
-                        )
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
@@ -98,20 +101,28 @@ fun ChatRoomScreen(
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
             items(items = messages, key = { it.id }) { message ->
-                MessageItem(
-                    message = message,
-                    timeText = viewModel.formatTime(message.createdAt)
-                )
+                AnimatedMessageItem(message = message, timeText = viewModel.formatTime(message.createdAt))
             }
         }
     }
 }
 
 @Composable
-private fun MessageItem(
-    message: ChatMessage,
-    timeText: String
-) {
+private fun AnimatedMessageItem(message: ChatMessage, timeText: String) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(300)) + slideInVertically(animationSpec = tween(300), initialOffsetY = { it / 2 }),
+        exit = fadeOut(tween(200))
+    ) {
+        MessageItem(message = message, timeText = timeText)
+    }
+}
+
+@Composable
+private fun MessageItem(message: ChatMessage, timeText: String) {
     val isMe = message.isMe
 
     Row(
@@ -120,12 +131,8 @@ private fun MessageItem(
         verticalAlignment = Alignment.Bottom
     ) {
         if (isMe) {
-            Text(
-                text = timeText,
-                fontSize = 10.sp,
-                color = Color.LightGray,
-                modifier = Modifier.padding(end = 4.dp).align(Alignment.Bottom)
-            )
+            // ── 내 메시지 (오른쪽) ──
+            Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(end = 4.dp).align(Alignment.Bottom))
             Box(
                 modifier = Modifier
                     .widthIn(max = 260.dp)
@@ -136,13 +143,36 @@ private fun MessageItem(
                 Text(text = message.content, color = Color.White, fontSize = 15.sp, lineHeight = 22.sp)
             }
         } else {
+            // ── 상대방 메시지 (왼쪽) ──
+
+            // 프로필 이미지
+            Box(
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8D6F7)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (message.senderProfileImage.isNotBlank()) {
+                    AsyncImage(
+                        model = message.senderProfileImage,
+                        contentDescription = "프로필",
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "프로필",
+                        tint = Color(0xFF8E24AA),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
             Column(horizontalAlignment = Alignment.Start) {
-                Text(
-                    text = message.senderName,
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-                )
+                Text(text = message.senderName, fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Box(
                         modifier = Modifier
@@ -153,12 +183,7 @@ private fun MessageItem(
                     ) {
                         Text(text = message.content, color = Color(0xFF1F2937), fontSize = 15.sp, lineHeight = 22.sp)
                     }
-                    Text(
-                        text = timeText,
-                        fontSize = 10.sp,
-                        color = Color.LightGray,
-                        modifier = Modifier.padding(start = 4.dp).align(Alignment.Bottom)
-                    )
+                    Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(start = 4.dp).align(Alignment.Bottom))
                 }
             }
         }
@@ -166,18 +191,10 @@ private fun MessageItem(
 }
 
 @Composable
-private fun MessageInputBar(
-    text: String,
-    isSending: Boolean,
-    onTextChange: (String) -> Unit,
-    onSendClick: () -> Unit
-) {
+private fun MessageInputBar(text: String, isSending: Boolean, onTextChange: (String) -> Unit, onSendClick: () -> Unit) {
     Surface(shadowElevation = 8.dp, color = Color.White) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextField(
@@ -200,19 +217,9 @@ private fun MessageInputBar(
             IconButton(
                 onClick = onSendClick,
                 enabled = text.isNotBlank() && !isSending,
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        color = if (text.isNotBlank()) Color(0xFFA78BFA) else Color(0xFFE5E7EB),
-                        shape = RoundedCornerShape(50)
-                    )
+                modifier = Modifier.size(44.dp).background(color = if (text.isNotBlank()) Color(0xFFA78BFA) else Color(0xFFE5E7EB), shape = RoundedCornerShape(50))
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "전송",
-                    tint = if (text.isNotBlank()) Color.White else Color.Gray,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "전송", tint = if (text.isNotBlank()) Color.White else Color.Gray, modifier = Modifier.size(20.dp))
             }
         }
     }

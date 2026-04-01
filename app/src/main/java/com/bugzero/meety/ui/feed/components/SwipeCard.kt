@@ -109,8 +109,17 @@ fun SwipeCard(
             }
             .clickable { onInfo() }
     ) {
-        // ── 배경 그라데이션 ──
-        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
+        // ── 배경: 이미지 있으면 이미지, 없으면 그라데이션 ──
+        if (team.teamProfileImage.isNotBlank()) {
+            coil.compose.AsyncImage(
+                model = team.teamProfileImage,
+                contentDescription = "팀 대표 사진",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
+        }
 
         // ── 하단 어둡게 ──
         Box(

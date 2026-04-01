@@ -48,7 +48,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
-    implementation("io.coil-kt:coil-compose:2.6.0")
 
     // Firebase
 
@@ -61,9 +60,6 @@ dependencies {
 
     // FCM (푸시 알림)
     implementation("com.google.firebase:firebase-messaging")
-
-    // Firebase await() 지원 (코루틴에서 Firebase 호출할 때 필요)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

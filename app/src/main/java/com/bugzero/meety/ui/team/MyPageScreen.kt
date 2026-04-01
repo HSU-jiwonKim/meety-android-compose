@@ -2,6 +2,7 @@ package com.bugzero.meety.ui.team
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.fillMaxHeight
 import com.bugzero.meety.ui.auth.InfoRow
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -49,10 +55,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
-/**
- * 마이페이지 화면에 사용할 UI 상태 모델
- * Firestore users/{userId} 문서값을 ViewModel에서 읽어서 이 형태로 넘겨주면 됨
- */
 data class UserProfileUiState(
     val name: String,
     val age: Int,
@@ -69,13 +71,19 @@ data class UserProfileUiState(
 )
 
 private val scheduleDays = listOf("월", "화", "수", "목", "금")
-private val scheduleTimes = listOf("09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00")
+private val scheduleTimes = listOf(
+    "09:00", "09:30",
+    "10:00", "10:30",
+    "11:00", "11:30",
+    "12:00", "12:30",
+    "13:00", "13:30",
+    "14:00", "14:30",
+    "15:00", "15:30",
+    "16:00", "16:30",
+    "17:00", "17:30",
+    "18:00"
+)
 
-/**
- * 실제 마이페이지 화면
- * 이 파일은 UI만 담당하고,
- * 데이터는 MyPageRoute / MyPageViewModel 쪽에서 받아와서 넣어줌
- */
 @Composable
 fun MyPageScreen(
     uiState: UserProfileUiState,
@@ -88,7 +96,8 @@ fun MyPageScreen(
     onProfileClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    onEditProfileClick: () -> Unit = {}
+    onEditProfileClick: () -> Unit = {},
+    onScheduleClick: () -> Unit = {}
 ) {
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -111,6 +120,7 @@ fun MyPageScreen(
         MyPageBody(
             uiState = uiState,
             onEditProfileClick = onEditProfileClick,
+            onScheduleClick = onScheduleClick,
             onAddPhotoClick = {
                 imagePickerLauncher.launch("image/*")
             },
@@ -119,13 +129,11 @@ fun MyPageScreen(
     }
 }
 
-/**
- * 실제 마이페이지 본문
- */
 @Composable
 fun MyPageBody(
     uiState: UserProfileUiState,
     onEditProfileClick: () -> Unit,
+    onScheduleClick: () -> Unit = {},
     onAddPhotoClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -133,193 +141,66 @@ fun MyPageBody(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            ProfileHeaderSection(uiState = uiState)
-        }
-
+        item { ProfileHeaderSection(uiState = uiState) }
         item {
             SectionCard(title = "관심사") {
-                TagWrapSection(
-                    tags = uiState.interests,
-                    chipColor = Color(0xFFF3E7FF),
-                    textColor = Color(0xFF8E24AA)
-                )
+                TagWrapSection(tags = uiState.interests, chipColor = Color(0xFFF3E7FF), textColor = Color(0xFF8E24AA))
             }
         }
-
         item {
             SectionCard(title = "자기소개") {
-                Text(
-                    text = uiState.bio,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF444444)
-                )
+                Text(text = uiState.bio, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF444444))
             }
         }
-
-        item {
-            PhotoSection(
-                imageUrls = uiState.profileImages,
-                onAddPhotoClick = onAddPhotoClick
-            )
-        }
-
-        item {
-            ScheduleSection(schedule = uiState.schedule)
-        }
-
-        item {
-            FoodPreferenceSection(
-                likes = uiState.foodLikes,
-                dislikes = uiState.foodDislikes
-            )
-        }
-
-        item {
-            EditProfileButton(
-                onClick = onEditProfileClick
-            )
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(20.dp))
-        }
+        item { PhotoSection(imageUrls = uiState.profileImages, onAddPhotoClick = onAddPhotoClick) }
+        item { ScheduleSection(schedule = uiState.schedule, onScheduleClick = onScheduleClick) }
+        item { FoodPreferenceSection(likes = uiState.foodLikes, dislikes = uiState.foodDislikes) }
+        item { EditProfileButton(onClick = onEditProfileClick) }
+        item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
 
 @Composable
-private fun ProfileHeaderSection(
-    uiState: UserProfileUiState
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-    ) {
+private fun ProfileHeaderSection(uiState: UserProfileUiState) {
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
         Column {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color(0xFFB842F5),
-                                Color(0xFFFF4FA3)
-                            )
-                        )
-                    )
+                modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(24.dp))
+                    .background(brush = Brush.horizontalGradient(colors = listOf(Color(0xFFB842F5), Color(0xFFFF4FA3))))
             )
-
             Spacer(modifier = Modifier.height(54.dp))
-
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Spacer(modifier = Modifier.height(42.dp))
-
-                    Text(
-                        text = uiState.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF222222)
-                    )
-
+                    Text(text = uiState.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
                     Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "${uiState.age}세",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF666666)
-                    )
-
+                    Text(text = "${uiState.age}세", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF666666))
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    InfoRow(
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.School,
-                                contentDescription = "학교",
-                                tint = Color(0xFF9C27B0)
-                            )
-                        },
-                        text = "${uiState.school} · ${uiState.department}"
-                    )
-
+                    InfoRow(icon = { Icon(Icons.Default.School, contentDescription = "학교", tint = Color(0xFF9C27B0)) }, text = "${uiState.school} · ${uiState.department}")
                     Spacer(modifier = Modifier.height(10.dp))
-
-                    InfoRow(
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.Straighten,
-                                contentDescription = "키",
-                                tint = Color(0xFF9C27B0)
-                            )
-                        },
-                        text = "${uiState.height}cm"
-                    )
-
+                    InfoRow(icon = { Icon(Icons.Default.Straighten, contentDescription = "키", tint = Color(0xFF9C27B0)) }, text = "${uiState.height}cm")
                     Spacer(modifier = Modifier.height(10.dp))
-
-                    InfoRow(
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = "지역",
-                                tint = Color(0xFF9C27B0)
-                            )
-                        },
-                        text = uiState.location
-                    )
+                    InfoRow(icon = { Icon(Icons.Default.LocationOn, contentDescription = "지역", tint = Color(0xFF9C27B0)) }, text = uiState.location)
                 }
             }
         }
-
         Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 92.dp)
-                .size(116.dp)
-                .clip(CircleShape)
-                .background(Color.White)
-                .border(4.dp, Color.White, CircleShape),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 92.dp).size(116.dp).clip(CircleShape).background(Color.White).border(4.dp, Color.White, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             val profileImageUrl = uiState.profileImages.firstOrNull().orEmpty()
-
             if (profileImageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = profileImageUrl,
-                    contentDescription = "프로필 이미지",
-                    modifier = Modifier
-                        .size(108.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
+                AsyncImage(model = profileImageUrl, contentDescription = "프로필 이미지", modifier = Modifier.size(108.dp).clip(CircleShape), contentScale = ContentScale.Crop)
             } else {
-                Box(
-                    modifier = Modifier
-                        .size(108.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFE8D6F7)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "프로필 이미지 없음",
-                        tint = Color(0xFF8E24AA),
-                        modifier = Modifier.size(44.dp)
-                    )
+                Box(modifier = Modifier.size(108.dp).clip(CircleShape).background(Color(0xFFE8D6F7)), contentAlignment = Alignment.Center) {
+                    Icon(imageVector = Icons.Default.Person, contentDescription = "프로필 이미지 없음", tint = Color(0xFF8E24AA), modifier = Modifier.size(44.dp))
                 }
             }
         }
@@ -329,356 +210,239 @@ private fun ProfileHeaderSection(
 @Composable
 private fun SectionCard(
     title: String,
+    onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF222222)
-            )
-
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
             Spacer(modifier = Modifier.height(14.dp))
-
             content()
         }
     }
 }
 
 @Composable
-private fun InfoRow(
-    icon: @Composable () -> Unit,
-    text: String
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+private fun InfoRow(icon: @Composable () -> Unit, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         icon()
         Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF444444)
-        )
+        Text(text = text, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF444444))
     }
 }
 
 @Composable
-private fun TagWrapSection(
-    tags: List<String>,
-    chipColor: Color,
-    textColor: Color
-) {
-    val chunkedTags = tags.chunked(3)
-
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        chunkedTags.forEach { rowTags ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                rowTags.forEach { tag ->
-                    TagChip(
-                        text = tag,
-                        chipColor = chipColor,
-                        textColor = textColor
-                    )
-                }
+private fun TagWrapSection(tags: List<String>, chipColor: Color, textColor: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        tags.chunked(3).forEach { rowTags ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowTags.forEach { tag -> TagChip(text = tag, chipColor = chipColor, textColor = textColor) }
             }
         }
     }
 }
 
 @Composable
-private fun TagChip(
-    text: String,
-    chipColor: Color,
-    textColor: Color
-) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = chipColor
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            color = textColor,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium
-        )
+private fun TagChip(text: String, chipColor: Color, textColor: Color) {
+    Surface(shape = RoundedCornerShape(20.dp), color = chipColor) {
+        Text(text = text, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = textColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
-private fun PhotoSection(
-    imageUrls: List<String>,
-    onAddPhotoClick: () -> Unit
-) {
+private fun PhotoSection(imageUrls: List<String>, onAddPhotoClick: () -> Unit) {
     val photos = imageUrls.filter { it.isNotBlank() }
-    val maxPhotoCount = 9
-
-    val items = mutableListOf<String>()
-    items.addAll(photos)
-
-    if (photos.size < maxPhotoCount) {
-        items.add("ADD_BUTTON")
-    }
-
-    val rows = items.chunked(3)
-
+    val items = mutableListOf<String>().apply { addAll(photos); if (photos.size < 9) add("ADD_BUTTON") }
     SectionCard(title = "사진") {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            rows.forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items.chunked(3).forEach { rowItems ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     rowItems.forEach { item ->
-                        if (item == "ADD_BUTTON") {
-                            AddPhotoItem(
-                                onClick = onAddPhotoClick,
-                                modifier = Modifier.weight(1f)
-                            )
-                        } else {
-                            PhotoItem(
-                                imageUrl = item,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        if (item == "ADD_BUTTON") AddPhotoItem(onClick = onAddPhotoClick, modifier = Modifier.weight(1f))
+                        else PhotoItem(imageUrl = item, modifier = Modifier.weight(1f))
                     }
-
-                    repeat(3 - rowItems.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+                    repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                 }
             }
         }
     }
 }
+
 @Composable
 private fun ScheduleSection(
-    schedule: Map<String, List<String>>
+    schedule: Map<String, List<String>>,
+    onScheduleClick: () -> Unit = {}
 ) {
-    SectionCard(title = "시간표") {
+    SectionCard(title = "시간표", onClick = onScheduleClick) {
         Column {
+            // 요일 헤더 고정
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                TimeTableHeaderCell(
-                    text = "",
-                    modifier = Modifier.width(58.dp)
-                )
-
+                Spacer(modifier = Modifier.width(36.dp))
                 scheduleDays.forEach { day ->
-                    TimeTableHeaderCell(
-                        text = day,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            scheduleTimes.forEach { time ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TimeTableHeaderCell(
-                        text = time,
-                        modifier = Modifier.width(58.dp)
-                    )
-
-                    scheduleDays.forEach { day ->
-                        val isSelected = schedule[day]?.contains(time) == true
-
-                        TimeTableBodyCell(
-                            selected = isSelected,
-                            modifier = Modifier.weight(1f)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color(0xFFF1E7F7), RoundedCornerShape(6.dp))
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = day,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6F3D8A)
                         )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 시간별 행
+            scheduleTimes.forEach { time ->
+                val isHalfHour = time.endsWith(":30")
+                val timeIdx = scheduleTimes.indexOf(time)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Box(modifier = Modifier.width(36.dp)) {
+                        if (!isHalfHour) {
+                            Text(
+                                text = time.substring(0, 5),
+                                fontSize = 8.sp,
+                                color = Color(0xFF9C79A8)
+                            )
+                        }
+                    }
+
+                    scheduleDays.forEach { day ->
+                        val isSelected = schedule[day]?.contains(time) == true
+                        val prevTime = scheduleTimes.getOrNull(timeIdx - 1)
+                        val nextTime = scheduleTimes.getOrNull(timeIdx + 1)
+                        val isPrevSelected = prevTime != null && schedule[day]?.contains(prevTime) == true
+                        val isNextSelected = nextTime != null && schedule[day]?.contains(nextTime) == true
+
+                        // 연속 블록 처리 - 위아래 연결 여부에 따라 모서리 조정
+                        val topRadius = if (isPrevSelected) 0.dp else 4.dp
+                        val bottomRadius = if (isNextSelected) 0.dp else 4.dp
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .then(
+                                    if (isHalfHour && !isPrevSelected)
+                                        Modifier.drawBehind {
+                                            drawLine(
+                                                color = Color(0xFFE0D0EA),
+                                                start = Offset(0f, 0f),
+                                                end = Offset(size.width, 0f),
+                                                strokeWidth = 1f,
+                                                pathEffect = PathEffect.dashPathEffect(
+                                                    floatArrayOf(3f, 3f), 0f
+                                                )
+                                            )
+                                        }
+                                    else Modifier
+                                )
+                                .background(
+                                    color = if (isSelected) Color(0xFFCE93D8) else Color(0xFFF7F2F9),
+                                    shape = RoundedCornerShape(
+                                        topStart = topRadius,
+                                        topEnd = topRadius,
+                                        bottomStart = bottomRadius,
+                                        bottomEnd = bottomRadius
+                                    )
+                                )
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 편집 안내
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = Color(0xFFAB47BC),
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    "탭하여 시간표 편집",
+                    fontSize = 11.sp,
+                    color = Color(0xFFAB47BC)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun TimeTableHeaderCell(
-    text: String,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .height(34.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFF1E7F7)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF6F3D8A),
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-@Composable
-private fun TimeTableBodyCell(
-    selected: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .height(34.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (selected) Color(0xFFCE93D8) else Color(0xFFF7F2F9)
-            )
-            .border(
-                width = 1.dp,
-                color = if (selected) Color(0xFFAB47BC) else Color(0xFFE6DDEA),
-                shape = RoundedCornerShape(10.dp)
-            )
-    )
-}
-
-@Composable
-private fun FoodPreferenceSection(
-    likes: List<String>,
-    dislikes: List<String>
-) {
+private fun FoodPreferenceSection(likes: List<String>, dislikes: List<String>) {
     SectionCard(title = "음식 취향") {
-        Text(
-            text = "좋아하는 음식",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF2E7D32)
-        )
-
+        Text(text = "좋아하는 음식", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
         Spacer(modifier = Modifier.height(10.dp))
-
-        TagWrapSection(
-            tags = likes,
-            chipColor = Color(0xFFE6F7E8),
-            textColor = Color(0xFF2E7D32)
-        )
-
+        TagWrapSection(tags = likes, chipColor = Color(0xFFE6F7E8), textColor = Color(0xFF2E7D32))
         Spacer(modifier = Modifier.height(18.dp))
-
         Divider(color = Color(0xFFF0F0F0))
-
         Spacer(modifier = Modifier.height(18.dp))
-
-        Text(
-            text = "싫어하는 음식",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFFC62828)
-        )
-
+        Text(text = "싫어하는 음식", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
         Spacer(modifier = Modifier.height(10.dp))
-
-        TagWrapSection(
-            tags = dislikes,
-            chipColor = Color(0xFFFFE7E7),
-            textColor = Color(0xFFC62828)
-        )
+        TagWrapSection(tags = dislikes, chipColor = Color(0xFFFFE7E7), textColor = Color(0xFFC62828))
     }
 }
 
 @Composable
-private fun EditProfileButton(
-    onClick: () -> Unit
-) {
+private fun EditProfileButton(onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF9C27B0)
-        )
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
     ) {
-        Icon(
-            imageVector = Icons.Default.Edit,
-            contentDescription = "프로필 수정",
-            tint = Color.White
-        )
+        Icon(imageVector = Icons.Default.Edit, contentDescription = "프로필 수정", tint = Color.White)
         Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = "프로필 수정하기",
-            color = Color.White,
-            fontWeight = FontWeight.Bold
-        )
+        Text(text = "프로필 수정하기", color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
+
 @Composable
-private fun PhotoItem(
-    imageUrl: String,
-    modifier: Modifier = Modifier
-) {
-    AsyncImage(
-        model = imageUrl,
-        contentDescription = "프로필 사진",
-        modifier = modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp)),
-        contentScale = ContentScale.Crop
-    )
+private fun PhotoItem(imageUrl: String, modifier: Modifier = Modifier) {
+    AsyncImage(model = imageUrl, contentDescription = "프로필 사진", modifier = modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
 }
+
 @Composable
-private fun AddPhotoItem(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun AddPhotoItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Button(
-        onClick = onClick,
-        modifier = modifier.aspectRatio(1f),
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFFF1E7F7)
-        ),
+        onClick = onClick, modifier = modifier.aspectRatio(1f), shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1E7F7)),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "+",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color(0xFF8E24AA),
-                fontWeight = FontWeight.Bold
-            )
-
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(text = "+", style = MaterialTheme.typography.headlineMedium, color = Color(0xFF8E24AA), fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "사진 추가",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8E24AA)
-            )
+            Text(text = "사진 추가", style = MaterialTheme.typography.bodySmall, color = Color(0xFF8E24AA))
         }
     }
 }

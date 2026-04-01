@@ -1,5 +1,5 @@
 package com.bugzero.meety.ui.feed
-
+import com.bugzero.meety.data.repository.FeedRepository
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState

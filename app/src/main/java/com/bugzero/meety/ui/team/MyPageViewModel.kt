@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,9 @@ class MyPageViewModel : ViewModel() {
     private val _screenState = MutableStateFlow(MyPageScreenState())
     val screenState: StateFlow<MyPageScreenState> = _screenState
 
+    // 실시간 구독 해제를 위해 리스너 저장
+    private var listenerRegistration: ListenerRegistration? = null
+
     init {
         loadMyProfile()
     }
@@ -43,17 +47,29 @@ class MyPageViewModel : ViewModel() {
 
         _screenState.value = MyPageScreenState(isLoading = true)
 
-        firestore.collection("users")
+        // 기존 리스너 제거 후 새로 등록
+        listenerRegistration?.remove()
+
+        // 실시간 구독 — Firestore 문서 변경 시 자동 반영
+        listenerRegistration = firestore.collection("users")
             .document(userId)
-            .get()
-            .addOnSuccessListener { document ->
-                if (!document.exists()) {
+            .addSnapshotListener { document, error ->
+                if (error != null) {
+                    _screenState.value = MyPageScreenState(
+                        isLoading = false,
+                        uiState = null,
+                        errorMessage = error.message ?: "프로필 정보를 불러오지 못했습니다."
+                    )
+                    return@addSnapshotListener
+                }
+
+                if (document == null || !document.exists()) {
                     _screenState.value = MyPageScreenState(
                         isLoading = false,
                         uiState = null,
                         errorMessage = "사용자 정보가 없습니다."
                     )
-                    return@addOnSuccessListener
+                    return@addSnapshotListener
                 }
 
                 val name = document.getString("name") ?: ""
@@ -98,13 +114,6 @@ class MyPageViewModel : ViewModel() {
                     errorMessage = null
                 )
             }
-            .addOnFailureListener { e ->
-                _screenState.value = MyPageScreenState(
-                    isLoading = false,
-                    uiState = null,
-                    errorMessage = e.message ?: "프로필 정보를 불러오지 못했습니다."
-                )
-            }
     }
 
     fun onAddPhotoClick(imageUri: Uri) {
@@ -134,15 +143,13 @@ class MyPageViewModel : ViewModel() {
                         firestore.collection("users")
                             .document(userId)
                             .update("profileImages", FieldValue.arrayUnion(uri.toString()))
-                            .addOnSuccessListener {
-                                loadMyProfile()
-                            }
                             .addOnFailureListener { e ->
                                 _screenState.value = _screenState.value.copy(
                                     isLoading = false,
                                     errorMessage = e.message ?: "프로필 사진 저장에 실패했습니다."
                                 )
                             }
+                        // 성공 시 별도 loadMyProfile() 호출 불필요 — 스냅샷 리스너가 자동 감지
                     }
                     .addOnFailureListener { e ->
                         _screenState.value = _screenState.value.copy(
@@ -157,5 +164,11 @@ class MyPageViewModel : ViewModel() {
                     errorMessage = e.message ?: "이미지 업로드에 실패했습니다."
                 )
             }
+    }
+
+    // ViewModel 종료 시 리스너 해제 (메모리 누수 방지)
+    override fun onCleared() {
+        super.onCleared()
+        listenerRegistration?.remove()
     }
 }

@@ -50,12 +50,11 @@ class TeamViewModel(
     private val _sentLikes = MutableStateFlow<List<SentLikeItem>>(emptyList())
     val sentLikes: StateFlow<List<SentLikeItem>> = _sentLikes
 
-
     fun createTeam(
         teamName: String,
         description: String,
         tags: List<String>,
-        onSuccess: () -> Unit,
+        onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
         _isLoading.value = true
@@ -64,11 +63,11 @@ class TeamViewModel(
             teamName = teamName,
             description = description,
             tags = tags,
-            onSuccess = {
+            onSuccess = { teamId ->
                 _message.value = "팀이 생성되었습니다."
                 _isLoading.value = false
                 loadMyTeam()
-                onSuccess()
+                onSuccess(teamId)
             },
             onFailure = {
                 _message.value = it
@@ -84,13 +83,11 @@ class TeamViewModel(
         repository.loadMyTeam(
             onSuccess = { team ->
                 _myTeam.value = team
-
                 if (team == null) {
                     _memberNames.value = emptyList()
                 } else {
                     loadMemberNames(team.memberIds)
                 }
-
                 _isLoading.value = false
             },
             onFailure = {
@@ -99,23 +96,21 @@ class TeamViewModel(
             }
         )
     }
+
     fun loadMemberNames(memberIds: List<String>) {
         repository.loadMemberNames(
             memberIds = memberIds,
-            onSuccess = { names ->
-                _memberNames.value = names
-            },
+            onSuccess = { names -> _memberNames.value = names },
             onFailure = {
                 _message.value = it
                 _memberNames.value = emptyList()
             }
         )
     }
+
     fun loadReceivedLikes() {
         repository.loadReceivedLikes(
-            onSuccess = { list ->
-                _receivedLikes.value = list
-            },
+            onSuccess = { list -> _receivedLikes.value = list },
             onFailure = {
                 _message.value = it
                 _receivedLikes.value = emptyList()
@@ -125,9 +120,7 @@ class TeamViewModel(
 
     fun loadSentLikes() {
         repository.loadSentLikes(
-            onSuccess = { list ->
-                _sentLikes.value = list
-            },
+            onSuccess = { list -> _sentLikes.value = list },
             onFailure = {
                 _message.value = it
                 _sentLikes.value = emptyList()
@@ -140,38 +133,29 @@ class TeamViewModel(
         loadReceivedLikes()
         loadSentLikes()
     }
+
     fun acceptReceivedLike(likeId: String) {
         repository.acceptReceivedLike(
             likeId = likeId,
-            onSuccess = {
-                loadMatchingTabData()
-            },
-            onFailure = {
-                _message.value = it
-            }
+            onSuccess = { loadMatchingTabData() },
+            onFailure = { _message.value = it }
         )
     }
+
     fun rejectReceivedLike(likeId: String) {
         repository.rejectReceivedLike(
             likeId = likeId,
-            onSuccess = {
-                loadMatchingTabData()
-            },
-            onFailure = {
-                _message.value = it
-            }
+            onSuccess = { loadMatchingTabData() },
+            onFailure = { _message.value = it }
         )
     }
+
     fun inviteMember(teamId: String, toUserId: String) {
         repository.inviteMember(
             teamId = teamId,
             toUserId = toUserId,
-            onSuccess = {
-                _message.value = "초대장을 보냈습니다."
-            },
-            onFailure = {
-                _message.value = it
-            }
+            onSuccess = { _message.value = "초대장을 보냈습니다." },
+            onFailure = { _message.value = it }
         )
     }
 
@@ -182,21 +166,15 @@ class TeamViewModel(
                 _message.value = "초대를 수락했습니다."
                 loadMyTeam()
             },
-            onFailure = {
-                _message.value = it
-            }
+            onFailure = { _message.value = it }
         )
     }
 
     fun rejectInvitation(invitationId: String) {
         repository.rejectInvitation(
             invitationId = invitationId,
-            onSuccess = {
-                _message.value = "초대를 거절했습니다."
-            },
-            onFailure = {
-                _message.value = it
-            }
+            onSuccess = { _message.value = "초대를 거절했습니다." },
+            onFailure = { _message.value = it }
         )
     }
 
@@ -207,9 +185,7 @@ class TeamViewModel(
                 _myTeam.value = null
                 _message.value = "팀에서 탈퇴했습니다."
             },
-            onFailure = {
-                _message.value = it
-            }
+            onFailure = { _message.value = it }
         )
     }
 
@@ -221,9 +197,7 @@ class TeamViewModel(
                 _message.value = "팀 대표 이미지가 변경되었습니다."
                 loadMyTeam()
             },
-            onFailure = {
-                _message.value = it
-            }
+            onFailure = { _message.value = it }
         )
     }
 }

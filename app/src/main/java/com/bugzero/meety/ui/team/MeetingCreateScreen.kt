@@ -1,5 +1,8 @@
 package com.bugzero.meety.ui.team
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -30,6 +35,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -40,9 +46,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 
 @Composable
 fun MeetingCreateScreen(
@@ -53,7 +61,6 @@ fun MeetingCreateScreen(
     onProfileClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    onUploadPhotoClick: () -> Unit = {},
     onCreateTeamClick: () -> Unit = {}
 ) {
     val teamViewModel: TeamViewModel = viewModel()
@@ -61,6 +68,18 @@ fun MeetingCreateScreen(
     var selectedTeamSize by remember { mutableIntStateOf(1) }
     var teamDescription by remember { mutableStateOf("") }
     val selectedTags = remember { mutableStateListOf<String>() }
+
+    // 선택된 사진 Uri 상태
+    var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // 사진 선택 런처
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            selectedPhotoUri = uri
+        }
+    }
 
     val allTags = listOf(
         "#활발한", "#조용한", "#카페좋아", "#술좋아", "#운동좋아",
@@ -93,7 +112,6 @@ fun MeetingCreateScreen(
                     fontWeight = FontWeight.Bold
                 )
             }
-
             item {
                 TeamNameSection(
                     teamName = teamName,
@@ -106,36 +124,29 @@ fun MeetingCreateScreen(
                     onTeamDescriptionChange = { teamDescription = it }
                 )
             }
-
             item {
                 TeamSizeSection(
                     selectedIndex = selectedTeamSize,
                     onSelect = { selectedTeamSize = it }
                 )
             }
-
             item {
+                // 사진 선택 런처를 onUploadPhotoClick에 연결
                 TeamPhotoSection(
-                    onUploadPhotoClick = onUploadPhotoClick
+                    selectedPhotoUri = selectedPhotoUri,
+                    onUploadPhotoClick = { imagePickerLauncher.launch("image/*") }
                 )
             }
-
             item {
                 TeamTagSection(
                     allTags = allTags,
                     selectedTags = selectedTags,
                     onTagClick = { tag ->
-                        if (selectedTags.contains(tag)) {
-                            selectedTags.remove(tag)
-                        } else {
-                            if (selectedTags.size < 5) {
-                                selectedTags.add(tag)
-                            }
-                        }
+                        if (selectedTags.contains(tag)) selectedTags.remove(tag)
+                        else if (selectedTags.size < 5) selectedTags.add(tag)
                     }
                 )
             }
-
             item {
                 Button(
                     onClick = {
@@ -143,7 +154,10 @@ fun MeetingCreateScreen(
                             teamName = teamName.trim(),
                             description = teamDescription.trim(),
                             tags = selectedTags,
-                            onSuccess = {
+                            onSuccess = { teamId ->
+                                selectedPhotoUri?.let { uri ->
+                                    teamViewModel.updateTeamProfileImage(teamId, uri)
+                                }
                                 onCreateTeamClick()
                             },
                             onFailure = { errorMessage ->
@@ -156,9 +170,7 @@ fun MeetingCreateScreen(
                         .padding(horizontal = 20.dp)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFA020F0)
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA020F0))
                 ) {
                     Text(
                         text = "팀 만들기",
@@ -173,10 +185,7 @@ fun MeetingCreateScreen(
 }
 
 @Composable
-private fun TeamNameSection(
-    teamName: String,
-    onTeamNameChange: (String) -> Unit
-) {
+private fun TeamNameSection(teamName: String, onTeamNameChange: (String) -> Unit) {
     WhiteCardSection(title = "팀 이름") {
         Box(
             modifier = Modifier
@@ -188,18 +197,12 @@ private fun TeamNameSection(
             BasicTextField(
                 value = teamName,
                 onValueChange = onTeamNameChange,
-                textStyle = TextStyle(
-                    color = Color(0xFF222222)
-                ),
+                textStyle = TextStyle(color = Color(0xFF222222)),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 decorationBox = { innerTextField ->
                     if (teamName.isEmpty()) {
-                        Text(
-                            text = "예: 경영학과 프렌즈",
-                            color = Color(0xFF9A9AA3),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Text(text = "예: 경영학과 프렌즈", color = Color(0xFF9A9AA3), style = MaterialTheme.typography.bodyMedium)
                     }
                     innerTextField()
                 }
@@ -207,11 +210,9 @@ private fun TeamNameSection(
         }
     }
 }
+
 @Composable
-private fun TeamDescriptionSection(
-    teamDescription: String,
-    onTeamDescriptionChange: (String) -> Unit
-) {
+private fun TeamDescriptionSection(teamDescription: String, onTeamDescriptionChange: (String) -> Unit) {
     WhiteCardSection(title = "팀 소개") {
         Box(
             modifier = Modifier
@@ -223,17 +224,11 @@ private fun TeamDescriptionSection(
             BasicTextField(
                 value = teamDescription,
                 onValueChange = onTeamDescriptionChange,
-                textStyle = TextStyle(
-                    color = Color(0xFF222222)
-                ),
+                textStyle = TextStyle(color = Color(0xFF222222)),
                 modifier = Modifier.fillMaxWidth(),
                 decorationBox = { innerTextField ->
                     if (teamDescription.isEmpty()) {
-                        Text(
-                            text = "예: 함께 카페 가고 영화 볼 팀원을 구해요",
-                            color = Color(0xFF9A9AA3),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Text(text = "예: 함께 카페 가고 영화 볼 팀원을 구해요", color = Color(0xFF9A9AA3), style = MaterialTheme.typography.bodyMedium)
                     }
                     innerTextField()
                 }
@@ -241,39 +236,25 @@ private fun TeamDescriptionSection(
         }
     }
 }
-@Composable
-private fun TeamSizeSection(
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit
-) {
-    val teamOptions = listOf("2:2", "3:3", "4:4")
 
+@Composable
+private fun TeamSizeSection(selectedIndex: Int, onSelect: (Int) -> Unit) {
+    val teamOptions = listOf("2:2", "3:3", "4:4")
     WhiteCardSection(title = "팀 구성") {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             teamOptions.forEachIndexed { index, label ->
                 val selected = selectedIndex == index
-
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            if (selected) Color(0xFFA020F0) else Color(0xFFF2F2F5)
-                        )
+                        .background(if (selected) Color(0xFFA020F0) else Color(0xFFF2F2F5))
                         .clickable { onSelect(index) }
                         .padding(vertical = 18.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "👥",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "👥", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = label,
@@ -290,6 +271,7 @@ private fun TeamSizeSection(
 
 @Composable
 private fun TeamPhotoSection(
+    selectedPhotoUri: Uri?,
     onUploadPhotoClick: () -> Unit
 ) {
     WhiteCardSection(title = "대표 사진") {
@@ -298,89 +280,66 @@ private fun TeamPhotoSection(
                 .fillMaxWidth()
                 .height(180.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .border(
-                    width = 1.dp,
-                    color = Color(0xFFD5D6DE),
-                    shape = RoundedCornerShape(16.dp)
-                )
+                .border(width = 1.dp, color = Color(0xFFD5D6DE), shape = RoundedCornerShape(16.dp))
                 .clickable { onUploadPhotoClick() },
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CameraAlt,
-                    contentDescription = "사진 업로드",
-                    tint = Color(0xFF9AA1AE),
-                    modifier = Modifier.size(44.dp)
+            if (selectedPhotoUri != null) {
+                // 사진 선택됐으면 미리보기 표시
+                AsyncImage(
+                    model = selectedPhotoUri,
+                    contentDescription = "팀 대표 사진",
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "사진을 업로드하세요",
-                    color = Color(0xFF6D7483),
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                // 우상단에 선택 완료 아이콘
+                Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "선택됨",
+                        tint = Color(0xFFA020F0),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "사진 업로드",
+                        tint = Color(0xFF9AA1AE),
+                        modifier = Modifier.size(44.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "사진을 업로드하세요", color = Color(0xFF6D7483), style = MaterialTheme.typography.bodyLarge)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TeamTagSection(
-    allTags: List<String>,
-    selectedTags: List<String>,
-    onTagClick: (String) -> Unit
-) {
-    WhiteCardSection(
-        title = "팀 태그 (최대 5개)",
-        titleRightText = "${selectedTags.size}/5"
-    ) {
-        TagWrapLayout(
-            tags = allTags,
-            selectedTags = selectedTags,
-            onTagClick = onTagClick
-        )
+private fun TeamTagSection(allTags: List<String>, selectedTags: List<String>, onTagClick: (String) -> Unit) {
+    WhiteCardSection(title = "팀 태그 (최대 5개)", titleRightText = "${selectedTags.size}/5") {
+        TagWrapLayout(tags = allTags, selectedTags = selectedTags, onTagClick = onTagClick)
     }
 }
 
 @Composable
-private fun WhiteCardSection(
-    title: String,
-    titleRightText: String? = null,
-    content: @Composable () -> Unit
-) {
+private fun WhiteCardSection(title: String, titleRightText: String? = null, content: @Composable () -> Unit) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
         shadowElevation = 2.dp
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    color = Color.Black,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = title, color = Color.Black, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 if (titleRightText != null) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = titleRightText,
-                        color = Color(0xFF63708C),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Text(text = titleRightText, color = Color(0xFF63708C), style = MaterialTheme.typography.bodyMedium)
                 }
             }
-
             Spacer(modifier = Modifier.height(16.dp))
             content()
         }
@@ -388,28 +347,14 @@ private fun WhiteCardSection(
 }
 
 @Composable
-private fun TagWrapLayout(
-    tags: List<String>,
-    selectedTags: List<String>,
-    onTagClick: (String) -> Unit
-) {
-    val rows = tags.chunked(3)
-
-    Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        rows.forEach { rowTags ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+private fun TagWrapLayout(tags: List<String>, selectedTags: List<String>, onTagClick: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        tags.chunked(3).forEach { rowTags ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowTags.forEach { tag ->
                     val selected = selectedTags.contains(tag)
-
                     Surface(
-                        modifier = Modifier
-                            .wrapContentHeight()
-                            .clickable { onTagClick(tag) },
+                        modifier = Modifier.wrapContentHeight().clickable { onTagClick(tag) },
                         shape = RoundedCornerShape(20.dp),
                         color = if (selected) Color(0xFFEEDBFF) else Color(0xFFF2F2F5)
                     ) {

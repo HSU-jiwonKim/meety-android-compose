@@ -16,8 +16,7 @@ data class Like(
     val toTeamTags: List<String> = emptyList(),
     val toTeamMbtiTags: List<String> = emptyList(),
     val createdAt: Long = 0L,
-
-    val status: String = "pending",   // "pending" | "accepted" | "rejected"
+    val status: String = "pending"     // 좋아요 상태 (pending/accepted/rejected)
 )
 
 /**

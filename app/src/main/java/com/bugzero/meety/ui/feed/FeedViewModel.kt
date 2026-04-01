@@ -1,5 +1,5 @@
 package com.bugzero.meety.ui.feed
-
+import com.bugzero.meety.data.repository.FeedRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.ui.team.Team
