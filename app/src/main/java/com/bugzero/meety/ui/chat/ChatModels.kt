@@ -4,22 +4,21 @@ import com.google.firebase.Timestamp
 
 data class ChatPreview(
     val id: String = "",
-    val teamAId: String = "",
-    val teamBId: String = "",
-    val meetingId: String = "",
+    val teamId: String = "",
     val lastMessage: String = "",
     val lastMessageAt: Timestamp? = null,
     val createdAt: Timestamp? = null,
     val teamName: String = "",
     val unreadCount: Int = 0,
-    val emoji: String = "💬"
+    val emoji: String = "👥",
+    val type: String = "team"
 )
 
 data class ChatMessage(
     val id: String = "",
     val senderId: String = "",
     val senderName: String = "",
-    val senderProfileImage: String = "",  // 추가
+    val senderProfileImage: String = "",
     val content: String = "",
     val type: String = "text",
     val createdAt: Timestamp? = null,

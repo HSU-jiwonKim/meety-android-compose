@@ -20,6 +20,7 @@ data class SentLikeItem(
     val toTeamTags: List<String> = emptyList(),
     val createdAt: Long = 0L
 )
+
 interface TeamRepository {
 
     fun createTeam(
@@ -30,25 +31,17 @@ interface TeamRepository {
         onFailure: (String) -> Unit
     )
 
-    fun loadMyTeam(
-        onSuccess: (Team?) -> Unit,
-        onFailure: (String) -> Unit
-    )
     fun loadMemberNames(
         memberIds: List<String>,
         onSuccess: (List<String>) -> Unit,
         onFailure: (String) -> Unit
     )
-    // 받은 관심 목록
+
     fun loadReceivedLikes(
         onSuccess: (List<ReceivedLikeItem>) -> Unit,
         onFailure: (String) -> Unit
     )
 
-    fun loadSentLikes(
-        onSuccess: (List<SentLikeItem>) -> Unit,
-        onFailure: (String) -> Unit
-    )
     fun acceptReceivedLike(
         likeId: String,
         onSuccess: () -> Unit,
@@ -57,24 +50,6 @@ interface TeamRepository {
 
     fun rejectReceivedLike(
         likeId: String,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    )
-    fun inviteMember(
-        teamId: String,
-        toUserId: String,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    )
-
-    fun acceptInvitation(
-        invitationId: String,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    )
-
-    fun rejectInvitation(
-        invitationId: String,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     )

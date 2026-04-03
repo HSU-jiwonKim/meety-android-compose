@@ -33,6 +33,7 @@ fun ChatListScreen(
     viewModel: ChatViewModel = viewModel()
 ) {
     val chatList by viewModel.chatList.collectAsState()
+    val requestList by viewModel.requestList.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
@@ -84,9 +85,44 @@ fun ChatListScreen(
                 // 목록 표시
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
+
+                        // 🔥 요청 리스트 영역
+                        if (requestList.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "요청",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+
+                            items(requestList) { request ->
+                                RequestListItem(
+                                    request = request,
+                                    onAccept = {
+                                        viewModel.acceptRequest(request.likeId)
+                                    },
+                                    onReject = {
+                                        viewModel.rejectRequest(request.likeId)
+                                    }
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    color = Color(0xFFF3F4F6)
+                                )
+                            }
+
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+
+                        // 🔥 채팅방 리스트 영역
                         items(
                             items = chatList,
-                            key = { it.id } // 효율적인 recomposition을 위한 key 지정
+                            key = { it.id }
                         ) { chat ->
                             ChatListItem(
                                 chat = chat,
@@ -245,5 +281,60 @@ private fun ChatErrorView(
             fontSize = 14.sp,
             color = Color(0xFF9CA3AF)
         )
+    }
+}
+@Composable
+private fun RequestListItem(
+    request: com.bugzero.meety.ui.team.ReceivedLikeItem,
+    onAccept: () -> Unit,
+    onReject: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE5E7EB)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "👤")
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = request.fromUserName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "${request.fromUserDepartment} · ${request.fromUserMbti}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            TextButton(onClick = onReject) {
+                Text("거절")
+            }
+            Button(onClick = onAccept) {
+                Text("수락")
+            }
+        }
     }
 }

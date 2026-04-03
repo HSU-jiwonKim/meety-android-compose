@@ -4,39 +4,16 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a77fb43c-937d-4d3a-9735-3672a2f0617a" name="Changes" comment="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C&#10;&#10;# Conflicts:&#10;#&#9;.gitignore&#10;#&#9;app/build.gradle.kts&#10;#&#9;app/src/main/java/com/bugzero/meety/navigation/NavGraph.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/auth/AdminViewModel.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/auth/AuthViewModel.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/chat/ChatModels.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/chat/ChatRoomScreen.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/chat/ScheduleSyncScreen.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/feed/FeedModels.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/feed/FeedViewModel.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/feed/ProfileEditScreen.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/feed/components/SwipeCard.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/team/MeetingCreateScreen.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/team/MyPageRoute.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/team/MyPageScreen.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/team/MyPageViewModel.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt&#10;#&#9;app/src/main/java/com/bugzero/meety/ui/team/common.kt">
-      <change afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/google-services.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/MyFirebaseMessagingService.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/model/TimeSlot.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/AdminRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/ChatRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FeedRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseChatRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/TeamRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/UserRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ScheduleViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/app/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/navigation/NavGraph.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/navigation/NavGraph.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/auth/AdminViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/auth/AdminViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/auth/AuthViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/auth/AuthViewModel.kt" afterDir="false" />
+    <list default="true" id="a77fb43c-937d-4d3a-9735-3672a2f0617a" name="Changes" comment="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseChatRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseChatRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/TeamRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/TeamRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatListScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatListScreen.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatModels.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatModels.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatRoomScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatRoomScreen.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ScheduleSyncScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ScheduleSyncScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/FeedModels.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/FeedModels.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/FeedViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/FeedViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/ProfileEditScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/ProfileEditScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/components/SwipeCard.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/feed/components/SwipeCard.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MeetingCreateScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MeetingCreateScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyPageRoute.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyPageRoute.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyPageScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyPageScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyPageViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyPageViewModel.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyTeamScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyTeamScreen.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/common.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/common.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -72,6 +49,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "tkdgur3080-blip"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/HSU-jiwonKim/meety-android-compose.git",
+    "accountId": "2af6624b-2a03-4777-b517-d00c34068e56"
+  }
+}]]></component>
   <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$" gradleHome="C:\Users\tkdgu\.gradle\wrapper\dists\gradle-9.3.1-bin\23ovyewtku6u96viwx3xl3oks\gradle-9.3.1" javaHome="C:\Program Files\Android\Android Studio\jbr" gradleVersion="9.3.1" />
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7
@@ -91,7 +80,8 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "Merging feature/team-screen-C",
+    "com.google.services.firebase.aqiPopupShown": "true",
+    "git-widget-placeholder": "feature/team-screen-C",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "C:/Users/gram14/Desktop/meety-android-compose-dev-fixed (2)/app"
   }
@@ -186,6 +176,19 @@
       <option name="presentableId" value="Default" />
       <updated>1775004193208</updated>
     </task>
+    <task id="LOCAL-00001" summary="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C">
+      <option name="closed" value="true" />
+      <created>1775041971513</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1775041971513</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C" />
+    <option name="LAST_COMMIT_MESSAGE" value="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C" />
   </component>
 </project>
