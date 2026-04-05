@@ -4,7 +4,17 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a77fb43c-937d-4d3a-9735-3672a2f0617a" name="Changes" comment="" />
+    <list default="true" id="a77fb43c-937d-4d3a-9735-3672a2f0617a" name="Changes" comment="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseChatRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseChatRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/TeamRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/TeamRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatListScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatListScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatModels.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatModels.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyTeamScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyTeamScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -13,7 +23,7 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[LocalEmulator::path=C:\CookAndroid\.android\avd\Pixel_2.avd]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[LocalEmulator::path=C:\Users\tkdgu\.android\avd\Pixel_2_API_33.avd]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
@@ -39,7 +49,19 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$" gradleHome="C:\Users\gram14\.gradle\wrapper\dists\gradle-9.3.1-bin\23ovyewtku6u96viwx3xl3oks\gradle-9.3.1" javaHome="C:\Program Files\Android\Android Studio1\jbr" gradleVersion="9.3.1" />
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "tkdgur3080-blip"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/HSU-jiwonKim/meety-android-compose.git",
+    "accountId": "2af6624b-2a03-4777-b517-d00c34068e56"
+  }
+}]]></component>
+  <component name="GradleScriptDefinitionsStorage" workingDir="$PROJECT_DIR$" gradleHome="C:\Users\tkdgu\.gradle\wrapper\dists\gradle-9.3.1-bin\23ovyewtku6u96viwx3xl3oks\gradle-9.3.1" javaHome="C:\Program Files\Android\Android Studio\jbr" gradleVersion="9.3.1" />
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7
 }</component>
@@ -58,7 +80,8 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "feature/chat-screen-D",
+    "com.google.services.firebase.aqiPopupShown": "true",
+    "git-widget-placeholder": "feature/team-screen-C",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "C:/Users/gram14/Desktop/meety-android-compose-dev-fixed (2)/app"
   }
@@ -153,6 +176,19 @@
       <option name="presentableId" value="Default" />
       <updated>1775004193208</updated>
     </task>
+    <task id="LOCAL-00001" summary="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C">
+      <option name="closed" value="true" />
+      <created>1775041971513</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1775041971513</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C" />
+    <option name="LAST_COMMIT_MESSAGE" value="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C" />
   </component>
 </project>

@@ -66,33 +66,12 @@ class TeamViewModel(
             onSuccess = { teamId ->
                 _message.value = "팀이 생성되었습니다."
                 _isLoading.value = false
-                loadMyTeam()
                 onSuccess(teamId)
             },
             onFailure = {
                 _message.value = it
                 _isLoading.value = false
                 onFailure(it)
-            }
-        )
-    }
-
-    fun loadMyTeam() {
-        _isLoading.value = true
-
-        repository.loadMyTeam(
-            onSuccess = { team ->
-                _myTeam.value = team
-                if (team == null) {
-                    _memberNames.value = emptyList()
-                } else {
-                    loadMemberNames(team.memberIds)
-                }
-                _isLoading.value = false
-            },
-            onFailure = {
-                _message.value = it
-                _isLoading.value = false
             }
         )
     }
@@ -118,20 +97,9 @@ class TeamViewModel(
         )
     }
 
-    fun loadSentLikes() {
-        repository.loadSentLikes(
-            onSuccess = { list -> _sentLikes.value = list },
-            onFailure = {
-                _message.value = it
-                _sentLikes.value = emptyList()
-            }
-        )
-    }
 
     fun loadMatchingTabData() {
-        loadMyTeam()
         loadReceivedLikes()
-        loadSentLikes()
     }
 
     fun acceptReceivedLike(likeId: String) {
@@ -150,33 +118,6 @@ class TeamViewModel(
         )
     }
 
-    fun inviteMember(teamId: String, toUserId: String) {
-        repository.inviteMember(
-            teamId = teamId,
-            toUserId = toUserId,
-            onSuccess = { _message.value = "초대장을 보냈습니다." },
-            onFailure = { _message.value = it }
-        )
-    }
-
-    fun acceptInvitation(invitationId: String) {
-        repository.acceptInvitation(
-            invitationId = invitationId,
-            onSuccess = {
-                _message.value = "초대를 수락했습니다."
-                loadMyTeam()
-            },
-            onFailure = { _message.value = it }
-        )
-    }
-
-    fun rejectInvitation(invitationId: String) {
-        repository.rejectInvitation(
-            invitationId = invitationId,
-            onSuccess = { _message.value = "초대를 거절했습니다." },
-            onFailure = { _message.value = it }
-        )
-    }
 
     fun leaveTeam(teamId: String) {
         repository.leaveTeam(
@@ -195,7 +136,7 @@ class TeamViewModel(
             imageUri = imageUri,
             onSuccess = {
                 _message.value = "팀 대표 이미지가 변경되었습니다."
-                loadMyTeam()
+
             },
             onFailure = { _message.value = it }
         )

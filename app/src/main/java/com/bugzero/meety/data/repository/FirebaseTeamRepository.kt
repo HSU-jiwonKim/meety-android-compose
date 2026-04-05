@@ -28,57 +28,57 @@ class FirebaseTeamRepository : TeamRepository {
             .addOnSuccessListener { userDoc ->
                 val mbti = userDoc.getString("mbti") ?: ""
                 val profileImage = userDoc.getString("profileImage") ?: ""
+
                 val teamRef = db.collection("teams").document()
                 val teamId = teamRef.id
 
                 val team = Team(
-                    teamId = teamId, leaderId = userId, memberIds = listOf(userId),
-                    mbtiTags = listOf(mbti), tags = tags, profileImages = listOf(profileImage),
-                    teamProfileImage = "", status = "active", teamName = teamName,
-                    description = description, createdAt = System.currentTimeMillis()
+                    teamId = teamId,
+                    leaderId = userId,
+                    memberIds = listOf(userId),
+                    mbtiTags = listOf(mbti),
+                    tags = tags,
+                    profileImages = listOf(profileImage),
+                    teamProfileImage = "",
+                    status = "active",
+                    teamName = teamName,
+                    description = description,
+                    createdAt = System.currentTimeMillis()
                 )
 
+                // 🔥 1. 팀 생성
                 teamRef.set(team)
                     .addOnSuccessListener {
-                        db.collection("users").document(userId).update("teamId", teamId)
-                            .addOnSuccessListener { onSuccess(teamId) }
-                            .addOnFailureListener { onFailure(it.message ?: "users.teamId 업데이트 실패") }
+
+                        // 🔥 2. 팀 채팅방 생성 (핵심)
+                        val chatData = mapOf(
+                            "chatId" to teamId,
+                            "teamId" to teamId,
+                            "teamName" to teamName,
+                            "leaderId" to userId,
+                            "participants" to listOf(userId),
+                            "type" to "team",
+                            "createdAt" to com.google.firebase.Timestamp.now(),
+                            "lastMessage" to "",
+                            "lastMessageAt" to null,
+                            "emoji" to "👥"
+                        )
+
+                        db.collection("chats").document(teamId)
+                            .set(chatData)
+                            .addOnSuccessListener {
+
+                                // 🔥 3. 유저 teamId 설정
+                                db.collection("users").document(userId)
+                                    .update("teamId", teamId)
+                                    .addOnSuccessListener { onSuccess(teamId) }
+                                    .addOnFailureListener { onFailure(it.message ?: "users.teamId 업데이트 실패") }
+                            }
+                            .addOnFailureListener { onFailure(it.message ?: "팀 채팅방 생성 실패") }
                     }
                     .addOnFailureListener { onFailure(it.message ?: "teams 생성 실패") }
             }
             .addOnFailureListener { onFailure(it.message ?: "users 조회 실패") }
-    }
-
-    override fun loadMyTeam(onSuccess: (Team?) -> Unit, onFailure: (String) -> Unit) {
-        val userId = auth.currentUser?.uid
-        if (userId == null) { onFailure("로그인된 사용자가 없습니다."); return }
-
-        db.collection("users").document(userId).get()
-            .addOnSuccessListener { userSnapshot ->
-                val teamId = userSnapshot.getString("teamId").orEmpty()
-                if (teamId.isBlank()) { onSuccess(null); return@addOnSuccessListener }
-
-                db.collection("teams").document(teamId).get()
-                    .addOnSuccessListener { teamSnapshot ->
-                        if (!teamSnapshot.exists()) { onFailure("팀 정보를 찾을 수 없습니다."); return@addOnSuccessListener }
-                        val team = Team(
-                            teamId = teamSnapshot.getString("teamId").orEmpty(),
-                            leaderId = teamSnapshot.getString("leaderId").orEmpty(),
-                            memberIds = teamSnapshot.get("memberIds") as? List<String> ?: emptyList(),
-                            mbtiTags = teamSnapshot.get("mbtiTags") as? List<String> ?: emptyList(),
-                            profileImages = teamSnapshot.get("profileImages") as? List<String> ?: emptyList(),
-                            tags = teamSnapshot.get("tags") as? List<String> ?: emptyList(),
-                            teamProfileImage = teamSnapshot.getString("teamProfileImage").orEmpty(),
-                            status = teamSnapshot.getString("status").orEmpty().ifBlank { "active" },
-                            teamName = teamSnapshot.getString("teamName").orEmpty(),
-                            description = teamSnapshot.getString("description").orEmpty(),
-                            createdAt = teamSnapshot.getLong("createdAt") ?: 0L
-                        )
-                        onSuccess(team)
-                    }
-                    .addOnFailureListener { e -> onFailure(e.message ?: "팀 정보 조회에 실패했습니다.") }
-            }
-            .addOnFailureListener { e -> onFailure(e.message ?: "사용자 정보 조회에 실패했습니다.") }
     }
 
     override fun loadReceivedLikes(onSuccess: (List<ReceivedLikeItem>) -> Unit, onFailure: (String) -> Unit) {
@@ -117,12 +117,14 @@ class FirebaseTeamRepository : TeamRepository {
                             db.collection("users").document(fromUserId).get()
                                 .addOnSuccessListener { senderDoc ->
                                     results.add(ReceivedLikeItem(
-                                        likeId = likeId, fromUserId = fromUserId,
+                                        likeId = likeId,
+                                        fromUserId = fromUserId,
                                         fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
                                         fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
                                         fromUserMbti = senderDoc.getString("mbti").orEmpty(),
                                         fromUserDepartment = senderDoc.getString("department").orEmpty(),
-                                        fromTeamId = fromTeamId, createdAt = createdAt
+                                        fromTeamId = fromTeamId,
+                                        createdAt = createdAt
                                     ))
                                     completedCount++
                                     if (completedCount == docs.size) onSuccess(results.sortedByDescending { it.createdAt })
@@ -139,35 +141,10 @@ class FirebaseTeamRepository : TeamRepository {
             .addOnFailureListener { e -> onFailure(e.message ?: "사용자 정보 조회 실패") }
     }
 
-    override fun loadSentLikes(onSuccess: (List<SentLikeItem>) -> Unit, onFailure: (String) -> Unit) {
-        val currentUserId = auth.currentUser?.uid
-        if (currentUserId == null) { onFailure("로그인된 사용자가 없습니다."); return }
-
-        db.collection("likes")
-            .whereEqualTo("fromUserId", currentUserId)
-            .whereEqualTo("status", "pending")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val sentList = snapshot.documents.map { doc ->
-                    SentLikeItem(
-                        likeId = doc.getString("likeId").orEmpty().ifBlank { doc.id },
-                        toTeamId = doc.getString("toTeamId").orEmpty(),
-                        toTeamName = doc.getString("toTeamName").orEmpty(),
-                        toTeamTags = doc.get("toTeamTags") as? List<String> ?: emptyList(),
-                        createdAt = doc.getLong("createdAt") ?: 0L
-                    )
-                }
-                onSuccess(sentList)
-            }
-            .addOnFailureListener { e -> onFailure(e.message ?: "보낸 관심 조회 실패") }
-    }
-
     override fun acceptReceivedLike(likeId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         db.collection("likes").document(likeId).get()
             .addOnSuccessListener { likeDoc ->
                 val fromUserId = likeDoc.getString("fromUserId").orEmpty()
-                val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
                 val toTeamId = likeDoc.getString("toTeamId").orEmpty()
 
                 if (fromUserId.isBlank() || toTeamId.isBlank()) {
@@ -180,41 +157,57 @@ class FirebaseTeamRepository : TeamRepository {
                         val mbti = userDoc.getString("mbti").orEmpty()
                         val profileImage = userDoc.getString("profileImage").orEmpty()
 
-                        // 1. 팀에 멤버 추가
+                        // 🔥 1. 팀에 추가
                         db.collection("teams").document(toTeamId)
-                            .update(mapOf(
-                                "memberIds" to FieldValue.arrayUnion(fromUserId),
-                                "mbtiTags" to FieldValue.arrayUnion(mbti),
-                                "profileImages" to FieldValue.arrayUnion(profileImage)
-                            ))
+                            .update(
+                                mapOf(
+                                    "memberIds" to FieldValue.arrayUnion(fromUserId),
+                                    "mbtiTags" to FieldValue.arrayUnion(mbti),
+                                    "profileImages" to FieldValue.arrayUnion(profileImage)
+                                )
+                            )
                             .addOnSuccessListener {
-                                // 2. 유저 teamId 업데이트
+
+                                // 🔥 2. 유저 teamId 업데이트
                                 db.collection("users").document(fromUserId)
                                     .update("teamId", toTeamId)
                                     .addOnSuccessListener {
-                                        // 3. likes 상태 업데이트
+
+                                        // 🔥 3. 좋아요 상태 변경
                                         db.collection("likes").document(likeId)
-                                            .update(mapOf(
-                                                "status" to "accepted",
-                                                "respondedAt" to System.currentTimeMillis()
-                                            ))
-                                            .addOnSuccessListener {
-                                                // 4. 채팅방 생성
-                                                val currentUserId = auth.currentUser?.uid ?: ""
-                                                val chatRef = db.collection("chats").document()
-                                                val chatData = mapOf(
-                                                    "chatId" to chatRef.id,
-                                                    "teamAId" to currentUserId,
-                                                    "teamBId" to fromUserId,
-                                                    "teamATeamId" to toTeamId,
-                                                    "teamBTeamId" to fromTeamId,
-                                                    "lastMessage" to "",
-                                                    "lastMessageAt" to null,
-                                                    "createdAt" to com.google.firebase.Timestamp.now()
+                                            .update(
+                                                mapOf(
+                                                    "status" to "accepted",
+                                                    "respondedAt" to System.currentTimeMillis()
                                                 )
-                                                chatRef.set(chatData)
-                                                    .addOnSuccessListener { onSuccess() }
-                                                    .addOnFailureListener { onSuccess() }
+                                            )
+                                            .addOnSuccessListener {
+
+                                                // 🔥🔥🔥 핵심: 기존 채팅방에 참가자 추가 (절대 새 채팅 생성 X)
+                                                db.collection("chats").document(toTeamId)
+                                                    .update(
+                                                        "participants",
+                                                        FieldValue.arrayUnion(fromUserId)
+                                                    )
+                                                    .addOnSuccessListener {
+
+                                                        // 시스템 메시지
+                                                        val systemMessage = mapOf(
+                                                            "senderId" to "system",
+                                                            "senderName" to "system",
+                                                            "content" to "새 팀원이 입장했습니다.",
+                                                            "type" to "system",
+                                                            "createdAt" to com.google.firebase.Timestamp.now()
+                                                        )
+
+                                                        db.collection("chats")
+                                                            .document(toTeamId)
+                                                            .collection("messages")
+                                                            .add(systemMessage)
+                                                            .addOnSuccessListener { onSuccess() }
+                                                            .addOnFailureListener { onSuccess() }
+                                                    }
+                                                    .addOnFailureListener { onFailure(it.message ?: "채팅방 참가자 추가 실패") }
                                             }
                                             .addOnFailureListener { onFailure(it.message ?: "좋아요 상태 업데이트 실패") }
                                     }
@@ -234,57 +227,6 @@ class FirebaseTeamRepository : TeamRepository {
             .addOnFailureListener { onFailure(it.message ?: "거절 처리 실패") }
     }
 
-    override fun inviteMember(teamId: String, toUserId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        val fromUserId = auth.currentUser?.uid
-        if (fromUserId == null) { onFailure("로그인된 사용자가 없습니다."); return }
-
-        val invitationRef = db.collection("invitations").document()
-        val invitation = Invitation(
-            invitationId = invitationRef.id, teamId = teamId, fromUserId = fromUserId,
-            toUserId = toUserId, status = "pending", createdAt = System.currentTimeMillis()
-        )
-        invitationRef.set(invitation)
-            .addOnSuccessListener { onSuccess() }
-            .addOnFailureListener { onFailure(it.message ?: "초대장 생성 실패") }
-    }
-
-    override fun acceptInvitation(invitationId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        val userId = auth.currentUser?.uid
-        if (userId == null) { onFailure("로그인된 사용자가 없습니다."); return }
-
-        val invitationRef = db.collection("invitations").document(invitationId)
-        invitationRef.get()
-            .addOnSuccessListener { invitationDoc ->
-                val teamId = invitationDoc.getString("teamId") ?: ""
-                if (teamId.isEmpty()) { onFailure("초대장에 teamId가 없습니다."); return@addOnSuccessListener }
-
-                db.collection("users").document(userId).get()
-                    .addOnSuccessListener { userDoc ->
-                        val mbti = userDoc.getString("mbti") ?: ""
-                        val profileImage = userDoc.getString("profileImage") ?: ""
-
-                        db.collection("teams").document(teamId)
-                            .update(mapOf(
-                                "memberIds" to FieldValue.arrayUnion(userId),
-                                "mbtiTags" to FieldValue.arrayUnion(mbti),
-                                "profileImages" to FieldValue.arrayUnion(profileImage)
-                            ))
-                            .addOnSuccessListener {
-                                db.collection("users").document(userId).update("teamId", teamId)
-                                    .addOnSuccessListener {
-                                        invitationRef.update("status", "accepted")
-                                            .addOnSuccessListener { onSuccess() }
-                                            .addOnFailureListener { onFailure(it.message ?: "초대 상태 업데이트 실패") }
-                                    }
-                                    .addOnFailureListener { onFailure(it.message ?: "users.teamId 업데이트 실패") }
-                            }
-                            .addOnFailureListener { onFailure(it.message ?: "teams 멤버 추가 실패") }
-                    }
-                    .addOnFailureListener { onFailure(it.message ?: "사용자 정보 조회 실패") }
-            }
-            .addOnFailureListener { onFailure(it.message ?: "초대장 조회 실패") }
-    }
-
     override fun loadMemberNames(memberIds: List<String>, onSuccess: (List<String>) -> Unit, onFailure: (String) -> Unit) {
         if (memberIds.isEmpty()) { onSuccess(emptyList()); return }
 
@@ -298,14 +240,7 @@ class FirebaseTeamRepository : TeamRepository {
                 }
                 onSuccess(memberIds.map { nameMap[it] ?: "이름 없음" })
             }
-            .addOnFailureListener { e -> onFailure(e.message ?: "팀원 이름 조회에 실패했습니다.") }
-    }
-
-    override fun rejectInvitation(invitationId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        db.collection("invitations").document(invitationId)
-            .update("status", "rejected")
-            .addOnSuccessListener { onSuccess() }
-            .addOnFailureListener { onFailure(it.message ?: "초대 거절 실패") }
+            .addOnFailureListener { e -> onFailure(e.message ?: "팀원 이름 조회 실패") }
     }
 
     override fun leaveTeam(teamId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
@@ -318,17 +253,20 @@ class FirebaseTeamRepository : TeamRepository {
                 val profileImage = userDoc.getString("profileImage") ?: ""
 
                 db.collection("teams").document(teamId)
-                    .update(mapOf(
-                        "memberIds" to FieldValue.arrayRemove(userId),
-                        "mbtiTags" to FieldValue.arrayRemove(mbti),
-                        "profileImages" to FieldValue.arrayRemove(profileImage)
-                    ))
+                    .update(
+                        mapOf(
+                            "memberIds" to FieldValue.arrayRemove(userId),
+                            "mbtiTags" to FieldValue.arrayRemove(mbti),
+                            "profileImages" to FieldValue.arrayRemove(profileImage)
+                        )
+                    )
                     .addOnSuccessListener {
-                        db.collection("users").document(userId).update("teamId", "")
+                        db.collection("users").document(userId)
+                            .update("teamId", "")
                             .addOnSuccessListener { onSuccess() }
-                            .addOnFailureListener { onFailure(it.message ?: "users.teamId 초기화 실패") }
+                            .addOnFailureListener { onFailure(it.message ?: "teamId 초기화 실패") }
                     }
-                    .addOnFailureListener { onFailure(it.message ?: "팀 탈퇴 처리 실패") }
+                    .addOnFailureListener { onFailure(it.message ?: "팀 탈퇴 실패") }
             }
             .addOnFailureListener { onFailure(it.message ?: "사용자 조회 실패") }
     }
@@ -345,9 +283,9 @@ class FirebaseTeamRepository : TeamRepository {
                         db.collection("teams").document(teamId)
                             .update("teamProfileImage", imageUrl)
                             .addOnSuccessListener { onSuccess(imageUrl) }
-                            .addOnFailureListener { onFailure(it.message ?: "팀 대표 사진 URL 저장 실패") }
+                            .addOnFailureListener { onFailure(it.message ?: "팀 이미지 저장 실패") }
                     }
-                    .addOnFailureListener { onFailure(it.message ?: "다운로드 URL 조회 실패") }
+                    .addOnFailureListener { onFailure(it.message ?: "URL 조회 실패") }
             }
             .addOnFailureListener { onFailure(it.message ?: "이미지 업로드 실패") }
     }
