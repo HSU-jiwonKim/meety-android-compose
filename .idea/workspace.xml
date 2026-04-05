@@ -10,11 +10,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a77fb43c-937d-4d3a-9735-3672a2f0617a" name="Changes" comment="Merge remote-tracking branch 'origin/dev' into feature/team-screen-C">
+      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseFriendRepository.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FriendRepository.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/data/repository/FirebaseTeamRepository.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatListScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatListScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatRoomScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatRoomScreen.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/chat/ChatViewModel.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyTeamScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/MyTeamScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/bugzero/meety/ui/team/TeamViewModel.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,7 +26,7 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[PhysicalDevice::serial=28f539d9e63f7ece]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[LocalEmulator::path=C:\Users\tkdgu\.android\avd\Pixel_2_API_33.avd]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
@@ -46,6 +48,14 @@
         </projects_view>
       </state>
     </system>
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Kotlin Class" />
+        <option value="Kotlin File" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -82,7 +92,7 @@
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
     "com.google.services.firebase.aqiPopupShown": "true",
-    "git-widget-placeholder": "feature/chat-screen-D",
+    "git-widget-placeholder": "feature/team-screen-C",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "C:/Users/gram14/Desktop/meety-android-compose-dev-fixed (2)/app"
   }

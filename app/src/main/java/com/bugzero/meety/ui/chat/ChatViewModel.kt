@@ -20,6 +20,7 @@ import java.util.Locale
 import com.bugzero.meety.ui.chat.UserProfileData
 
 data class UserProfileData(
+    val userId: String = "",
     val name: String = "",
     val age: Int = 0,
     val department: String = "",
@@ -30,6 +31,7 @@ data class UserProfileData(
     val interests: List<String> = emptyList(),
     val foodLikes: List<String> = emptyList(),
     val foodDislikes: List<String> = emptyList(),
+    val profileImageUrl: String = ""
 )
 
 class ChatViewModel(
@@ -301,6 +303,7 @@ class ChatViewModel(
                     .await()
 
                 _selectedUserProfile.value = UserProfileData(
+                    userId = doc.id,
                     name = doc.getString("name") ?: "",
                     age = doc.getLong("age")?.toInt() ?: 0,
                     department = doc.getString("department") ?: "",
@@ -311,6 +314,7 @@ class ChatViewModel(
                     interests = doc.get("interests") as? List<String> ?: emptyList(),
                     foodLikes = doc.get("foodLikes") as? List<String> ?: emptyList(),
                     foodDislikes = doc.get("foodDislikes") as? List<String> ?: emptyList(),
+                    profileImageUrl = ((doc.get("profileImages") as? List<*>)?.firstOrNull() as? String) ?: ""
                 )
             } catch (e: Exception) {
                 android.util.Log.e("ChatVM", "프로필 불러오기 실패: ${e.message}")
@@ -334,42 +338,125 @@ class ChatViewModel(
         viewModelScope.launch {
             _isLoadingFriends.value = true
             try {
-                // chats 컬렉션에서 내가 참여한 1:1 채팅방의 상대방 목록
-                val snapshot = FirebaseFirestore.getInstance()
-                    .collection("chats")
-                    .whereArrayContains("participants", currentUserId)
+                val friendsSnapshot = FirebaseFirestore.getInstance()
+                    .collection("users")
+                    .document(currentUserId)
+                    .collection("friends")
                     .get()
                     .await()
 
-                val friendIds = mutableSetOf<String>()
-                snapshot.documents.forEach { doc ->
-                    @Suppress("UNCHECKED_CAST")
-                    val participants = doc.get("participants") as? List<String> ?: emptyList()
-                    participants.filter { it != currentUserId }.forEach { friendIds.add(it) }
+                val friendIds = friendsSnapshot.documents
+                    .mapNotNull { it.getString("friendUserId") }
+                    .distinct()
+
+                if (friendIds.isEmpty()) {
+                    _friendList.value = emptyList()
+                    _isLoadingFriends.value = false
+                    return@launch
                 }
 
                 val friends = mutableListOf<UserProfileData>()
-                friendIds.forEach { uid ->
+
+                friendIds.forEach { friendId ->
                     try {
                         val userDoc = FirebaseFirestore.getInstance()
                             .collection("users")
-                            .document(uid)
+                            .document(friendId)
                             .get()
                             .await()
-                        friends.add(
-                            UserProfileData(
-                                name = userDoc.getString("name") ?: "알 수 없음",
-                                department = userDoc.getString("department") ?: "",
-                                mbti = userDoc.getString("mbti") ?: "",
+
+                        if (userDoc.exists()) {
+                            val profileImages = userDoc.get("profileImages") as? List<*>
+                            val firstImage = profileImages?.firstOrNull()?.toString() ?: ""
+
+                            friends.add(
+                                UserProfileData(
+                                    userId = userDoc.id,
+                                    name = userDoc.getString("name") ?: "알 수 없음",
+                                    age = userDoc.getLong("age")?.toInt() ?: 0,
+                                    department = userDoc.getString("department") ?: "",
+                                    height = userDoc.getLong("height")?.toInt() ?: 0,
+                                    location = userDoc.getString("location") ?: "",
+                                    mbti = userDoc.getString("mbti") ?: "",
+                                    bio = userDoc.getString("bio") ?: "",
+                                    interests = userDoc.get("interests") as? List<String> ?: emptyList(),
+                                    foodLikes = userDoc.get("foodLikes") as? List<String> ?: emptyList(),
+                                    foodDislikes = userDoc.get("foodDislikes") as? List<String> ?: emptyList(),
+                                    profileImageUrl = firstImage
+                                )
                             )
-                        )
-                    } catch (e: Exception) { /* skip */ }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatVM", "친구 프로필 불러오기 실패: ${e.message}")
+                    }
                 }
-                _friendList.value = friends
+
+                _friendList.value = friends.sortedBy { it.name }
             } catch (e: Exception) {
                 android.util.Log.e("ChatVM", "친구 목록 불러오기 실패: ${e.message}")
+                _friendList.value = emptyList()
+                _errorMessage.value = "친구 목록을 불러오지 못했어요"
             } finally {
                 _isLoadingFriends.value = false
+            }
+        }
+    }
+    fun createOrGetDirectChat(
+        friend: UserProfileData,
+        onSuccess: (chatId: String, roomName: String) -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        if (currentUserId.isBlank()) {
+            onFailure("로그인된 사용자가 없습니다.")
+            return
+        }
+
+        if (friend.userId.isBlank()) {
+            onFailure("상대 사용자 정보가 올바르지 않습니다.")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val ids = listOf(currentUserId, friend.userId).sorted()
+                val chatId = "direct_${ids[0]}_${ids[1]}"
+
+                val chatRef = FirebaseFirestore.getInstance()
+                    .collection("chats")
+                    .document(chatId)
+
+                val chatDoc = chatRef.get().await()
+
+                if (!chatDoc.exists()) {
+                    val now = com.google.firebase.Timestamp.now()
+
+                    val chatData = hashMapOf(
+                        "type" to "direct",
+                        "participants" to ids,
+                        "teamId" to "",
+                        "teamName" to friend.name,
+                        "emoji" to "💬",
+                        "createdAt" to now,
+                        "lastMessage" to "",
+                        "lastMessageAt" to now,
+                        "unreadCount" to 0
+                    )
+
+                    chatRef.set(chatData).await()
+                } else {
+                    val currentParticipants = chatDoc.get("participants") as? List<String> ?: emptyList()
+                    val currentType = chatDoc.getString("type") ?: ""
+
+                    if (currentType != "direct" || currentParticipants.sorted() != ids) {
+                        onFailure("기존 채팅방 데이터가 올바르지 않습니다.")
+                        return@launch
+                    }
+                }
+
+                onSuccess(chatId, friend.name)
+            } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "1:1 채팅방 생성 실패: ${e.message}")
+                onFailure("채팅방 생성에 실패했어요")
             }
         }
     }

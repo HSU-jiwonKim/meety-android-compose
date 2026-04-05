@@ -244,7 +244,18 @@ fun ChatListScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { /* TODO: 1:1 채팅방 열기 */ }
+                                .clickable {
+                                    viewModel.createOrGetDirectChat(
+                                        friend = friend,
+                                        onSuccess = { chatId, roomName ->
+                                            showFriendSheet = false
+                                            onChatClick(chatId, roomName)
+                                        },
+                                        onFailure = { message ->
+                                            android.util.Log.e("ChatListScreen", message)
+                                        }
+                                    )
+                                }
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
