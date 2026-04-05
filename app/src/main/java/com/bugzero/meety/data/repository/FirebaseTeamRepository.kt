@@ -289,4 +289,72 @@ class FirebaseTeamRepository : TeamRepository {
             }
             .addOnFailureListener { onFailure(it.message ?: "이미지 업로드 실패") }
     }
+    fun observeReceivedLikes(
+        onUpdate: (List<ReceivedLikeItem>) -> Unit,
+        onFailure: (String) -> Unit
+    ): com.google.firebase.firestore.ListenerRegistration? {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) { onFailure("로그인된 사용자가 없습니다."); return null }
+
+        var listenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
+
+        db.collection("users").document(currentUserId).get()
+            .addOnSuccessListener { userDoc ->
+                val myTeamId = userDoc.getString("teamId").orEmpty()
+                if (myTeamId.isBlank()) { onUpdate(emptyList()); return@addOnSuccessListener }
+
+                listenerRegistration = db.collection("likes")
+                    .whereEqualTo("toTeamId", myTeamId)
+                    .whereEqualTo("status", "pending")
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) { onFailure(error.message ?: "실시간 구독 실패"); return@addSnapshotListener }
+                        if (snapshot == null) { onUpdate(emptyList()); return@addSnapshotListener }
+
+                        val docs = snapshot.documents
+                        if (docs.isEmpty()) { onUpdate(emptyList()); return@addSnapshotListener }
+
+                        val results = mutableListOf<ReceivedLikeItem>()
+                        var completedCount = 0
+
+                        for (likeDoc in docs) {
+                            val likeId = likeDoc.getString("likeId").orEmpty().ifBlank { likeDoc.id }
+                            val fromUserId = likeDoc.getString("fromUserId").orEmpty()
+                            val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
+                            val createdAt = likeDoc.getLong("createdAt") ?: 0L
+
+                            if (fromUserId.isBlank()) {
+                                completedCount++
+                                if (completedCount == docs.size) onUpdate(results.sortedByDescending { it.createdAt })
+                                continue
+                            }
+
+                            db.collection("users").document(fromUserId).get()
+                                .addOnSuccessListener { senderDoc ->
+                                    results.add(ReceivedLikeItem(
+                                        likeId = likeId,
+                                        fromUserId = fromUserId,
+                                        fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
+                                        fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
+                                        fromUserMbti = senderDoc.getString("mbti").orEmpty(),
+                                        fromUserDepartment = senderDoc.getString("department").orEmpty(),
+                                        fromTeamId = fromTeamId,
+                                        createdAt = createdAt
+                                    ))
+                                    completedCount++
+                                    if (completedCount == docs.size) onUpdate(results.sortedByDescending { it.createdAt })
+                                }
+                                .addOnFailureListener {
+                                    results.add(ReceivedLikeItem(likeId = likeId, fromUserId = fromUserId, fromUserName = "이름 없음", fromTeamId = fromTeamId, createdAt = createdAt))
+                                    completedCount++
+                                    if (completedCount == docs.size) onUpdate(results.sortedByDescending { it.createdAt })
+                                }
+                        }
+                    }
+            }
+            .addOnFailureListener { onFailure(it.message ?: "사용자 정보 조회 실패") }
+
+        return listenerRegistration
+    }
+
 }
