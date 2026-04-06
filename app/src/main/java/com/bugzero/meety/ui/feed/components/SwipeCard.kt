@@ -3,8 +3,6 @@ package com.bugzero.meety.ui.feed.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -17,7 +15,12 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -28,14 +31,16 @@ import com.bugzero.meety.ui.theme.Purple
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * 틴더 스타일의 스와이프 카드
  *
- * - 좌우로 드래그하면 Like/Pass 처리 (임계값 초과 시 카드가 화면 밖으로 날아감)
- * - 임계값 미달 시 spring 애니메이션으로 원위치
- * - 드래그 방향에 따라 LIKE / PASS 오버레이 표시
- * - 탭하면 상세보기
+ * [개선] detectDragGestures → awaitEachGesture 커스텀 제스처 처리기
+ *   - 수평 드래그: 스와이프 (Like/Pass)
+ *   - 수직 드래그: 스크롤로 전달 (카드 내 LazyColumn과 충돌 없음)
+ *   - 탭: 상세보기 (드래그와 별도로 처리)
+ *   - 임계값 진입 시 햅틱 피드백
  */
 @Composable
 fun SwipeCard(
@@ -44,19 +49,24 @@ fun SwipeCard(
     onPass: () -> Unit,
     onInfo: () -> Unit
 ) {
-    // team이 바뀔 때마다 애니메이션 초기화 (새 카드 → 0에서 시작)
-    val offsetXAnim = remember(team.teamId) { Animatable(0f) }
+    val offsetXAnim    = remember(team.teamId) { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()
+    val haptic         = LocalHapticFeedback.current
+    val density        = LocalDensity.current
 
-    val rotation = offsetXAnim.value / FeedConstants.ROTATION_DIVISOR
+    // 8dp를 px로 변환 — 이 이상 움직여야 드래그로 판단
+    val touchSlopPx = with(density) { 8.dp.toPx() }
 
-    // 드래그 비율에 따라 오버레이 투명도 계산 (0% ~ 100%)
+    val rotation     = offsetXAnim.value / FeedConstants.ROTATION_DIVISOR
     val overlayAlpha = (abs(offsetXAnim.value) / (FeedConstants.SWIPE_THRESHOLD * 0.6f)).coerceIn(0f, 1f)
-    val isLiking = offsetXAnim.value > 30f
-    val isPassing = offsetXAnim.value < -30f
+    val isLiking     = offsetXAnim.value > 30f
+    val isPassing    = offsetXAnim.value < -30f
+
+    // 임계값을 넘었는지 추적해 햅틱을 한 번만 발생시킨다
+    var hapticFired by remember(team.teamId) { mutableStateOf(false) }
 
     val colorIndex = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
-    val bgColors = FeedConstants.CardColorPalette[colorIndex]
+    val bgColors   = FeedConstants.CardColorPalette[colorIndex]
 
     Box(
         modifier = Modifier
@@ -67,55 +77,109 @@ fun SwipeCard(
             .clip(RoundedCornerShape(24.dp))
             .background(Color.White)
             .pointerInput(team.teamId) {
-                detectDragGestures(
-                    onDragEnd = {
-                        coroutineScope.launch {
-                            when {
-                                // 임계값 초과 → 카드 날아가기
-                                offsetXAnim.value > FeedConstants.SWIPE_THRESHOLD -> {
-                                    offsetXAnim.animateTo(
-                                        targetValue = 3000f,
-                                        animationSpec = tween(300, easing = FastOutLinearInEasing)
-                                    )
-                                    onLike()
+                // awaitEachGesture: 각 포인터 다운마다 독립적인 제스처 세션
+                awaitPointerEventScope {
+                    while (true) {
+                        // 1) 첫 손가락 내려올 때까지 대기
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var totalDx = 0f
+                        var totalDy = 0f
+                        var isDragging = false
+                        var isVertical = false
+                        hapticFired = false
+
+                        // 2) 손가락이 올라올 때까지 이벤트 루프
+                        loop@ while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                                ?: break@loop
+
+                            when (event.type) {
+                                PointerEventType.Move -> {
+                                    val dx = change.position.x - change.previousPosition.x
+                                    val dy = change.position.y - change.previousPosition.y
+                                    totalDx += dx
+                                    totalDy += dy
+
+                                    if (!isDragging) {
+                                        val dist = sqrt(totalDx * totalDx + totalDy * totalDy)
+                                        if (dist > touchSlopPx) {
+                                            isDragging = true
+                                            isVertical = abs(totalDy) > abs(totalDx)
+                                        }
+                                    }
+
+                                    if (isDragging && !isVertical) {
+                                        change.consume()
+
+                                        // 임계값 통과 시 햅틱 (한 번만)
+                                        val nextVal = offsetXAnim.value + dx
+                                        val crossedThreshold =
+                                            (nextVal > FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value <= FeedConstants.SWIPE_THRESHOLD) ||
+                                            (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
+
+                                        if (crossedThreshold && !hapticFired) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            hapticFired = true
+                                        }
+
+                                        coroutineScope.launch {
+                                            offsetXAnim.snapTo(offsetXAnim.value + dx)
+                                        }
+                                    }
                                 }
-                                offsetXAnim.value < -FeedConstants.SWIPE_THRESHOLD -> {
-                                    offsetXAnim.animateTo(
-                                        targetValue = -3000f,
-                                        animationSpec = tween(300, easing = FastOutLinearInEasing)
-                                    )
-                                    onPass()
+
+                                PointerEventType.Release -> {
+                                    if (isDragging && !isVertical) {
+                                        // 드래그 종료 — 임계값에 따라 날아가거나 원위치
+                                        coroutineScope.launch {
+                                            when {
+                                                offsetXAnim.value > FeedConstants.SWIPE_THRESHOLD -> {
+                                                    offsetXAnim.animateTo(
+                                                        3000f,
+                                                        animationSpec = tween(300, easing = FastOutLinearInEasing)
+                                                    )
+                                                    onLike()
+                                                }
+                                                offsetXAnim.value < -FeedConstants.SWIPE_THRESHOLD -> {
+                                                    offsetXAnim.animateTo(
+                                                        -3000f,
+                                                        animationSpec = tween(300, easing = FastOutLinearInEasing)
+                                                    )
+                                                    onPass()
+                                                }
+                                                else -> {
+                                                    offsetXAnim.animateTo(
+                                                        0f,
+                                                        animationSpec = spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness    = Spring.StiffnessMedium
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else if (!isDragging) {
+                                        // 드래그가 아니었으면 탭 → 상세보기
+                                        onInfo()
+                                    }
+                                    break@loop
                                 }
-                                // 임계값 미달 → 통통 튀며 원위치
-                                else -> {
-                                    offsetXAnim.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessMedium
-                                        )
-                                    )
-                                }
+
+                                else -> break@loop
                             }
                         }
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        coroutineScope.launch {
-                            offsetXAnim.snapTo(offsetXAnim.value + dragAmount.x)
-                        }
                     }
-                )
+                }
             }
-            .clickable { onInfo() }
     ) {
         // ── 배경: 이미지 있으면 이미지, 없으면 그라데이션 ──
         if (team.teamProfileImage.isNotBlank()) {
             coil.compose.AsyncImage(
-                model = team.teamProfileImage,
+                model              = team.teamProfileImage,
                 contentDescription = "팀 대표 사진",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                modifier           = Modifier.fillMaxSize(),
+                contentScale       = androidx.compose.ui.layout.ContentScale.Crop
             )
         } else {
             Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
@@ -128,7 +192,7 @@ fun SwipeCard(
             )
         )
 
-        // ── LIKE 오버레이 (오른쪽으로 드래그) ──
+        // ── LIKE 오버레이 ──
         if (isLiking) {
             Box(
                 modifier = Modifier
@@ -139,17 +203,11 @@ fun SwipeCard(
                     .background(Color(0xFF4CAF50).copy(alpha = 0.12f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
-                Text(
-                    text = "LIKE",
-                    color = Color(0xFF4CAF50),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 24.sp,
-                    letterSpacing = 2.sp
-                )
+                Text("LIKE", color = Color(0xFF4CAF50), fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 2.sp)
             }
         }
 
-        // ── PASS 오버레이 (왼쪽으로 드래그) ──
+        // ── PASS 오버레이 ──
         if (isPassing) {
             Box(
                 modifier = Modifier
@@ -160,35 +218,23 @@ fun SwipeCard(
                     .background(FeedConstants.PassRed.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
-                Text(
-                    text = "PASS",
-                    color = FeedConstants.PassRed,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 24.sp,
-                    letterSpacing = 2.sp
-                )
+                Text("PASS", color = FeedConstants.PassRed, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 2.sp)
             }
         }
 
-        // ── "탭하여 자세히 보기" 힌트 (스와이프 중이 아닐 때만) ──
+        // ── "탭하여 자세히 보기" 힌트 ──
         if (!isLiking && !isPassing) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(end = 16.dp, top = 16.dp)
                     .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
-                    .clickable { onInfo() }
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("👆", fontSize = 13.sp)
                     Spacer(Modifier.width(4.dp))
-                    Text(
-                        "탭하여 자세히 보기",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("탭하여 자세히 보기", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -200,24 +246,14 @@ fun SwipeCard(
                 .padding(24.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    team.teamName,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                Text(team.teamName, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
                         .background(Purple.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        "${team.memberIds.size}명",
-                        fontSize = 13.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("${team.memberIds.size}명", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(4.dp))
