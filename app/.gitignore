@@ -1,0 +1,31 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Build directories
+/build
+app/build
+
+# Local configuration file
+local.properties
+
+# Gradle files
+.gradle/
+gradle/
+
+# Log Files
+*.log
+
+# Android Studio
+.idea/
+*.iml
+*.hprof
+
+# Keystore files
+*.jks
+*.keystore
+
+# Firebase
+google-services.json
