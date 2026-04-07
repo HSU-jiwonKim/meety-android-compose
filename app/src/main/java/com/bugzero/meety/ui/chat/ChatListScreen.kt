@@ -32,11 +32,12 @@ fun ChatListScreen(
 ) {
     val currentUser = FirebaseAuth.getInstance().currentUser
 
+
     LaunchedEffect(currentUser?.uid) {
         if (currentUser != null) {
-            viewModel.refreshForAuthState()
+            //viewModel.refreshForAuthState()
         } else {
-            viewModel.clearError()
+            //viewModel.clearError()
         }
     }
 
