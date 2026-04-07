@@ -31,6 +31,37 @@ data class Like(
  *   - 좋아요한 팀의 태그/MBTI: 점수 +
  *   - 패스한 팀의 태그/MBTI: 점수 -
  */
+/**
+ * 팀 상세화면에서 팀원 프로필을 표시하기 위한 모델
+ *
+ * users 컬렉션에서 필요한 필드만 선별해 가져온다.
+ */
+data class MemberProfile(
+    val userId: String = "",
+    val name: String = "",
+    val age: Int = 0,
+    val department: String = "",
+    val mbti: String = "",
+    val bio: String = "",
+    val height: Int = 0,
+    val location: String = "",
+    val profileImages: List<String> = emptyList(),
+    val interests: List<String> = emptyList(),
+    val foodLikes: List<String> = emptyList()
+)
+
+/**
+ * 사용자가 어떤 성향의 팀을 선호/비선호하는지 누적 점수를 저장하는 모델
+ *
+ * Firestore 컬렉션: "userPreferences"
+ *
+ * 앱을 껐다 켜도 AI 추천 성향이 유지된다.
+ * 나중에 Gemini AI가 이 점수를 참고해 최적의 팀을 추천할 수 있다.
+ *
+ * 점수 부여 기준:
+ *   - 좋아요한 팀의 태그/MBTI: 점수 +
+ *   - 패스한 팀의 태그/MBTI: 점수 -
+ */
 data class UserPreference(
     val userId: String = "",
     val tagScores: Map<String, Int> = emptyMap(),     // e.g. {"활발한": 5, "조용한": -2}

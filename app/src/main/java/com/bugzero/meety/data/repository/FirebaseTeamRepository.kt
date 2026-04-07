@@ -65,9 +65,9 @@ class FirebaseTeamRepository : TeamRepository {
                             .set(chatData)
                             .addOnSuccessListener {
                                 db.collection("users").document(userId)
-                                    .update("teamId", teamId)
+                                    .update("teamIds", FieldValue.arrayUnion(teamId))
                                     .addOnSuccessListener { onSuccess(teamId) }
-                                    .addOnFailureListener { onFailure(it.message ?: "users.teamId 업데이트 실패") }
+                                    .addOnFailureListener { onFailure(it.message ?: "users.teamIds 업데이트 실패") }
                             }
                             .addOnFailureListener { onFailure(it.message ?: "팀 채팅방 생성 실패") }
                     }
@@ -187,7 +187,7 @@ class FirebaseTeamRepository : TeamRepository {
                             ))
                             .addOnSuccessListener {
                                 db.collection("users").document(fromUserId)
-                                    .update("teamId", toTeamId)
+                                    .update("teamIds", FieldValue.arrayUnion(toTeamId))
                                     .addOnSuccessListener {
                                         db.collection("likes").document(likeId)
                                             .update(mapOf(
@@ -223,7 +223,7 @@ class FirebaseTeamRepository : TeamRepository {
                                             }
                                             .addOnFailureListener { onFailure(it.message ?: "좋아요 상태 업데이트 실패") }
                                     }
-                                    .addOnFailureListener { onFailure(it.message ?: "사용자 teamId 업데이트 실패") }
+                                    .addOnFailureListener { onFailure(it.message ?: "사용자 teamIds 업데이트 실패") }
                             }
                             .addOnFailureListener { onFailure(it.message ?: "팀원 추가 실패") }
                     }
@@ -271,10 +271,11 @@ class FirebaseTeamRepository : TeamRepository {
                         "profileImages" to FieldValue.arrayRemove(profileImage)
                     ))
                     .addOnSuccessListener {
+                        // 변경: update("teamId", "") → arrayRemove(teamId)
                         db.collection("users").document(userId)
-                            .update("teamId", "")
+                            .update("teamIds", FieldValue.arrayRemove(teamId))
                             .addOnSuccessListener { onSuccess() }
-                            .addOnFailureListener { onFailure(it.message ?: "teamId 초기화 실패") }
+                            .addOnFailureListener { onFailure(it.message ?: "teamIds 제거 실패") }
                     }
                     .addOnFailureListener { onFailure(it.message ?: "팀 탈퇴 실패") }
             }

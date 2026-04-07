@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -13,7 +14,10 @@ import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bugzero.meety.ui.feed.components.*
 import com.bugzero.meety.ui.team.Team
 import com.bugzero.meety.ui.theme.*
+import com.bugzero.meety.ui.feed.TeamActionStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,13 +89,13 @@ fun FeedScreen(
                                 onReset        = { viewModel.fetchRemoteTeams() }
                             )
                         } else {
-                            // 목록 모드: pull-to-refresh
+                            // 목록 모드: pull-to-refresh (allTeams = 전체 보기)
                             PullToRefreshBox(
-                                isRefreshing = uiState.isRefreshing,
-                                onRefresh    = { viewModel.fetchRemoteTeams(isRefresh = true) },
+                                isRefreshing = uiState.isLoadingAllTeams,
+                                onRefresh    = { viewModel.fetchAllTeams(loadMore = false) },
                                 modifier     = Modifier.fillMaxSize()
                             ) {
-                                if (uiState.teams.isEmpty()) {
+                                if (uiState.allTeams.isEmpty() && !uiState.isLoadingAllTeams) {
                                     Box(
                                         modifier         = Modifier.fillMaxSize(),
                                         contentAlignment = Alignment.Center
@@ -103,13 +108,18 @@ fun FeedScreen(
                                                 modifier = Modifier.size(48.dp)
                                             )
                                             Spacer(Modifier.height(12.dp))
-                                            Text("조건에 맞는 팀이 없어요", color = Gray500, fontSize = 14.sp)
+                                            Text("활성 팀이 없어요", color = Gray500, fontSize = 14.sp)
                                         }
                                     }
                                 } else {
                                     ListContent(
-                                        teams       = uiState.teams,
-                                        onTeamClick = { viewModel.selectTeam(it) }
+                                        teams         = uiState.allTeams,
+                                        likedTeamIds  = uiState.likedTeamIds,
+                                        passedTeamIds = uiState.passedTeamIds,
+                                        myTeamId      = uiState.myTeamId,
+                                        onTeamClick   = { viewModel.selectTeam(it) },
+                                        onLoadMore    = { viewModel.fetchAllTeams(loadMore = true) },
+                                        hasMore       = uiState.allTeamsHasMore
                                     )
                                 }
                             }
@@ -125,12 +135,30 @@ fun FeedScreen(
             enter   = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit    = slideOutVertically(targetOffsetY = { it }) + fadeOut()
         ) {
+            // selectedTeam의 액션 상태 계산 (MY_TEAM > LIKED > PASSED > NONE)
+            val selectedStatus = uiState.selectedTeam?.let { team ->
+                when {
+                    uiState.myTeamId.isNotEmpty() && team.teamId == uiState.myTeamId ->
+                        TeamActionStatus.MY_TEAM
+                    uiState.likedTeamIds.contains(team.teamId) ->
+                        TeamActionStatus.LIKED
+                    uiState.passedTeamIds.contains(team.teamId) ->
+                        TeamActionStatus.PASSED
+                    else -> TeamActionStatus.NONE
+                }
+            } ?: TeamActionStatus.NONE
+
             MeetingDetailScreen(
-                team            = uiState.selectedTeam,
-                userPreferences = uiState.userPreferences,
-                onLikeClick     = { viewModel.onSelectedTeamLike() },
-                onPassClick     = { viewModel.onSelectedTeamPass() },
-                onBackClick     = { viewModel.clearSelectedTeam() }
+                team                 = uiState.selectedTeam,
+                userPreferences      = uiState.userPreferences,
+                status               = selectedStatus,
+                memberProfiles       = uiState.memberProfiles,
+                isMembersLoading     = uiState.isMembersLoading,
+                onLikeClick          = { viewModel.onSelectedTeamLike() },
+                onPassClick          = { viewModel.onSelectedTeamPass() },
+                onCancelLike         = { viewModel.onCancelLikeFromDetail() },
+                onSendLikeFromPassed = { viewModel.onSendLikeFromPassed() },
+                onBackClick          = { viewModel.clearSelectedTeam() }
             )
         }
     }
@@ -259,15 +287,42 @@ private fun RecommendContent(
 @Composable
 private fun ListContent(
     teams: List<Team>,
-    onTeamClick: (String) -> Unit
+    likedTeamIds: Set<String>,
+    passedTeamIds: Set<String>,
+    myTeamId: String,
+    onTeamClick: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    hasMore: Boolean
 ) {
+    val listState = rememberLazyListState()
+
+    // 마지막 아이템 근처에 도달하면 추가 로딩
+    val shouldLoadMore = remember(listState) {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = listState.layoutInfo.totalItemsCount
+            total > 0 && lastVisible >= total - 3
+        }
+    }
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value && hasMore) onLoadMore()
+    }
+
     LazyColumn(
+        state          = listState,
         modifier       = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(teams) { team ->
-            TeamListItem(team, onTeamClick = onTeamClick)
+            // 우선순위: MY_TEAM > LIKED > PASSED > NONE
+            val status = when {
+                myTeamId.isNotEmpty() && team.teamId == myTeamId -> TeamActionStatus.MY_TEAM
+                likedTeamIds.contains(team.teamId)               -> TeamActionStatus.LIKED
+                passedTeamIds.contains(team.teamId)              -> TeamActionStatus.PASSED
+                else                                             -> TeamActionStatus.NONE
+            }
+            TeamListItem(team = team, onTeamClick = onTeamClick, status = status)
         }
     }
 }

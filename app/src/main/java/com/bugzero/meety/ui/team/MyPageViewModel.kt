@@ -10,7 +10,6 @@ import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-
 data class MyPageScreenState(
     val isLoading: Boolean = true,
     val uiState: UserProfileUiState? = null,
@@ -26,7 +25,6 @@ class MyPageViewModel : ViewModel() {
     private val _screenState = MutableStateFlow(MyPageScreenState())
     val screenState: StateFlow<MyPageScreenState> = _screenState
 
-    // 실시간 구독 해제를 위해 리스너 저장
     private var listenerRegistration: ListenerRegistration? = null
 
     init {
@@ -34,26 +32,34 @@ class MyPageViewModel : ViewModel() {
     }
 
     fun loadMyProfile() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+
         val userId = auth.currentUser?.uid
 
         if (userId == null) {
             _screenState.value = MyPageScreenState(
                 isLoading = false,
                 uiState = null,
-                errorMessage = "로그인된 사용자가 없습니다."
+                errorMessage = null
             )
             return
         }
 
         _screenState.value = MyPageScreenState(isLoading = true)
 
-        // 기존 리스너 제거 후 새로 등록
-        listenerRegistration?.remove()
-
-        // 실시간 구독 — Firestore 문서 변경 시 자동 반영
         listenerRegistration = firestore.collection("users")
             .document(userId)
             .addSnapshotListener { document, error ->
+                if (auth.currentUser == null) {
+                    _screenState.value = MyPageScreenState(
+                        isLoading = false,
+                        uiState = null,
+                        errorMessage = null
+                    )
+                    return@addSnapshotListener
+                }
+
                 if (error != null) {
                     _screenState.value = MyPageScreenState(
                         isLoading = false,
@@ -122,7 +128,7 @@ class MyPageViewModel : ViewModel() {
         if (userId == null) {
             _screenState.value = _screenState.value.copy(
                 isLoading = false,
-                errorMessage = "로그인된 사용자가 없습니다."
+                errorMessage = null
             )
             return
         }
@@ -149,7 +155,6 @@ class MyPageViewModel : ViewModel() {
                                     errorMessage = e.message ?: "프로필 사진 저장에 실패했습니다."
                                 )
                             }
-                        // 성공 시 별도 loadMyProfile() 호출 불필요 — 스냅샷 리스너가 자동 감지
                     }
                     .addOnFailureListener { e ->
                         _screenState.value = _screenState.value.copy(
@@ -166,9 +171,13 @@ class MyPageViewModel : ViewModel() {
             }
     }
 
-    // ViewModel 종료 시 리스너 해제 (메모리 누수 방지)
+    fun clearListener() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
+    }
+
     override fun onCleared() {
         super.onCleared()
-        listenerRegistration?.remove()
+        clearListener()
     }
 }

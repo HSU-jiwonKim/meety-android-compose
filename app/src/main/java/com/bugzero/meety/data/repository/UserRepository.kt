@@ -76,7 +76,7 @@ class UserRepository {
                             "isVerified" to false,
                             "isAdmin" to false,
                             "isBanned" to false,
-                            "teamId" to "",
+                            "teamIds" to listOf<String>(), // 변경: String → List<String>
                             "fcmToken" to "",
                             "studentIdImageUrl" to "",
                             "profileImages" to listOf<String>(),
