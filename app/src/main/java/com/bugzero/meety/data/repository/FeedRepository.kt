@@ -1,6 +1,7 @@
 package com.bugzero.meety.data.repository
 
 import com.bugzero.meety.ui.feed.Like
+import com.bugzero.meety.ui.feed.MemberProfile
 import com.bugzero.meety.ui.feed.UserPreference
 import com.bugzero.meety.ui.team.Team
 import com.google.firebase.auth.FirebaseAuth
@@ -36,8 +37,11 @@ class FeedRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
 
-    // 페이지네이션 커서
+    // 페이지네이션 커서 — RECOMMEND 탭 (필터링된 목록)
     private var lastDocument: DocumentSnapshot? = null
+
+    // 페이지네이션 커서 — LIST 탭 (전체 목록)
+    private var lastAllDocument: DocumentSnapshot? = null
 
     // =====================
     // 팀 목록 조회
@@ -106,6 +110,58 @@ class FeedRepository(
     }
 
     /**
+     * 전체보기 탭 전용: 좋아요·패스·내 팀 여부와 무관하게 활성 팀 전체를 페이지네이션으로 가져온다.
+     *
+     * @param loadMore true이면 이전 페이지 이후부터 조회
+     * @return Pair<팀 목록, 서버에 더 있는지 여부>
+     */
+    suspend fun fetchAllActiveTeams(loadMore: Boolean = false): Result<Pair<List<Team>, Boolean>> {
+        return try {
+            if (!loadMore) lastAllDocument = null
+
+            var query = db.collection("teams")
+                .whereEqualTo("status", "active")
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .limit(PAGE_SIZE.toLong())
+
+            if (loadMore && lastAllDocument != null) {
+                query = query.startAfter(lastAllDocument!!)
+            }
+
+            val snapshot = query.get().await()
+
+            if (snapshot.documents.isNotEmpty()) {
+                lastAllDocument = snapshot.documents.last()
+            }
+
+            // 필터링 없이 전체 반환
+            val teams = snapshot.documents.mapNotNull { doc ->
+                doc.toObject(Team::class.java)
+            }
+
+            val hasMore = snapshot.documents.size >= PAGE_SIZE
+
+            Result.success(Pair(teams, hasMore))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 현재 로그인된 유저가 소속된 팀 ID를 반환한다.
+     * 소속 팀이 없거나 오류 시 빈 문자열을 반환한다.
+     */
+    suspend fun fetchMyTeamId(): String {
+        val userId = auth.currentUser?.uid ?: return ""
+        return try {
+            val doc = db.collection("users").document(userId).get().await()
+            doc.getString("teamId") ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    /**
      * teams 컬렉션의 실시간 변경사항을 Flow로 받는다.
      */
     fun observeActiveTeams(): Flow<Result<List<Team>>> = callbackFlow {
@@ -150,7 +206,7 @@ class FeedRepository(
             val userId = auth.currentUser?.uid
                 ?: return Result.failure(Exception("로그인된 사용자가 없습니다."))
 
-            val myTeamId = fetchMyTeamId(userId)
+            val myTeamId = fetchMyTeamIdForUser(userId)
 
             val like = Like(
                 likeId = likeId,
@@ -303,6 +359,87 @@ class FeedRepository(
     }
 
     // =====================
+    // 팀원 프로필
+    // =====================
+
+    /**
+     * memberIds 목록에 해당하는 유저 프로필을 Firestore에서 일괄 조회한다.
+     * 개별 실패는 무시하고 성공한 것만 반환한다.
+     */
+    suspend fun fetchMemberProfiles(memberIds: List<String>): Result<List<MemberProfile>> {
+        return try {
+            if (memberIds.isEmpty()) return Result.success(emptyList())
+            val profiles = memberIds.mapNotNull { userId ->
+                try {
+                    val doc = db.collection("users").document(userId).get().await()
+                    if (!doc.exists()) return@mapNotNull null
+                    MemberProfile(
+                        userId        = userId,
+                        name          = doc.getString("name") ?: "",
+                        age           = doc.getLong("age")?.toInt() ?: 0,
+                        department    = doc.getString("department") ?: "",
+                        mbti          = doc.getString("mbti") ?: "",
+                        bio           = doc.getString("bio") ?: "",
+                        height        = doc.getLong("height")?.toInt() ?: 0,
+                        location      = doc.getString("location") ?: "",
+                        profileImages = (doc.get("profileImages") as? List<*>)
+                                            ?.filterIsInstance<String>() ?: emptyList(),
+                        interests     = (doc.get("interests") as? List<*>)
+                                            ?.filterIsInstance<String>() ?: emptyList(),
+                        foodLikes     = (doc.get("foodLikes") as? List<*>)
+                                            ?.filterIsInstance<String>() ?: emptyList()
+                    )
+                } catch (e: Exception) { null }
+            }
+            Result.success(profiles)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * toTeamId로 likes 컬렉션을 조회해 해당 좋아요 문서를 삭제한다.
+     * (상세화면에서 좋아요 취소 시 사용 — likeId를 모를 때)
+     */
+    /**
+     * toTeamId로 likes 컬렉션을 조회해 해당 좋아요 문서를 삭제한다.
+     *
+     * Composite Index 이슈를 피하기 위해 fromUserId 단일 쿼리 후
+     * 클라이언트에서 toTeamId를 필터링한다.
+     * 한 유저가 보낸 좋아요 수는 제한적이므로 성능 문제 없음.
+     */
+    suspend fun cancelLikeByTeamId(toTeamId: String): Result<Unit> {
+        return try {
+            val userId = auth.currentUser?.uid
+                ?: return Result.failure(Exception("로그인된 사용자가 없습니다."))
+
+            val snapshot = db.collection("likes")
+                .whereEqualTo("fromUserId", userId)
+                .get().await()
+
+            snapshot.documents
+                .filter { it.getString("toTeamId") == toTeamId }
+                .forEach { it.reference.delete().await() }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 패스했던 팀에 좋아요를 보낸다.
+     *
+     * 1) 패스 기록 역산 (reversePreferenceScores)
+     * 2) 신규 좋아요 저장 (saveLike)
+     */
+    suspend fun convertPassToLike(team: Team, likeId: String): Result<Unit> {
+        val reverseResult = reversePreferenceScores(team, wasLike = false)
+        if (reverseResult.isFailure) return reverseResult
+        return saveLike(team, likeId)
+    }
+
+    // =====================
     // 프로필
     // =====================
 
@@ -328,7 +465,7 @@ class FeedRepository(
         }
     }
 
-    private suspend fun fetchMyTeamId(userId: String): String {
+    private suspend fun fetchMyTeamIdForUser(userId: String): String {
         return try {
             val doc = db.collection("users").document(userId).get().await()
             doc.getString("teamId") ?: ""
