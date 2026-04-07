@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- 기본 앱 테마 (기존 그대로) -->
     <style name="Theme.Meetycompose" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 시스템 스플래시 화면 테마 (Android 12+) -->
+    <style name="Theme.Meetycompose.Splash" parent="Theme.Meetycompose">
+        <item name="android:windowSplashScreenBackground">#FF7E22CE</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_meety_splash</item>
+    </style>
+
 </resources>

@@ -33,7 +33,10 @@ fun MyPageRoute(
     onScheduleClick: () -> Unit = {},
 
     // 🔹 비로그인 시 처리
-    onRequireLogin: () -> Unit = {}
+    onRequireLogin: () -> Unit = {},
+
+    // 🔹 로그아웃
+    onLogoutClick: () -> Unit = {}
 ) {
     val screenState by viewModel.screenState.collectAsState()
     val currentUser = FirebaseAuth.getInstance().currentUser
@@ -83,7 +86,8 @@ fun MyPageRoute(
                 onSearchClick = onSearchClick,
                 onNotificationClick = onNotificationClick,
                 onEditProfileClick = onEditProfileClick,
-                onScheduleClick = onScheduleClick
+                onScheduleClick = onScheduleClick,
+                onLogoutClick = onLogoutClick
             )
         }
 
