@@ -315,39 +315,55 @@ fun NavGraph(
                 )
             }
             composable(Routes.MY_PAGE) {
-                MyPageRoute(
-                    onHomeClick = {
-                        navController.navigate(Routes.FEED) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) {
+                    LaunchedEffect(Unit) {
+                        navController.navigate(Routes.ONBOARDING) {
+                            popUpTo(0) { inclusive = true }
                             launchSingleTop = true
-                            restoreState = true
                         }
-                    },
-                    onMatchingClick = {
-                        navController.navigate(Routes.MY_TEAM) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
+                    }
+                    Box(modifier = Modifier.fillMaxSize())
+                } else {
+                    MyPageRoute(
+                        onHomeClick = {
+                            navController.navigate(Routes.FEED) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onMatchingClick = {
+                            navController.navigate(Routes.MY_TEAM) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onCreateTeamClick = {
+                            navController.navigate(Routes.MEETING_CREATE) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onChatClick = {
+                            navController.navigate(Routes.CHAT_LIST) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onProfileClick = {},
+                        onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) },
+                        onScheduleClick = { navController.navigate(Routes.SCHEDULE_SYNC) },
+                        onRequireLogin = {
+                            navController.navigate(Routes.ONBOARDING) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
-                    },
-                    onCreateTeamClick = {
-                        navController.navigate(Routes.MEETING_CREATE) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onChatClick = {
-                        navController.navigate(Routes.CHAT_LIST) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onProfileClick = {},
-                    onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) },
-                    onScheduleClick = { navController.navigate(Routes.SCHEDULE_SYNC) }
-                )
+                    )
+                }
             }
             composable(Routes.MEETING_CREATE) {
                 MeetingCreateScreen(
@@ -384,24 +400,44 @@ fun NavGraph(
                 )
             }
             composable(Routes.CHAT_LIST) {
-                ChatListScreen(
-                    onChatClick = { chatId, roomName ->
-                        navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName")
+                if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) {
+                    LaunchedEffect(Unit) {
+                        navController.navigate(Routes.ONBOARDING) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
-                )
+                    Box(modifier = Modifier.fillMaxSize())
+                } else {
+                    ChatListScreen(
+                        onChatClick = { chatId, roomName ->
+                            navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName")
+                        }
+                    )
+                }
             }
             composable(
                 route = "${Routes.CHAT_ROOM}/{chatId}?roomName={roomName}",
                 arguments = listOf(
-                    navArgument("chatId")   { type = NavType.StringType; defaultValue = "" },
+                    navArgument("chatId") { type = NavType.StringType; defaultValue = "" },
                     navArgument("roomName") { type = NavType.StringType; defaultValue = "채팅방" }
                 )
             ) { backStackEntry ->
-                ChatRoomScreen(
-                    chatId      = backStackEntry.arguments?.getString("chatId") ?: "",
-                    roomName    = backStackEntry.arguments?.getString("roomName") ?: "채팅방",
-                    onBackClick = { navController.popBackStack() }
-                )
+                if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) {
+                    LaunchedEffect(Unit) {
+                        navController.navigate(Routes.ONBOARDING) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                    Box(modifier = Modifier.fillMaxSize())
+                } else {
+                    ChatRoomScreen(
+                        chatId = backStackEntry.arguments?.getString("chatId") ?: "",
+                        roomName = backStackEntry.arguments?.getString("roomName") ?: "채팅방",
+                        onBackClick = { navController.popBackStack() }
+                    )
+                }
             }
             composable(Routes.SCHEDULE_SYNC) {
                 ScheduleSyncScreen(
