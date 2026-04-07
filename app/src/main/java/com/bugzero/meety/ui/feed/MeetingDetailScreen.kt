@@ -14,9 +14,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.bugzero.meety.ui.team.Team
 import com.bugzero.meety.ui.theme.*
 
@@ -73,19 +75,13 @@ fun MeetingDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedButton(
-                    onClick = {
-                        onPassClick()
-                        onBackClick()
-                    },
+                    onClick = { onPassClick() },
                     modifier = Modifier.weight(1f).height(52.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) { Text("패스", color = Gray500, fontWeight = FontWeight.Bold) }
 
                 Button(
-                    onClick = {
-                        onLikeClick()
-                        onBackClick()
-                    },
+                    onClick = { onLikeClick() },
                     modifier = Modifier.weight(2f).height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Purple)
@@ -113,24 +109,39 @@ fun MeetingDetailScreen(
                         modifier = Modifier.padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // 팀 이름 이니셜 아바타
+                        // 팀 프로필 아바타 — 사진이 있으면 사진, 없으면 이니셜 그라데이션
                         val colorIndex = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
                         val avatarColors = FeedConstants.CardColorPalette[colorIndex]
                         Box(
                             modifier = Modifier
                                 .size(100.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    androidx.compose.ui.graphics.Brush.verticalGradient(avatarColors)
-                                ),
+                                .clip(CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = team.teamName.firstOrNull()?.toString() ?: "T",
-                                fontSize = 40.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                            if (team.teamProfileImage.isNotBlank()) {
+                                AsyncImage(
+                                    model              = team.teamProfileImage,
+                                    contentDescription = "팀 대표 사진",
+                                    modifier           = Modifier.fillMaxSize(),
+                                    contentScale       = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            androidx.compose.ui.graphics.Brush.verticalGradient(avatarColors)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text       = team.teamName.firstOrNull()?.toString() ?: "T",
+                                        fontSize   = 40.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color      = Color.White
+                                    )
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(team.teamName, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Gray900)
@@ -140,7 +151,10 @@ fun MeetingDetailScreen(
                             Text(team.description, fontSize = 14.sp, color = Gray700)
                             Spacer(modifier = Modifier.height(8.dp))
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement   = Arrangement.spacedBy(6.dp)
+                        ) {
                             team.tags.forEach { tag ->
                                 Box(
                                     modifier = Modifier
@@ -200,7 +214,10 @@ fun MeetingDetailScreen(
                                 color = Gray900
                             )
                             Spacer(modifier = Modifier.height(12.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement   = Arrangement.spacedBy(6.dp)
+                            ) {
                                 team.mbtiTags.forEach { mbti ->
                                     Box(
                                         modifier = Modifier
@@ -209,9 +226,9 @@ fun MeetingDetailScreen(
                                     ) {
                                         Text(
                                             mbti,
-                                            fontSize = 14.sp,
+                                            fontSize   = 14.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Purple
+                                            color      = Purple
                                         )
                                     }
                                 }

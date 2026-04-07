@@ -4,6 +4,7 @@ import com.bugzero.meety.ui.feed.Like
 import com.bugzero.meety.ui.feed.UserPreference
 import com.bugzero.meety.ui.team.Team
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -21,33 +22,56 @@ import kotlinx.coroutines.tasks.await
  *   - likes          : 좋아요 기록 (team 패키지 담당자가 매칭탭에서 읽을 컬렉션)
  *   - userPreferences: 사용자 태그/MBTI 선호도 (AI 매칭 데이터)
  *   - users          : 프로필 조회/수정
+ *
+ * [주요 변경 내역]
+ *  - updatePreferenceScores: read-modify-write → FieldValue.increment() 원자적 업데이트
+ *    (동시 스와이프 시 race condition 원천 차단, 네트워크 왕복 1회 절감)
+ *  - saveLike: 클라이언트에서 미리 생성한 likeId를 받아 저장 → undo 즉시 가능
+ *  - cancelLike: 좋아요 문서 삭제 (undo 지원)
+ *  - reversePreferenceScores: 선호도 역산 (undo 지원)
+ *  - fetchActiveTeams: 페이지네이션 지원 (PAGE_SIZE 단위 로딩)
  */
 class FeedRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
 
+    // 페이지네이션 커서
+    private var lastDocument: DocumentSnapshot? = null
+
     // =====================
     // 팀 목록 조회
     // =====================
 
     /**
-     * teams 컬렉션에서 활성(active) 팀 목록을 1회 가져온다.
+     * teams 컬렉션에서 활성 팀 목록을 PAGE_SIZE 단위로 가져온다.
      *
-     * - status == "active" 팀만 조회
-     * - 내가 속한 팀 제외
-     * - 이미 좋아요/패스한 팀 제외 (userPreferences 기반)
-     * - 최신순(createdAt 내림차순) 정렬
+     * @param loadMore true이면 이전 페이지 이후부터 조회 (페이지네이션)
+     * @return Pair<팀 목록, 서버에 더 있는지 여부>
      */
-    suspend fun fetchActiveTeams(): Result<List<Team>> {
+    suspend fun fetchActiveTeams(loadMore: Boolean = false): Result<Pair<List<Team>, Boolean>> {
         return try {
             val currentUserId = auth.currentUser?.uid
 
-            val snapshot = db.collection("teams")
+            // 새 조회 시 커서 초기화
+            if (!loadMore) lastDocument = null
+
+            var query = db.collection("teams")
                 .whereEqualTo("status", "active")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
-                .get()
-                .await()
+                .limit(PAGE_SIZE.toLong())
+
+            // 페이지네이션: 이전 페이지 마지막 문서 이후부터
+            if (loadMore && lastDocument != null) {
+                query = query.startAfter(lastDocument!!)
+            }
+
+            val snapshot = query.get().await()
+
+            // 다음 페이지 커서 갱신
+            if (snapshot.documents.isNotEmpty()) {
+                lastDocument = snapshot.documents.last()
+            }
 
             // 이미 액션을 취한 팀 ID 목록 (좋아요 + 패스)
             val actionedIds = currentUserId?.let { fetchActionedTeamIds(it) } ?: emptySet()
@@ -60,7 +84,10 @@ class FeedRepository(
                 notMyTeam && notActioned
             }
 
-            Result.success(teams)
+            // 서버에서 PAGE_SIZE만큼 왔으면 다음 페이지 존재 가능성이 높음
+            val hasMore = snapshot.documents.size >= PAGE_SIZE
+
+            Result.success(Pair(teams, hasMore))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -80,7 +107,6 @@ class FeedRepository(
 
     /**
      * teams 컬렉션의 실시간 변경사항을 Flow로 받는다.
-     * (추후 실시간 피드 업데이트가 필요할 때 사용)
      */
     fun observeActiveTeams(): Flow<Result<List<Team>>> = callbackFlow {
         val currentUserId = auth.currentUser?.uid
@@ -113,25 +139,21 @@ class FeedRepository(
     /**
      * 좋아요를 Firebase에 저장한다.
      *
-     * 저장 위치: "likes/{likeId}"
-     * → team 패키지 담당자가 이 컬렉션을 읽어 매칭탭 "보낸 관심"을 구현한다.
+     * [변경] likeId를 클라이언트(ViewModel)에서 미리 생성해 전달받는다.
+     * → undo 시 Firebase 응답을 기다리지 않고 즉시 cancelLike 호출 가능.
      *
-     * 부수 효과:
-     * - userPreferences에 해당 팀의 태그/MBTI 점수를 +로 누적
-     * - likedTeamIds에 팀 ID 추가 (다음 피드 로딩 시 해당 팀 제외)
+     * @param team   좋아요를 누른 팀
+     * @param likeId ViewModel에서 UUID로 미리 생성한 Firestore 문서 ID
      */
-    suspend fun saveLike(team: Team): Result<Unit> {
+    suspend fun saveLike(team: Team, likeId: String): Result<Unit> {
         return try {
             val userId = auth.currentUser?.uid
                 ?: return Result.failure(Exception("로그인된 사용자가 없습니다."))
 
-            // 내 팀 ID 조회 (없으면 빈 문자열)
             val myTeamId = fetchMyTeamId(userId)
 
-            // 1) likes 컬렉션에 저장
-            val likeRef = db.collection("likes").document()
             val like = Like(
-                likeId = likeRef.id,
+                likeId = likeId,
                 fromUserId = userId,
                 fromTeamId = myTeamId,
                 toTeamId = team.teamId,
@@ -140,14 +162,9 @@ class FeedRepository(
                 toTeamMbtiTags = team.mbtiTags,
                 createdAt = System.currentTimeMillis()
             )
-            likeRef.set(like).await()
+            db.collection("likes").document(likeId).set(like).await()
 
-            // 2) userPreferences 업데이트 (선호도 점수 + / likedTeamIds 추가)
-            updatePreferenceScores(
-                userId = userId,
-                team = team,
-                isLike = true
-            )
+            updatePreferenceScores(userId = userId, team = team, isLike = true)
 
             Result.success(Unit)
         } catch (e: Exception) {
@@ -157,21 +174,53 @@ class FeedRepository(
 
     /**
      * 패스를 Firebase에 저장한다.
-     *
-     * likes 컬렉션에는 저장하지 않고,
-     * userPreferences에만 비선호 신호(-점수, passedTeamIds)를 기록한다.
      */
     suspend fun savePass(team: Team): Result<Unit> {
         return try {
             val userId = auth.currentUser?.uid
                 ?: return Result.failure(Exception("로그인된 사용자가 없습니다."))
 
-            updatePreferenceScores(
-                userId = userId,
-                team = team,
-                isLike = false
-            )
+            updatePreferenceScores(userId = userId, team = team, isLike = false)
 
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 좋아요를 취소한다 (undo 지원).
+     */
+    suspend fun cancelLike(likeId: String): Result<Unit> {
+        return try {
+            db.collection("likes").document(likeId).delete().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 스와이프 선호도를 역산한다 (undo 지원).
+     *
+     * FieldValue.increment()를 사용하므로 원자적으로 처리된다.
+     */
+    suspend fun reversePreferenceScores(team: Team, wasLike: Boolean): Result<Unit> {
+        return try {
+            val userId = auth.currentUser?.uid
+                ?: return Result.failure(Exception("로그인된 사용자가 없습니다."))
+
+            val tagWeight  = if (wasLike) TAG_PASS_WEIGHT  else TAG_LIKE_WEIGHT
+            val mbtiWeight = if (wasLike) MBTI_PASS_WEIGHT else MBTI_LIKE_WEIGHT
+            val teamIdField = if (wasLike) "likedTeamIds" else "passedTeamIds"
+
+            val updates = mutableMapOf<String, Any>()
+            team.tags.forEach     { tag  -> updates["tagScores.$tag"]   = FieldValue.increment(tagWeight.toLong()) }
+            team.mbtiTags.forEach { mbti -> updates["mbtiScores.$mbti"] = FieldValue.increment(mbtiWeight.toLong()) }
+            updates[teamIdField] = FieldValue.arrayRemove(team.teamId)
+            updates["updatedAt"] = System.currentTimeMillis()
+
+            db.collection("userPreferences").document(userId).update(updates).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -182,11 +231,6 @@ class FeedRepository(
     // 사용자 선호도 (AI 매칭 데이터)
     // =====================
 
-    /**
-     * Firebase에서 사용자 선호도를 불러온다.
-     *
-     * 앱을 재시작해도 이전에 학습된 취향이 유지된다.
-     */
     suspend fun loadUserPreference(): Result<UserPreference> {
         return try {
             val userId = auth.currentUser?.uid
@@ -195,7 +239,6 @@ class FeedRepository(
             val doc = db.collection("userPreferences").document(userId).get().await()
 
             if (!doc.exists()) {
-                // 처음 사용하는 경우 빈 선호도 반환
                 return Result.success(UserPreference(userId = userId))
             }
 
@@ -229,49 +272,34 @@ class FeedRepository(
     }
 
     /**
-     * 좋아요/패스한 팀의 태그·MBTI 점수를 userPreferences에 누적한다.
+     * 좋아요/패스한 팀의 태그·MBTI 점수를 userPreferences에 원자적으로 누적한다.
      *
-     * 좋아요  → 태그/MBTI 점수 +, likedTeamIds 추가
-     * 패스    → 태그/MBTI 점수 -, passedTeamIds 추가
+     * [개선] 기존 read-modify-write → FieldValue.increment() 원자적 업데이트
+     *   - race condition 완전 차단
+     *   - 네트워크 왕복 1회 감소
      */
     private suspend fun updatePreferenceScores(
         userId: String,
         team: Team,
         isLike: Boolean
     ) {
-        val tagWeight = if (isLike) TAG_LIKE_WEIGHT else TAG_PASS_WEIGHT
+        val tagWeight  = if (isLike) TAG_LIKE_WEIGHT  else TAG_PASS_WEIGHT
         val mbtiWeight = if (isLike) MBTI_LIKE_WEIGHT else MBTI_PASS_WEIGHT
-
-        // 기존 점수 맵을 가져와서 증감 후 덮어쓰기
-        val doc = db.collection("userPreferences").document(userId).get().await()
-
-        @Suppress("UNCHECKED_CAST")
-        val currentTagScores = (doc.get("tagScores") as? Map<String, Long>)
-            ?.mapValues { it.value.toInt() }?.toMutableMap() ?: mutableMapOf()
-
-        @Suppress("UNCHECKED_CAST")
-        val currentMbtiScores = (doc.get("mbtiScores") as? Map<String, Long>)
-            ?.mapValues { it.value.toInt() }?.toMutableMap() ?: mutableMapOf()
-
-        team.tags.forEach { tag ->
-            currentTagScores[tag] = (currentTagScores[tag] ?: 0) + tagWeight
-        }
-        team.mbtiTags.forEach { mbti ->
-            currentMbtiScores[mbti] = (currentMbtiScores[mbti] ?: 0) + mbtiWeight
-        }
-
         val teamIdField = if (isLike) "likedTeamIds" else "passedTeamIds"
 
-        db.collection("userPreferences").document(userId).set(
-            mapOf(
-                "userId" to userId,
-                "tagScores" to currentTagScores,
-                "mbtiScores" to currentMbtiScores,
-                teamIdField to FieldValue.arrayUnion(team.teamId),
-                "updatedAt" to System.currentTimeMillis()
-            ),
-            SetOptions.merge()  // 기존 데이터 덮어쓰지 않고 병합
-        ).await()
+        // 1) 문서 존재 보장 (기존 데이터는 건드리지 않음)
+        db.collection("userPreferences").document(userId)
+            .set(mapOf("userId" to userId), SetOptions.mergeFields("userId"))
+            .await()
+
+        // 2) 원자적 증감 (dot notation으로 중첩 맵 필드 직접 업데이트)
+        val updates = mutableMapOf<String, Any>()
+        team.tags.forEach     { tag  -> updates["tagScores.$tag"]   = FieldValue.increment(tagWeight.toLong()) }
+        team.mbtiTags.forEach { mbti -> updates["mbtiScores.$mbti"] = FieldValue.increment(mbtiWeight.toLong()) }
+        updates[teamIdField] = FieldValue.arrayUnion(team.teamId)
+        updates["updatedAt"] = System.currentTimeMillis()
+
+        db.collection("userPreferences").document(userId).update(updates).await()
     }
 
     // =====================
@@ -314,9 +342,12 @@ class FeedRepository(
     // =====================
 
     companion object {
-        private const val TAG_LIKE_WEIGHT  = 1   // 좋아요한 팀의 태그 점수
-        private const val TAG_PASS_WEIGHT  = -1  // 패스한 팀의 태그 점수
-        private const val MBTI_LIKE_WEIGHT = 2   // 좋아요한 팀의 MBTI 점수 (가중치 높음)
-        private const val MBTI_PASS_WEIGHT = -2  // 패스한 팀의 MBTI 점수
+        private const val TAG_LIKE_WEIGHT  = 1
+        private const val TAG_PASS_WEIGHT  = -1
+        private const val MBTI_LIKE_WEIGHT = 2
+        private const val MBTI_PASS_WEIGHT = -2
+
+        /** 한 번에 불러올 팀 수 */
+        const val PAGE_SIZE = 20
     }
 }

@@ -12,7 +12,12 @@ class UserRepository {
     private val storage = FirebaseStorage.getInstance()
 
     private fun isTestAccount(email: String?): Boolean {
-        return email == "test@hansung.ac.kr"
+        return email in listOf(
+            "test@hansung.ac.kr",
+            "test2@hansung.ac.kr",
+            "test3@hansung.ac.kr",
+            "test4@hansung.ac.kr"
+        )
     }
 
     // =====================
