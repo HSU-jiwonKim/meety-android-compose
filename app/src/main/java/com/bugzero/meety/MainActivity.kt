@@ -3,46 +3,71 @@ package com.bugzero.meety
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import com.bugzero.meety.ui.team.MeetingCreateScreen
-import com.bugzero.meety.ui.team.MyPageRoute
-import com.bugzero.meety.ui.team.MyPageScreen
-import com.bugzero.meety.ui.team.MyTeamScreen
-import com.bugzero.meety.ui.theme.MeetycomposeTheme
-import com.bugzero.meety.ui.team.UserProfileUiState
+import androidx.activity.viewModels
+import androidx.compose.runtime.*
+import androidx.navigation.compose.rememberNavController
+import com.bugzero.meety.navigation.NavGraph
+import com.bugzero.meety.navigation.Routes
+import com.bugzero.meety.ui.auth.AuthViewModel
+import com.bugzero.meety.ui.auth.VerificationCheckState
+import com.bugzero.meety.ui.theme.MeetyTheme
 
 class MainActivity : ComponentActivity() {
+    private val authViewModel: AuthViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
-            // MeetingCreateScreen() 팀 생성 UI만
-            // MyTeamScreen() 매칭 화면 UI만
-            /*
-                MyPageScreen(
-                    uiState = UserProfileUiState(
-                        name = "이상혁",
-                        age = 24,
-                        school = "한성대학교",
-                        department = "컴퓨터공학부",
-                        height = 175,
-                        location = "서울",
-                        bio = "안녕하세요. 테스트용 프로필입니다.",
-                        interests = listOf("카페투어", "영화감상", "독서"),
-                        foodLikes = listOf("파스타", "디저트", "고기"),
-                        foodDislikes = listOf("오이", "해산물"),
-                        profileImages = emptyList<String>(),
-                        schedule = mapOf(
-                            "월" to listOf("09:00", "10:00"),
-                            "화" to listOf("13:00"),
-                            "수" to listOf("11:00"),
-                            "목" to emptyList<String>(),
-                            "금" to listOf("14:00", "15:00")
-                        )
-                    )
+            MeetyTheme {
+                val navController = rememberNavController()
+                val isLoggedIn = remember { authViewModel.checkAutoLogin() }
+                val verificationState by authViewModel.verificationCheckState.collectAsState()
+
+                val startDestination = remember {
+                    if (isLoggedIn) Routes.FEED else Routes.ONBOARDING
+                }
+
+                // 로그인 상태면 역할 확인 + 실시간 차단 감지 시작
+                LaunchedEffect(isLoggedIn) {
+                    if (isLoggedIn) {
+                        authViewModel.checkVerificationAndRole()
+                        authViewModel.startBanListener {
+                            // 차단되면 즉시 온보딩으로 이동
+                            navController.navigate(Routes.ONBOARDING) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    }
+                }
+
+                LaunchedEffect(verificationState) {
+                    if (isLoggedIn) {
+                        when (verificationState) {
+                            is VerificationCheckState.Admin -> {
+                                navController.navigate(Routes.FEED) {
+                                    popUpTo(startDestination) { inclusive = true }
+                                }
+                            }
+                            is VerificationCheckState.Verified -> {
+                                navController.navigate(Routes.FEED) {
+                                    popUpTo(startDestination) { inclusive = true }
+                                }
+                            }
+                            is VerificationCheckState.NotYet -> {
+                                navController.navigate(Routes.PENDING_VERIFICATION) {
+                                    popUpTo(startDestination) { inclusive = true }
+                                }
+                            }
+                            else -> {}
+                        }
+                    }
+                }
+
+                NavGraph(
+                    navController = navController,
+                    startDestination = startDestination
                 )
-            */ // 예시용 더미데이터
-            // MyPageRoute() 사용자 정보 확인
+            }
         }
     }
 }

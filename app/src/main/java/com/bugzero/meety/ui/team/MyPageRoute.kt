@@ -27,7 +27,8 @@ fun MyPageRoute(
     onNotificationClick: () -> Unit = {},
 
     // 🔹 기능 버튼
-    onEditProfileClick: () -> Unit = {}
+    onEditProfileClick: () -> Unit = {},
+    onScheduleClick: () -> Unit = {}
 ) {
     val screenState by viewModel.screenState.collectAsState()
 
@@ -56,6 +57,7 @@ fun MyPageRoute(
         screenState.uiState != null -> {
             MyPageScreen(
                 uiState = screenState.uiState!!,
+                viewModel = viewModel,
 
                 // 하단바
                 onHomeClick = onHomeClick,
@@ -69,7 +71,8 @@ fun MyPageRoute(
                 onNotificationClick = onNotificationClick,
 
                 // 버튼
-                onEditProfileClick = onEditProfileClick
+                onEditProfileClick = onEditProfileClick,
+                onScheduleClick = onScheduleClick
             )
         }
     }
