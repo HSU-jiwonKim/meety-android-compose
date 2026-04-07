@@ -269,19 +269,64 @@ class ChatViewModel(
         }
     }
     // 채팅방 나가기
-    fun leaveChatRoom(chatId: String) {
+    // ChatViewModel.kt 수정
+
+    fun leaveChatRoom(
+        chatId: String,
+        onSuccess: () -> Unit = {},
+        onFailure: (String) -> Unit = {}
+    ) {
         viewModelScope.launch {
             try {
-                FirebaseFirestore.getInstance()
-                    .collection("chats")
-                    .document(chatId)
+                val db = FirebaseFirestore.getInstance()
+
+                // 1. 시스템 메시지 추가
+                val systemMessage = mapOf(
+                    "senderId" to "system",
+                    "senderName" to "system",
+                    "content" to "팀원이 나갔습니다.",
+                    "type" to "system",
+                    "createdAt" to com.google.firebase.Timestamp.now()
+                )
+                db.collection("chats").document(chatId)
+                    .collection("messages")
+                    .add(systemMessage)
+                    .await()
+
+                // 2. 채팅방 participants에서 제거
+                db.collection("chats").document(chatId)
                     .update(
                         "participants",
                         com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)
                     )
                     .await()
+
+                // 3. 팀 memberIds에서 제거
+                db.collection("teams").document(chatId)
+                    .update(
+                        "memberIds",
+                        com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)
+                    )
+                    .await()
+
+                // 4. 내 teamId 초기화
+                db.collection("users").document(currentUserId)
+                    .update("teamId", "")
+                    .await()
+
+                // ✅ 5. 모든 DB 작업이 끝나면 화면 이동(onSuccess) 실행!
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onSuccess()
+                }
+
             } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "채팅방 나가기 실패: ${e.message}")
                 _errorMessage.value = "채팅방 나가기에 실패했어요"
+
+                // 실패 시 onFailure 실행
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onFailure("채팅방 나가기에 실패했어요")
+                }
             }
         }
     }
@@ -457,6 +502,116 @@ class ChatViewModel(
             } catch (e: Exception) {
                 android.util.Log.e("ChatVM", "1:1 채팅방 생성 실패: ${e.message}")
                 onFailure("채팅방 생성에 실패했어요")
+            }
+        }
+    }
+    // ── 현재 유저가 팀장인지 확인 ─────────────────────────────────────
+    val isCurrentUserLeader: Boolean
+        get() = _participants.value.firstOrNull { it.isLeader }?.userId == currentUserId
+
+    // ── 팀장 양도 후 나가기 ───────────────────────────────────────────
+    fun transferLeaderAndLeave(
+        chatId: String,
+        newLeaderUserId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+
+                // 1. teams 컬렉션에서 팀장 변경
+                db.collection("teams").document(chatId)
+                    .update("leaderId", newLeaderUserId)
+                    .await()
+
+                // 2. participants 순서 변경 (새 팀장을 맨 앞으로)
+                val currentParticipants = _participants.value.map { it.userId }.toMutableList()
+                currentParticipants.remove(newLeaderUserId)
+                currentParticipants.remove(currentUserId)
+                val newParticipants = mutableListOf(newLeaderUserId) + currentParticipants
+                db.collection("chats").document(chatId)
+                    .update("participants", newParticipants)
+                    .await()
+
+                // 3. 시스템 메시지
+                val newLeaderName = _participants.value.find { it.userId == newLeaderUserId }?.name ?: "새 팀장"
+                val systemMessage = mapOf(
+                    "senderId" to "system",
+                    "senderName" to "system",
+                    "content" to "${newLeaderName}님이 팀장이 되었습니다.",
+                    "type" to "system",
+                    "createdAt" to com.google.firebase.Timestamp.now()
+                )
+                db.collection("chats").document(chatId)
+                    .collection("messages")
+                    .add(systemMessage)
+                    .await()
+
+                // 4. 팀에서 나 제거
+                db.collection("teams").document(chatId)
+                    .update("memberIds", com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId))
+                    .await()
+
+                // 5. 내 teamId 초기화
+                db.collection("users").document(currentUserId)
+                    .update("teamId", "")
+                    .await()
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "팀장 양도 실패: ${e.message}")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onFailure("팀장 양도에 실패했어요")
+                }
+            }
+        }
+    }
+
+    // ── 팀 해체 (팀장 혼자 남았을 때) ────────────────────────────────
+    fun disbandTeam(
+        chatId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+
+                // 1. 시스템 메시지
+                val systemMessage = mapOf(
+                    "senderId" to "system",
+                    "senderName" to "system",
+                    "content" to "팀이 해체되었습니다.",
+                    "type" to "system",
+                    "createdAt" to com.google.firebase.Timestamp.now()
+                )
+                db.collection("chats").document(chatId)
+                    .collection("messages")
+                    .add(systemMessage)
+                    .await()
+
+                // 2. 채팅방 participants 비우기
+                db.collection("chats").document(chatId)
+                    .update("participants", emptyList<String>())
+                    .await()
+
+                // 3. 팀 status 변경
+                db.collection("teams").document(chatId)
+                    .update("status", "disbanded")
+                    .await()
+
+                // 4. 내 teamId 초기화
+                db.collection("users").document(currentUserId)
+                    .update("teamId", "")
+                    .await()
+
+                onSuccess()
+            } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "팀 해체 실패: ${e.message}")
+                onFailure("팀 해체에 실패했어요")
             }
         }
     }

@@ -45,7 +45,7 @@ fun ChatRoomScreen(
     val participants by viewModel.participants.collectAsState()
     val selectedUserProfile by viewModel.selectedUserProfile.collectAsState()
     val isLoadingProfile by viewModel.isLoadingProfile.collectAsState()
-    val requestList by viewModel.requestList.collectAsState()   // ✅ 여기에 선언
+    val requestList by viewModel.requestList.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -54,6 +54,9 @@ fun ChatRoomScreen(
 
     var selectedParticipant by remember { mutableStateOf<ParticipantItem?>(null) }
     var showLeaveDialog by remember { mutableStateOf(false) }
+    var showTransferDialog by remember { mutableStateOf(false) }
+    var showDisbandDialog by remember { mutableStateOf(false) }
+    var selectedNewLeader by remember { mutableStateOf<ParticipantItem?>(null) }
 
     LaunchedEffect(chatId) {
         viewModel.enterChatRoom(chatId, roomName)
@@ -67,26 +70,168 @@ fun ChatRoomScreen(
         }
     }
 
-    // 채팅방 나가기 확인 다이얼로그
+    // ── 일반 멤버 나가기 다이얼로그 ──────────────────────────────────
+    // ── 일반 멤버 나가기 다이얼로그 ──────────────────────────────────
     if (showLeaveDialog) {
         AlertDialog(
             onDismissRequest = { showLeaveDialog = false },
             title = { Text("채팅방 나가기") },
             text = { Text("채팅방을 나가면 대화 내용이 삭제돼요. 나가시겠어요?") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.leaveChatRoom(chatId)
-                        showLeaveDialog = false
-                        onBackClick()
-                    }
-                ) {
+                TextButton(onClick = {
+                    // ✅ 수정된 부분: 뷰모델에 성공/실패 콜백을 넘겨줍니다.
+                    viewModel.leaveChatRoom(
+                        chatId = chatId,
+                        onSuccess = {
+                            showLeaveDialog = false
+                            onBackClick() // 데이터가 다 지워진 후 안전하게 뒤로 가기!
+                        },
+                        onFailure = { errorMessage ->
+                            showLeaveDialog = false
+                            // 여기서 실패 처리를 할 수 있어요 (예: 에러 로그 확인)
+                        }
+                    )
+                }) {
                     Text("나가기", color = Color.Red)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showLeaveDialog = false }) {
-                    Text("취소")
+                TextButton(onClick = { showLeaveDialog = false }) { Text("취소") }
+            }
+        )
+    }
+
+    // ── 팀장 양도 다이얼로그 ──────────────────────────────────────────
+    if (showTransferDialog) {
+        val otherParticipants = participants.filter { !it.isLeader }
+        AlertDialog(
+            onDismissRequest = { showTransferDialog = false },
+            title = { Text("팀장 양도", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("나가기 전에 팀장을 양도할 멤버를 선택하세요.", fontSize = 14.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    otherParticipants.forEach { participant ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedNewLeader = participant }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedNewLeader?.userId == participant.userId,
+                                onClick = { selectedNewLeader = participant },
+                                colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFA78BFA))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = participant.name,
+                                fontSize = 15.sp,
+                                color = Color(0xFF1F2937)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        selectedNewLeader?.let { newLeader ->
+                            viewModel.transferLeaderAndLeave(
+                                chatId = chatId,
+                                newLeaderUserId = newLeader.userId,
+                                onSuccess = {
+                                    showTransferDialog = false
+                                    onBackClick()
+                                }
+                            )
+                        }
+                    },
+                    enabled = selectedNewLeader != null
+                ) {
+                    Text(
+                        "양도하고 나가기",
+                        color = if (selectedNewLeader != null) Color.Red else Color.Gray
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTransferDialog = false }) { Text("취소") }
+            }
+        )
+    }
+
+    // ── 팀 해체 다이얼로그 (팀장 혼자 남았을 때) ─────────────────────
+    // ── 팀장 양도 다이얼로그 ──────────────────────────────────────────
+    if (showTransferDialog) {
+        val otherParticipants = participants.filter { !it.isLeader }
+        AlertDialog(
+            onDismissRequest = { showTransferDialog = false },
+            containerColor = Color.White,  // ✅ 배경 흰색
+            title = {
+                Text(
+                    "팀장 양도",
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1F2937)  // ✅ 제목 색상
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "나가기 전에 팀장을 양도할 멤버를 선택하세요.",
+                        fontSize = 14.sp,
+                        color = Color(0xFF6B7280)  // ✅ 설명 색상
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    otherParticipants.forEach { participant ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedNewLeader = participant }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedNewLeader?.userId == participant.userId,
+                                onClick = { selectedNewLeader = participant },
+                                colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFA78BFA))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = participant.name,
+                                fontSize = 15.sp,
+                                color = Color(0xFF1F2937)  // ✅ 이름 색상
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        selectedNewLeader?.let { newLeader ->
+                            viewModel.transferLeaderAndLeave(
+                                chatId = chatId,
+                                newLeaderUserId = newLeader.userId,
+                                onSuccess = {
+                                    showTransferDialog = false
+                                    onBackClick()
+                                }
+                            )
+                        }
+                    },
+                    enabled = selectedNewLeader != null
+                ) {
+                    Text(
+                        "양도하고 나가기",
+                        color = if (selectedNewLeader != null) Color.Red else Color.Gray
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTransferDialog = false }) {
+                    Text("취소", color = Color(0xFF6B7280))
                 }
             }
         )
@@ -111,19 +256,35 @@ fun ChatRoomScreen(
             ChatRoomDrawer(
                 roomName = currentRoomName.ifEmpty { roomName },
                 participants = participants,
-                requestList = requestList,                          // ✅
+                requestList = requestList,
                 onParticipantClick = { participant ->
                     selectedParticipant = participant
                     viewModel.loadUserProfile(participant.userId)
                     coroutineScope.launch { drawerState.close() }
                 },
                 onInviteClick = {
-                    // TODO: 초대 기능 구현 시 연결
                     coroutineScope.launch { drawerState.close() }
                 },
-                onAcceptRequest = { likeId -> viewModel.acceptRequest(likeId) }, // ✅
-                onRejectRequest = { likeId -> viewModel.rejectRequest(likeId) }, // ✅
-                onLeaveClick = { showLeaveDialog = true }
+                onAcceptRequest = { likeId -> viewModel.acceptRequest(likeId) },
+                onRejectRequest = { likeId -> viewModel.rejectRequest(likeId) },
+                onLeaveClick = {
+                    val isLeader = viewModel.isCurrentUserLeader
+                    val otherMembers = participants.filter { !it.isLeader }
+                    when {
+                        isLeader && otherMembers.isNotEmpty() -> {
+                            coroutineScope.launch { drawerState.close() }
+                            showTransferDialog = true
+                        }
+                        isLeader && otherMembers.isEmpty() -> {
+                            coroutineScope.launch { drawerState.close() }
+                            showDisbandDialog = true
+                        }
+                        else -> {
+                            coroutineScope.launch { drawerState.close() }
+                            showLeaveDialog = true
+                        }
+                    }
+                }
             )
         },
         gesturesEnabled = true
@@ -338,7 +499,6 @@ private fun ChatRoomDrawer(
         }
     }
 
-    // 받은 관심 바텀시트
     if (showRequestSheet) {
         ReceivedLikeSheet(
             requestList = requestList,
