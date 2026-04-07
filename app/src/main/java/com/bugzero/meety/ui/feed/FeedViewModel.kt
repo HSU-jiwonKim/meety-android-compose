@@ -31,10 +31,21 @@ class FeedViewModel(
             val prefResult = repository.loadUserPreference()
             prefResult.onSuccess { pref ->
                 _uiState.update {
-                    it.copy(userPreferences = pref.tagScores + pref.mbtiScores)
+                    it.copy(
+                        userPreferences = pref.tagScores + pref.mbtiScores,
+                        likedTeamIds    = pref.likedTeamIds.toSet(),
+                        passedTeamIds   = pref.passedTeamIds.toSet()
+                    )
                 }
             }
-            fetchRemoteTeams()
+
+            // 변경: fetchMyTeamId() → fetchMyTeamIds() (배열 지원)
+            val myTeamIds = repository.fetchMyTeamIds()
+            val myTeamId = myTeamIds.firstOrNull() ?: ""
+            _uiState.update { it.copy(myTeamId = myTeamId) }
+
+            fetchRemoteTeams()   // RECOMMEND 탭: 필터링된 추천 카드
+            fetchAllTeams()      // LIST 탭: 전체 팀 목록
         }
     }
 
@@ -110,6 +121,38 @@ class FeedViewModel(
     }
 
     // =====================
+    // 전체보기 탭 팀 목록 (LIST)
+    // =====================
+
+    /**
+     * LIST 탭 전용 — 좋아요·패스·내 팀을 포함한 전체 팀 목록을 로딩한다.
+     * pull-to-refresh 시 loadMore=false로 호출해 목록을 초기화한다.
+     */
+    fun fetchAllTeams(loadMore: Boolean = false) {
+        val state = _uiState.value
+        if (state.isLoadingAllTeams) return
+        if (loadMore && !state.allTeamsHasMore) return
+
+        _uiState.update { it.copy(isLoadingAllTeams = true) }
+
+        viewModelScope.launch {
+            repository.fetchAllActiveTeams(loadMore = loadMore)
+                .onSuccess { (teams, hasMore) ->
+                    _uiState.update {
+                        it.copy(
+                            allTeams           = if (loadMore) it.allTeams + teams else teams,
+                            isLoadingAllTeams  = false,
+                            allTeamsHasMore    = hasMore
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update { it.copy(isLoadingAllTeams = false) }
+                }
+        }
+    }
+
+    // =====================
     // 스와이프 (카드 모드)
     // =====================
 
@@ -144,9 +187,13 @@ class FeedViewModel(
         )
 
         _uiState.update {
+            val updatedLiked  = if (isLike) it.likedTeamIds  + currentTeam.teamId else it.likedTeamIds
+            val updatedPassed = if (!isLike) it.passedTeamIds + currentTeam.teamId else it.passedTeamIds
             it.copy(
-                currentIndex = it.currentIndex + 1,
-                history      = it.history + entry
+                currentIndex  = it.currentIndex + 1,
+                history       = it.history + entry,
+                likedTeamIds  = updatedLiked,
+                passedTeamIds = updatedPassed
             )
         }
 
@@ -176,9 +223,13 @@ class FeedViewModel(
         reversePreferenceInMemory(last.team, last.isLike)
 
         _uiState.update {
+            val updatedLiked  = if (last.isLike)  it.likedTeamIds  - last.team.teamId else it.likedTeamIds
+            val updatedPassed = if (!last.isLike) it.passedTeamIds - last.team.teamId else it.passedTeamIds
             it.copy(
-                currentIndex = last.index,
-                history      = it.history.dropLast(1)
+                currentIndex  = last.index,
+                history       = it.history.dropLast(1),
+                likedTeamIds  = updatedLiked,
+                passedTeamIds = updatedPassed
             )
         }
     }
@@ -189,30 +240,95 @@ class FeedViewModel(
 
     /**
      * 상세화면에서 좋아요.
-     * selectedTeam에 작용하며, 카드 스택의 currentIndex는 건드리지 않는다.
+     *
+     * - 추천 카드 모드에서 열린 경우 (selectedTeam == teams[currentIndex]):
+     *   카드 스와이프와 동일하게 currentIndex 진행 + HistoryEntry 저장
+     *   → 같은 카드에 중복 액션 방지
+     * - 목록 모드에서 열린 경우:
+     *   좋아요 저장 후 상세화면만 닫는다.
      */
     fun onSelectedTeamLike() {
-        val team = _uiState.value.selectedTeam ?: return
+        val state = _uiState.value
+        val team = state.selectedTeam ?: return
         val likeId = UUID.randomUUID().toString()
 
         viewModelScope.launch {
             repository.saveLike(team, likeId)
         }
         updatePreferenceInMemory(team, isLike = true)
-        _uiState.update { it.copy(selectedTeam = null) }
+
+        val isCurrentCard = state.teams.getOrNull(state.currentIndex)?.teamId == team.teamId
+        if (isCurrentCard) {
+            val entry = HistoryEntry(
+                index  = state.currentIndex,
+                team   = team,
+                isLike = true,
+                likeId = likeId
+            )
+            _uiState.update {
+                it.copy(
+                    selectedTeam = null,
+                    currentIndex = it.currentIndex + 1,
+                    history      = it.history + entry,
+                    likedTeamIds = it.likedTeamIds + team.teamId
+                )
+            }
+            val remaining = state.teams.size - (state.currentIndex + 1)
+            if (remaining <= 3 && state.hasMore) loadMoreTeams()
+        } else {
+            _uiState.update {
+                it.copy(
+                    selectedTeam = null,
+                    likedTeamIds = it.likedTeamIds + team.teamId
+                )
+            }
+        }
     }
 
     /**
      * 상세화면에서 패스.
+     *
+     * - 추천 카드 모드에서 열린 경우 (selectedTeam == teams[currentIndex]):
+     *   카드 스와이프와 동일하게 currentIndex 진행 + HistoryEntry 저장
+     *   → 같은 카드에 중복 액션 방지
+     * - 목록 모드에서 열린 경우:
+     *   패스 저장 후 상세화면만 닫는다.
      */
     fun onSelectedTeamPass() {
-        val team = _uiState.value.selectedTeam ?: return
+        val state = _uiState.value
+        val team = state.selectedTeam ?: return
 
         viewModelScope.launch {
             repository.savePass(team)
         }
         updatePreferenceInMemory(team, isLike = false)
-        _uiState.update { it.copy(selectedTeam = null) }
+
+        val isCurrentCard = state.teams.getOrNull(state.currentIndex)?.teamId == team.teamId
+        if (isCurrentCard) {
+            val entry = HistoryEntry(
+                index  = state.currentIndex,
+                team   = team,
+                isLike = false,
+                likeId = null
+            )
+            _uiState.update {
+                it.copy(
+                    selectedTeam  = null,
+                    currentIndex  = it.currentIndex + 1,
+                    history       = it.history + entry,
+                    passedTeamIds = it.passedTeamIds + team.teamId
+                )
+            }
+            val remaining = state.teams.size - (state.currentIndex + 1)
+            if (remaining <= 3 && state.hasMore) loadMoreTeams()
+        } else {
+            _uiState.update {
+                it.copy(
+                    selectedTeam  = null,
+                    passedTeamIds = it.passedTeamIds + team.teamId
+                )
+            }
+        }
     }
 
     // =====================
@@ -224,12 +340,75 @@ class FeedViewModel(
     }
 
     fun selectTeam(teamId: String) {
+        // RECOMMEND 탭 teams 또는 LIST 탭 allTeams 모두에서 검색
         val team = _uiState.value.teams.find { it.teamId == teamId }
-        _uiState.update { it.copy(selectedTeam = team) }
+            ?: _uiState.value.allTeams.find { it.teamId == teamId }
+        _uiState.update { it.copy(selectedTeam = team, memberProfiles = emptyList()) }
+        team?.let { loadMemberProfiles(it) }
     }
 
     fun clearSelectedTeam() {
-        _uiState.update { it.copy(selectedTeam = null) }
+        _uiState.update { it.copy(selectedTeam = null, memberProfiles = emptyList()) }
+    }
+
+    /** 선택된 팀의 팀원 프로필을 비동기로 로딩한다. */
+    private fun loadMemberProfiles(team: com.bugzero.meety.ui.team.Team) {
+        if (team.memberIds.isEmpty()) return
+        _uiState.update { it.copy(isMembersLoading = true) }
+        viewModelScope.launch {
+            repository.fetchMemberProfiles(team.memberIds)
+                .onSuccess { profiles ->
+                    _uiState.update { it.copy(memberProfiles = profiles, isMembersLoading = false) }
+                }
+                .onFailure {
+                    _uiState.update { it.copy(isMembersLoading = false) }
+                }
+        }
+    }
+
+    /**
+     * 상세화면 — 좋아요 취소 (LIKED 상태에서 호출)
+     *
+     * Firebase에서 like 문서를 삭제하고 선호도를 역산한다.
+     */
+    fun onCancelLikeFromDetail() {
+        val team = _uiState.value.selectedTeam ?: return
+        viewModelScope.launch {
+            repository.cancelLikeByTeamId(team.teamId)
+            repository.reversePreferenceScores(team, wasLike = true)
+        }
+        reversePreferenceInMemory(team, wasLike = true)
+        _uiState.update {
+            it.copy(
+                selectedTeam   = null,
+                memberProfiles = emptyList(),
+                likedTeamIds   = it.likedTeamIds - team.teamId
+            )
+        }
+    }
+
+    /**
+     * 상세화면 — 패스했던 팀에 좋아요 전환 (PASSED 상태에서 호출)
+     *
+     * 패스 기록을 역산하고 신규 좋아요를 저장한다.
+     */
+    fun onSendLikeFromPassed() {
+        val team = _uiState.value.selectedTeam ?: return
+        val likeId = UUID.randomUUID().toString()
+        viewModelScope.launch {
+            repository.convertPassToLike(team, likeId)
+        }
+        // 인메모리 상태: pass 역산 → like 반영
+        reversePreferenceInMemory(team, wasLike = false)
+        updatePreferenceInMemory(team, isLike = true)
+        _uiState.update {
+            it.copy(
+                selectedTeam   = null,
+                memberProfiles = emptyList(),
+                passedTeamIds  = it.passedTeamIds - team.teamId,
+                likedTeamIds   = it.likedTeamIds  + team.teamId
+            )
+        }
     }
 
     fun clearError() {
