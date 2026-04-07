@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.firebase.auth.FirebaseAuth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,6 +30,16 @@ fun ChatListScreen(
     onChatClick: (chatId: String, roomName: String) -> Unit = { _, _ -> },
     viewModel: ChatViewModel = viewModel()
 ) {
+    val currentUser = FirebaseAuth.getInstance().currentUser
+
+    LaunchedEffect(currentUser?.uid) {
+        if (currentUser != null) {
+            viewModel.refreshForAuthState()
+        } else {
+            viewModel.clearError()
+        }
+    }
+
     val chatList by viewModel.chatList.collectAsState()
     val requestList by viewModel.requestList.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -44,7 +55,6 @@ fun ChatListScreen(
             .fillMaxSize()
             .background(Color(0xFFF9FAFB))
     ) {
-        // 상단 타이틀 바
         TopAppBar(
             title = {
                 Text(
@@ -62,7 +72,6 @@ fun ChatListScreen(
                             tint = Color(0xFF374151),
                             modifier = Modifier.size(26.dp)
                         )
-                        // 우측 하단에 + 뱃지
                         Box(
                             modifier = Modifier
                                 .size(12.dp)
@@ -80,10 +89,10 @@ fun ChatListScreen(
                         }
                     }
                 }
-
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
         )
+
         HorizontalDivider(color = Color(0xFFF3F4F6))
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -94,15 +103,18 @@ fun ChatListScreen(
                         color = Color(0xFFA78BFA)
                     )
                 }
+
                 errorMessage != null -> {
                     ChatErrorView(
                         message = errorMessage!!,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
+
                 chatList.isEmpty() -> {
                     ChatEmptyView(modifier = Modifier.align(Alignment.Center))
                 }
+
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         if (requestList.isNotEmpty()) {
@@ -115,6 +127,7 @@ fun ChatListScreen(
                                     modifier = Modifier.padding(16.dp)
                                 )
                             }
+
                             items(requestList) { request ->
                                 RequestListItem(
                                     request = request,
@@ -126,6 +139,7 @@ fun ChatListScreen(
                                     color = Color(0xFFF3F4F6)
                                 )
                             }
+
                             item { Spacer(modifier = Modifier.height(8.dp)) }
                         }
 
@@ -146,7 +160,6 @@ fun ChatListScreen(
         }
     }
 
-    // ── 새 채팅 선택 바텀시트 ──────────────────────────────────────
     if (showNewChatSheet) {
         ModalBottomSheet(
             onDismissRequest = { showNewChatSheet = false },
@@ -167,7 +180,6 @@ fun ChatListScreen(
                     modifier = Modifier.padding(bottom = 24.dp)
                 )
 
-                // 채팅 유형 선택 3개
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -184,19 +196,18 @@ fun ChatListScreen(
                     NewChatTypeItem(
                         emoji = "🚩",
                         label = "팀채팅",
-                        onClick = { showNewChatSheet = false }  // TODO
+                        onClick = { showNewChatSheet = false }
                     )
                     NewChatTypeItem(
                         emoji = "🔒",
                         label = "비밀채팅",
-                        onClick = { showNewChatSheet = false }  // TODO
+                        onClick = { showNewChatSheet = false }
                     )
                 }
             }
         }
     }
 
-    // ── 친구 목록 바텀시트 ─────────────────────────────────────────
     if (showFriendSheet) {
         ModalBottomSheet(
             onDismissRequest = { showFriendSheet = false },
@@ -272,7 +283,9 @@ fun ChatListScreen(
                             ) {
                                 Text("👤", fontSize = 22.sp)
                             }
+
                             Spacer(modifier = Modifier.width(12.dp))
+
                             Column {
                                 Text(
                                     text = friend.name,
@@ -297,7 +310,6 @@ fun ChatListScreen(
     }
 }
 
-// ── 새 채팅 유형 아이템 ────────────────────────────────────────────
 @Composable
 private fun NewChatTypeItem(
     emoji: String,
@@ -328,9 +340,7 @@ private fun NewChatTypeItem(
         )
     }
 }
-/**
- * 채팅방 목록 단일 아이템 컴포저블
- */
+
 @Composable
 private fun ChatListItem(
     chat: ChatPreview,
@@ -356,23 +366,49 @@ private fun ChatListItem(
         ) {
             Text(text = chat.emoji, fontSize = 22.sp)
         }
+
         Spacer(modifier = Modifier.width(12.dp))
+
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = chat.teamName.ifEmpty { "알 수 없는 팀" }, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.Black)
+            Text(
+                text = chat.teamName.ifEmpty { "알 수 없는 팀" },
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Color.Black
+            )
             Spacer(modifier = Modifier.height(2.dp))
-            Text(text = chat.lastMessage.ifEmpty { "아직 메시지가 없습니다" }, fontSize = 13.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = chat.lastMessage.ifEmpty { "아직 메시지가 없습니다" },
+                fontSize = 13.sp,
+                color = Color.Gray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
+
         Column(horizontalAlignment = Alignment.End) {
             Text(text = timeText, fontSize = 11.sp, color = Color.LightGray)
-            AnimatedVisibility(visible = chat.unreadCount > 0, enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut()) {
+            AnimatedVisibility(
+                visible = chat.unreadCount > 0,
+                enter = scaleIn() + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
-                        .background(color = Color(0xFFA78BFA), shape = RoundedCornerShape(10.dp))
+                        .background(
+                            color = Color(0xFFA78BFA),
+                            shape = RoundedCornerShape(10.dp)
+                        )
                         .padding(horizontal = 7.dp, vertical = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = if (chat.unreadCount > 99) "99+" else chat.unreadCount.toString(), fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (chat.unreadCount > 99) "99+" else chat.unreadCount.toString(),
+                        fontSize = 11.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -384,9 +420,18 @@ private fun ChatEmptyView(modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = "💬", fontSize = 56.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "아직 채팅방이 없어요", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF374151))
+        Text(
+            text = "아직 채팅방이 없어요",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF374151)
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "팀을 매칭하고 대화를 시작해보세요!", fontSize = 14.sp, color = Color(0xFF9CA3AF))
+        Text(
+            text = "팀을 매칭하고 대화를 시작해보세요!",
+            fontSize = 14.sp,
+            color = Color(0xFF9CA3AF)
+        )
     }
 }
 
@@ -406,20 +451,40 @@ private fun RequestListItem(
     onReject: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 14.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFE5E7EB)), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE5E7EB)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(text = "👤")
             }
+
             Spacer(modifier = Modifier.width(12.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = request.fromUserName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(text = "${request.fromUserDepartment} · ${request.fromUserMbti}", fontSize = 12.sp, color = Color.Gray)
+                Text(
+                    text = "${request.fromUserDepartment} · ${request.fromUserMbti}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
             }
         }
+
         Spacer(modifier = Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+
+        Row(
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier.fillMaxWidth()
+        ) {
             TextButton(onClick = onReject) { Text("거절") }
             Button(onClick = onAccept) { Text("수락") }
         }

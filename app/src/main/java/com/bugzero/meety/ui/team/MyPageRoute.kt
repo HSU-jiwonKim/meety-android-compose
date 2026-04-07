@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun MyPageRoute(
@@ -28,12 +30,29 @@ fun MyPageRoute(
 
     // 🔹 기능 버튼
     onEditProfileClick: () -> Unit = {},
-    onScheduleClick: () -> Unit = {}
+    onScheduleClick: () -> Unit = {},
+
+    // 🔹 비로그인 시 처리
+    onRequireLogin: () -> Unit = {}
 ) {
     val screenState by viewModel.screenState.collectAsState()
+    val currentUser = FirebaseAuth.getInstance().currentUser
+
+    LaunchedEffect(currentUser?.uid) {
+        if (currentUser == null) {
+            viewModel.clearListener()
+            onRequireLogin()
+        } else {
+            viewModel.loadMyProfile()
+        }
+    }
+
+    if (currentUser == null) {
+        Box(modifier = Modifier.fillMaxSize())
+        return
+    }
 
     when {
-        // 🔵 로딩 중
         screenState.isLoading -> {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -43,7 +62,6 @@ fun MyPageRoute(
             }
         }
 
-        // 🔴 에러
         screenState.errorMessage != null -> {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -53,27 +71,24 @@ fun MyPageRoute(
             }
         }
 
-        // 🟢 성공 (데이터 있음)
         screenState.uiState != null -> {
             MyPageScreen(
                 uiState = screenState.uiState!!,
                 viewModel = viewModel,
-
-                // 하단바
                 onHomeClick = onHomeClick,
                 onMatchingClick = onMatchingClick,
                 onCreateTeamClick = onCreateTeamClick,
                 onChatClick = onChatClick,
                 onProfileClick = onProfileClick,
-
-                // 상단바
                 onSearchClick = onSearchClick,
                 onNotificationClick = onNotificationClick,
-
-                // 버튼
                 onEditProfileClick = onEditProfileClick,
                 onScheduleClick = onScheduleClick
             )
+        }
+
+        else -> {
+            Box(modifier = Modifier.fillMaxSize())
         }
     }
 }

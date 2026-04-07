@@ -50,7 +50,7 @@ class FirebaseTeamRepository : TeamRepository {
                 teamRef.set(team)
                     .addOnSuccessListener {
 
-                        // 🔥 2. 팀 채팅방 생성 (핵심)
+                        // 🔥 2. 팀 채팅방 생성
                         val chatData = mapOf(
                             "chatId" to teamId,
                             "teamId" to teamId,
@@ -68,11 +68,11 @@ class FirebaseTeamRepository : TeamRepository {
                             .set(chatData)
                             .addOnSuccessListener {
 
-                                // 🔥 3. 유저 teamId 설정
+                                // 🔥 3. 유저 teamIds 배열에 추가 (변경: update → arrayUnion)
                                 db.collection("users").document(userId)
-                                    .update("teamId", teamId)
+                                    .update("teamIds", FieldValue.arrayUnion(teamId))
                                     .addOnSuccessListener { onSuccess(teamId) }
-                                    .addOnFailureListener { onFailure(it.message ?: "users.teamId 업데이트 실패") }
+                                    .addOnFailureListener { onFailure(it.message ?: "users.teamIds 업데이트 실패") }
                             }
                             .addOnFailureListener { onFailure(it.message ?: "팀 채팅방 생성 실패") }
                     }
@@ -87,11 +87,14 @@ class FirebaseTeamRepository : TeamRepository {
 
         db.collection("users").document(currentUserId).get()
             .addOnSuccessListener { userDoc ->
-                val myTeamId = userDoc.getString("teamId").orEmpty()
-                if (myTeamId.isBlank()) { onSuccess(emptyList()); return@addOnSuccessListener }
+                // 변경: getString("teamId") → getList("teamIds")
+                @Suppress("UNCHECKED_CAST")
+                val myTeamIds = (userDoc.get("teamIds") as? List<String>) ?: emptyList()
+                if (myTeamIds.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
 
+                // 내가 속한 팀들로 받은 likes 조회 (whereIn 사용)
                 db.collection("likes")
-                    .whereEqualTo("toTeamId", myTeamId)
+                    .whereIn("toTeamId", myTeamIds)
                     .whereEqualTo("status", "pending")
                     .orderBy("createdAt", Query.Direction.DESCENDING)
                     .get()
@@ -168,9 +171,9 @@ class FirebaseTeamRepository : TeamRepository {
                             )
                             .addOnSuccessListener {
 
-                                // 🔥 2. 유저 teamId 업데이트
+                                // 🔥 2. 유저 teamIds 배열에 추가 (변경: update → arrayUnion)
                                 db.collection("users").document(fromUserId)
-                                    .update("teamId", toTeamId)
+                                    .update("teamIds", FieldValue.arrayUnion(toTeamId))
                                     .addOnSuccessListener {
 
                                         // 🔥 3. 좋아요 상태 변경
@@ -183,7 +186,7 @@ class FirebaseTeamRepository : TeamRepository {
                                             )
                                             .addOnSuccessListener {
 
-                                                // 🔥🔥🔥 핵심: 기존 채팅방에 참가자 추가 (절대 새 채팅 생성 X)
+                                                // 🔥 4. 채팅방 참가자 추가
                                                 db.collection("chats").document(toTeamId)
                                                     .update(
                                                         "participants",
@@ -191,7 +194,6 @@ class FirebaseTeamRepository : TeamRepository {
                                                     )
                                                     .addOnSuccessListener {
 
-                                                        // 시스템 메시지
                                                         val systemMessage = mapOf(
                                                             "senderId" to "system",
                                                             "senderName" to "system",
@@ -211,7 +213,7 @@ class FirebaseTeamRepository : TeamRepository {
                                             }
                                             .addOnFailureListener { onFailure(it.message ?: "좋아요 상태 업데이트 실패") }
                                     }
-                                    .addOnFailureListener { onFailure(it.message ?: "사용자 teamId 업데이트 실패") }
+                                    .addOnFailureListener { onFailure(it.message ?: "사용자 teamIds 업데이트 실패") }
                             }
                             .addOnFailureListener { onFailure(it.message ?: "팀원 추가 실패") }
                     }
@@ -261,10 +263,11 @@ class FirebaseTeamRepository : TeamRepository {
                         )
                     )
                     .addOnSuccessListener {
+                        // 변경: update("teamId", "") → arrayRemove(teamId)
                         db.collection("users").document(userId)
-                            .update("teamId", "")
+                            .update("teamIds", FieldValue.arrayRemove(teamId))
                             .addOnSuccessListener { onSuccess() }
-                            .addOnFailureListener { onFailure(it.message ?: "teamId 초기화 실패") }
+                            .addOnFailureListener { onFailure(it.message ?: "teamIds 제거 실패") }
                     }
                     .addOnFailureListener { onFailure(it.message ?: "팀 탈퇴 실패") }
             }
@@ -289,6 +292,7 @@ class FirebaseTeamRepository : TeamRepository {
             }
             .addOnFailureListener { onFailure(it.message ?: "이미지 업로드 실패") }
     }
+
     fun observeReceivedLikes(
         onUpdate: (List<ReceivedLikeItem>) -> Unit,
         onFailure: (String) -> Unit
@@ -300,11 +304,13 @@ class FirebaseTeamRepository : TeamRepository {
 
         db.collection("users").document(currentUserId).get()
             .addOnSuccessListener { userDoc ->
-                val myTeamId = userDoc.getString("teamId").orEmpty()
-                if (myTeamId.isBlank()) { onUpdate(emptyList()); return@addOnSuccessListener }
+                // 변경: getString("teamId") → getList("teamIds")
+                @Suppress("UNCHECKED_CAST")
+                val myTeamIds = (userDoc.get("teamIds") as? List<String>) ?: emptyList()
+                if (myTeamIds.isEmpty()) { onUpdate(emptyList()); return@addOnSuccessListener }
 
                 listenerRegistration = db.collection("likes")
-                    .whereEqualTo("toTeamId", myTeamId)
+                    .whereIn("toTeamId", myTeamIds)
                     .whereEqualTo("status", "pending")
                     .orderBy("createdAt", Query.Direction.DESCENDING)
                     .addSnapshotListener { snapshot, error ->
@@ -356,5 +362,4 @@ class FirebaseTeamRepository : TeamRepository {
 
         return listenerRegistration
     }
-
 }
