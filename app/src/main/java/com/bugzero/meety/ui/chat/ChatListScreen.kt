@@ -1,16 +1,46 @@
 package com.bugzero.meety.ui.chat
 
-import androidx.compose.animation.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,7 +50,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseAuth
 
@@ -32,17 +61,15 @@ fun ChatListScreen(
 ) {
     val currentUser = FirebaseAuth.getInstance().currentUser
 
-
     LaunchedEffect(currentUser?.uid) {
         if (currentUser != null) {
-            //viewModel.refreshForAuthState()
+            viewModel.refreshForAuthState()
         } else {
-            //viewModel.clearError()
+            viewModel.clearError()
         }
     }
 
     val chatList by viewModel.chatList.collectAsState()
-    val requestList by viewModel.requestList.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val friendList by viewModel.friendList.collectAsState()
@@ -118,32 +145,6 @@ fun ChatListScreen(
 
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        if (requestList.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "요청",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = Color.Gray,
-                                    modifier = Modifier.padding(16.dp)
-                                )
-                            }
-
-                            items(requestList) { request ->
-                                RequestListItem(
-                                    request = request,
-                                    onAccept = { viewModel.acceptRequest(request.likeId) },
-                                    onReject = { viewModel.rejectRequest(request.likeId) }
-                                )
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    color = Color(0xFFF3F4F6)
-                                )
-                            }
-
-                            item { Spacer(modifier = Modifier.height(8.dp)) }
-                        }
-
                         items(items = chatList, key = { it.id }) { chat ->
                             ChatListItem(
                                 chat = chat,
@@ -248,7 +249,11 @@ fun ChatListScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("🫙", fontSize = 40.sp)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("아직 대화 가능한 친구가 없어요", fontSize = 14.sp, color = Color.Gray)
+                            Text(
+                                "아직 대화 가능한 친구가 없어요",
+                                fontSize = 14.sp,
+                                color = Color.Gray
+                            )
                         }
                     }
                 } else {
@@ -442,52 +447,5 @@ private fun ChatErrorView(message: String, modifier: Modifier = Modifier) {
         Text(text = "⚠️", fontSize = 48.sp)
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = message, fontSize = 14.sp, color = Color(0xFF9CA3AF))
-    }
-}
-
-@Composable
-private fun RequestListItem(
-    request: com.bugzero.meety.ui.team.ReceivedLikeItem,
-    onAccept: () -> Unit,
-    onReject: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFE5E7EB)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "👤")
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = request.fromUserName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(
-                    text = "${request.fromUserDepartment} · ${request.fromUserMbti}",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            horizontalArrangement = Arrangement.End,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            TextButton(onClick = onReject) { Text("거절") }
-            Button(onClick = onAccept) { Text("수락") }
-        }
     }
 }
