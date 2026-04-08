@@ -18,26 +18,18 @@ class MainActivity : ComponentActivity() {
     private val authViewModel: AuthViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 시스템 스플래시 → 바로 Compose 스플래시로 이어지게 설정
-        val systemSplash = installSplashScreen()
+        // 시스템 스플래시 즉시 종료
+        installSplashScreen()
 
         super.onCreate(savedInstanceState)
 
-        // Compose 스플래시가 준비될 때까지 시스템 스플래시를 유지
-        var keepSystemSplash = true
-        systemSplash.setKeepOnScreenCondition { keepSystemSplash }
-
         setContent {
             MeetyTheme {
-                // 시스템 스플래시 즉시 해제 → Compose 스플래시로 넘어감
-                LaunchedEffect(Unit) { keepSystemSplash = false }
-
                 var showSplash by remember { mutableStateOf(true) }
 
                 if (showSplash) {
                     SplashScreen(onSplashFinished = { showSplash = false })
                 } else {
-                    // 기존 코드 그대로
                     val navController = rememberNavController()
                     val isLoggedIn = remember { authViewModel.checkAutoLogin() }
                     val verificationState by authViewModel.verificationCheckState.collectAsState()

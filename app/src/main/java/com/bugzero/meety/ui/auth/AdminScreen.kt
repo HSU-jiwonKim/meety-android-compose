@@ -31,14 +31,15 @@ fun AdminScreen(
 ) {
     val requests by viewModel.requests.collectAsState()
     val users by viewModel.users.collectAsState()
-    val reports by viewModel.reports.collectAsState()
     val actionState by viewModel.actionState.collectAsState()
+    val autoAcceptEnabled by viewModel.autoAcceptEnabled.collectAsState()
+    val demoUsers by viewModel.demoUsers.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
         "인증 대기 ${if (requests.isNotEmpty()) "(${requests.size})" else ""}",
         "유저 목록",
-        "신고 처리 ${if (reports.isNotEmpty()) "(${reports.size})" else ""}"
+        "데모 관리"
     )
 
     LaunchedEffect(actionState) {
@@ -116,16 +117,310 @@ fun AdminScreen(
                 onUnban = { userId -> viewModel.unbanUser(userId) },
                 onGrantAdmin = { userId -> viewModel.grantAdmin(userId) }
             )
-            2 -> ReportTab(
-                reports = reports,
+            2 -> DemoManagementTab(
+                autoAcceptEnabled = autoAcceptEnabled,
+                demoUsers = demoUsers,
                 actionState = actionState,
                 padding = padding,
-                onResolve = { reportId, reportedId -> viewModel.resolveReport(reportId, reportedId, false) },
-                onResolveAndBan = { reportId, reportedId -> viewModel.resolveReport(reportId, reportedId, true) }
+                onToggleAutoAccept = { viewModel.toggleAutoAccept() },
+                onResetUser = { userId -> viewModel.resetUserDemoData(userId) },
+                onResetAll = { viewModel.resetAllDemoData() }
             )
         }
     }
 }
+
+// ═══════════════════════════════════════
+// 데모 관리 탭
+// ═══════════════════════════════════════
+@Composable
+fun DemoManagementTab(
+    autoAcceptEnabled: Boolean,
+    demoUsers: List<UserInfo>,
+    actionState: AdminActionState,
+    padding: PaddingValues,
+    onToggleAutoAccept: () -> Unit,
+    onResetUser: (String) -> Unit,
+    onResetAll: () -> Unit
+) {
+    var showResetAllDialog by remember { mutableStateOf(false) }
+    var showResetUserDialog by remember { mutableStateOf<UserInfo?>(null) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF9FAFB))
+            .padding(padding),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // ── 자동 수락 모드 ──
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (autoAcceptEnabled) Color(0xFFF0FDF4) else Color.White
+                ),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(
+                                if (autoAcceptEnabled) Color(0xFF22C55E) else Color(0xFFE5E7EB),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "자동 수락 모드",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color(0xFF111827)
+                        )
+                        Text(
+                            if (autoAcceptEnabled) "좋아요가 들어오면 자동으로 수락합니다"
+                            else "꺼져 있음 — 수동으로 수락해야 합니다",
+                            fontSize = 13.sp,
+                            color = Color(0xFF6B7280)
+                        )
+                    }
+                    Switch(
+                        checked = autoAcceptEnabled,
+                        onCheckedChange = { onToggleAutoAccept() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF22C55E)
+                        )
+                    )
+                }
+            }
+        }
+
+        // ── 전체 초기화 ──
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.RestartAlt,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "전체 데모 초기화",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Color(0xFF111827)
+                            )
+                            Text(
+                                "모든 좋아요, 채팅, 선호도 기록을 초기 상태로 되돌립니다",
+                                fontSize = 12.sp,
+                                color = Color(0xFF6B7280)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { showResetAllDialog = true },
+                        enabled = actionState !is AdminActionState.Loading,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        if (actionState is AdminActionState.Loading) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("전체 초기화", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 시연 계정 목록 ──
+        item {
+            Text(
+                "시연 계정 개별 초기화",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color(0xFF111827)
+            )
+        }
+
+        if (demoUsers.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("시연 계정이 없습니다", color = Color(0xFF6B7280))
+                }
+            }
+        } else {
+            items(demoUsers) { user ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 프로필 아바타
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    Brush.linearGradient(listOf(Color(0xFFA78BFA), Color(0xFFF472B6))),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (user.profileImages.isNotEmpty() && user.profileImages[0].isNotBlank()) {
+                                AsyncImage(
+                                    model = user.profileImages[0],
+                                    contentDescription = null,
+                                    modifier = Modifier.size(44.dp).clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                user.name.ifEmpty { "이름 없음" },
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF111827)
+                            )
+                            Text(
+                                user.email,
+                                fontSize = 12.sp,
+                                color = Color(0xFF6B7280)
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { showResetUserDialog = user },
+                            enabled = actionState !is AdminActionState.Loading,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                        ) {
+                            Icon(
+                                Icons.Default.RestartAlt,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("초기화", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 하단 여백
+        item { Spacer(modifier = Modifier.height(20.dp)) }
+    }
+
+    // ── 전체 초기화 확인 다이얼로그 ──
+    if (showResetAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetAllDialog = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF4444)) },
+            title = { Text("전체 데모 초기화", fontWeight = FontWeight.Bold) },
+            text = { Text("모든 시연 데이터(좋아요, 채팅, 선호도)를 초기 상태로 되돌립니다.\n이 작업은 되돌릴 수 없습니다.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetAllDialog = false
+                        onResetAll()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("초기화")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetAllDialog = false }) {
+                    Text("취소")
+                }
+            }
+        )
+    }
+
+    // ── 개별 유저 초기화 확인 다이얼로그 ──
+    showResetUserDialog?.let { user ->
+        AlertDialog(
+            onDismissRequest = { showResetUserDialog = null },
+            icon = { Icon(Icons.Default.PersonRemove, contentDescription = null, tint = Color(0xFFEF4444)) },
+            title = { Text("${user.name} 초기화", fontWeight = FontWeight.Bold) },
+            text = { Text("${user.email}의 좋아요, 패스, 채팅 기록을 모두 삭제합니다.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetUserDialog = null
+                        onResetUser(user.userId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("초기화")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetUserDialog = null }) {
+                    Text("취소")
+                }
+            }
+        )
+    }
+}
+
+// ═══════════════════════════════════════
+// 기존 탭들 (인증 대기, 유저 목록)
+// ═══════════════════════════════════════
 
 @Composable
 fun VerificationTab(
@@ -186,268 +481,106 @@ fun UserListTab(
     onGrantAdmin: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val filteredUsers = remember(users, searchQuery) {
-        if (searchQuery.isEmpty()) users
-        else users.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.email.contains(searchQuery, ignoreCase = true) ||
-                    it.department.contains(searchQuery, ignoreCase = true)
-        }
+    val filteredUsers = if (searchQuery.isBlank()) users
+    else users.filter {
+        it.name.contains(searchQuery, ignoreCase = true) ||
+                it.email.contains(searchQuery, ignoreCase = true) ||
+                it.department.contains(searchQuery, ignoreCase = true)
     }
 
-    if (users.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize().background(Color(0xFFF9FAFB)).padding(padding),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("가입한 유저가 없습니다", fontSize = 16.sp, color = Gray500)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF9FAFB)).padding(padding),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("이름, 이메일, 학과 검색", color = Gray400) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Gray400) },
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Purple,
+                    unfocusedBorderColor = Color(0xFFE5E7EB),
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                ),
+                singleLine = true
+            )
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().background(Color(0xFFF9FAFB)).padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("이름, 이메일, 학과 검색", color = Gray400) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = Gray400)
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = null, tint = Gray400)
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Purple,
-                        unfocusedContainerColor = Color.White,
-                        focusedContainerColor = Color.White
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    if (searchQuery.isEmpty()) "전체 유저 ${users.size}명"
-                    else "검색 결과 ${filteredUsers.size}명",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = Gray900
-                )
-            }
-            items(filteredUsers) { user ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (user.isBanned) Color(0xFFFEF2F2) else Color.White
-                    ),
-                    elevation = CardDefaults.cardElevation(2.dp)
+        item {
+            Text(
+                "전체 ${filteredUsers.size}명",
+                fontSize = 13.sp,
+                color = Gray500,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+            )
+        }
+        items(filteredUsers) { user ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(1.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(listOf(Color(0xFFA78BFA), Color(0xFFF472B6)))
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (user.profileImages.isNotEmpty()) {
-                                AsyncImage(
-                                    model = user.profileImages[0],
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
-                                )
-                            } else {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    user.name.ifEmpty { "이름 없음" },
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = Gray900
-                                )
-                                if (user.isBanned) {
-                                    Box(
-                                        modifier = Modifier
-                                            .background(Color(0xFFFEE2E2), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("차단됨", fontSize = 10.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    if (user.isVerified) {
-                                        Box(
-                                            modifier = Modifier
-                                                .background(Color(0xFFDCFCE7), RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text("인증됨", fontSize = 10.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                    if (user.isAdmin) {
-                                        Box(
-                                            modifier = Modifier
-                                                .background(Color(0xFFEDE9FE), RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text("관리자", fontSize = 10.sp, color = Purple, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-                            Text(user.email, fontSize = 12.sp, color = Gray500)
-                            if (user.department.isNotEmpty()) {
-                                Text(user.department, fontSize = 12.sp, color = Gray400)
-                            }
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            // 관리자 권한 버튼 (관리자 아닌 유저만)
-                            if (!user.isAdmin) {
-                                OutlinedButton(
-                                    onClick = { onGrantAdmin(user.userId) },
-                                    enabled = actionState !is AdminActionState.Loading,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Purple),
-                                    modifier = Modifier.height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp)
-                                ) {
-                                    Text("관리자", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            // 차단/해제 버튼
-                            if (user.isBanned) {
-                                OutlinedButton(
-                                    onClick = { onUnban(user.userId) },
-                                    enabled = actionState !is AdminActionState.Loading,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF16A34A)),
-                                    modifier = Modifier.height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp)
-                                ) {
-                                    Text("해제", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            } else {
-                                OutlinedButton(
-                                    onClick = { onBan(user.userId) },
-                                    enabled = actionState !is AdminActionState.Loading,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                                    modifier = Modifier.height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp)
-                                ) {
-                                    Text("차단", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ReportTab(
-    reports: List<ReportInfo>,
-    actionState: AdminActionState,
-    padding: PaddingValues,
-    onResolve: (String, String) -> Unit,
-    onResolveAndBan: (String, String) -> Unit
-) {
-    if (reports.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize().background(Color(0xFFF9FAFB)).padding(padding),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🎉", fontSize = 56.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("처리할 신고가 없습니다", fontSize = 16.sp, color = Gray500)
-            }
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().background(Color(0xFFF9FAFB)).padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("신고 목록", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Gray900)
-                    Spacer(modifier = Modifier.width(8.dp))
                     Box(
-                        modifier = Modifier.background(Color(0xFFEF4444), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                        modifier = Modifier.size(44.dp).background(
+                            Brush.linearGradient(listOf(Color(0xFFA78BFA), Color(0xFFF472B6))), CircleShape
+                        ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("${reports.size}", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        if (user.profileImages.isNotEmpty() && user.profileImages[0].isNotBlank()) {
+                            AsyncImage(
+                                model = user.profileImages[0],
+                                contentDescription = null,
+                                modifier = Modifier.size(44.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
                     }
-                }
-            }
-            items(reports) { report ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Flag, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("신고 대상: ${report.reportedName.ifEmpty { "알 수 없음" }}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Gray900)
-                                Text("신고자: ${report.reporterName.ifEmpty { "알 수 없음" }}", fontSize = 12.sp, color = Gray500)
+                            Text(user.name.ifEmpty { "이름 없음" }, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Gray900)
+                            if (user.isAdmin) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.background(Purple, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp)) {
+                                    Text("관리자", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (user.isBanned) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.background(Color(0xFFEF4444), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp)) {
+                                    Text("차단됨", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Box(
-                            modifier = Modifier.fillMaxWidth().background(Color(0xFFF9FAFB), RoundedCornerShape(10.dp)).padding(12.dp)
-                        ) {
-                            Text("신고 사유: ${report.reason.ifEmpty { "사유 없음" }}", fontSize = 13.sp, color = Gray700)
+                        Text(user.email, fontSize = 12.sp, color = Gray500)
+                        if (user.department.isNotEmpty()) {
+                            Text(user.department, fontSize = 11.sp, color = Gray400)
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = { onResolve(report.reportId, report.reportedId) },
-                                enabled = actionState !is AdminActionState.Loading,
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray500)
-                            ) {
-                                Text("무시", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (!user.isAdmin) {
+                            if (user.isBanned) {
+                                TextButton(onClick = { onUnban(user.userId) }, enabled = actionState !is AdminActionState.Loading) {
+                                    Text("차단해제", fontSize = 11.sp, color = Color(0xFF22C55E))
+                                }
+                            } else {
+                                TextButton(onClick = { onBan(user.userId) }, enabled = actionState !is AdminActionState.Loading) {
+                                    Text("차단", fontSize = 11.sp, color = Color(0xFFEF4444))
+                                }
                             }
-                            Button(
-                                onClick = { onResolveAndBan(report.reportId, report.reportedId) },
-                                enabled = actionState !is AdminActionState.Loading,
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                            ) {
-                                Text("차단 처리", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            TextButton(onClick = { onGrantAdmin(user.userId) }, enabled = actionState !is AdminActionState.Loading) {
+                                Text("관리자", fontSize = 11.sp, color = Purple)
                             }
                         }
                     }
