@@ -86,7 +86,7 @@ class FeedRepository(
             val myTeamIds = currentUserId?.let { fetchMyTeamIds(it) } ?: emptyList()
 
             val teams = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(Team::class.java)
+                doc.toObject(Team::class.java)?.takeIf { it.teamId.isNotBlank() }
             }.filter { team ->
                 val notMyTeam = currentUserId == null || !team.memberIds.contains(currentUserId)
                 val notActioned = !actionedIds.contains(team.teamId)
@@ -140,7 +140,7 @@ class FeedRepository(
             }
 
             val teams = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(Team::class.java)
+                doc.toObject(Team::class.java)?.takeIf { it.teamId.isNotBlank() }
             }
 
             val hasMore = snapshot.documents.size >= PAGE_SIZE
@@ -149,6 +149,51 @@ class FeedRepository(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * 어드민이 데이터를 초기화했을 때 실시간으로 감지한다.
+     *
+     * AdminRepository가 resetSignals/{userId} 문서에 타임스탬프를 쓰면
+     * 이 Flow가 신호를 방출 → FeedViewModel이 피드를 초기 상태로 리로드한다.
+     */
+    fun observeResetSignal(): Flow<Long> = callbackFlow {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            close()
+            return@callbackFlow
+        }
+
+        val listener = db.collection("resetSignals").document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                val resetAt = snapshot.getLong("resetAt") ?: return@addSnapshotListener
+                trySend(resetAt)
+            }
+
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * users/{userId}의 teamIds 필드를 실시간으로 감시한다.
+     * 좋아요 승인(autoAccept)으로 팀에 합류하면 즉시 방출 → FeedViewModel이 myTeamIds를 갱신한다.
+     */
+    fun observeMyTeamIds(): Flow<List<String>> = callbackFlow {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            close()
+            return@callbackFlow
+        }
+
+        val listener = db.collection("users").document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                @Suppress("UNCHECKED_CAST")
+                val teamIds = (snapshot.get("teamIds") as? List<String>) ?: emptyList()
+                trySend(teamIds)
+            }
+
+        awaitClose { listener.remove() }
     }
 
     /**

@@ -37,6 +37,13 @@ data class ReportInfo(
     val status: String = "pending"
 )
 
+data class TeamInfo(
+    val teamId: String = "",
+    val teamName: String = "",
+    val leaderId: String = "",
+    val memberCount: Int = 0
+)
+
 sealed class AdminActionState {
     object Idle : AdminActionState()
     object Loading : AdminActionState()
@@ -68,10 +75,15 @@ class AdminViewModel : ViewModel() {
     private val _demoUsers = MutableStateFlow<List<UserInfo>>(emptyList())
     val demoUsers: StateFlow<List<UserInfo>> = _demoUsers
 
+    // ── 사용자가 만든 팀 목록 (더미팀 제외) ──
+    private val _nonDummyTeams = MutableStateFlow<List<TeamInfo>>(emptyList())
+    val nonDummyTeams: StateFlow<List<TeamInfo>> = _nonDummyTeams
+
     init {
         fetchPendingRequests()
         fetchUsers()
         fetchReports()
+        fetchNonDummyTeams()
     }
 
     fun fetchPendingRequests() {
@@ -216,6 +228,21 @@ class AdminViewModel : ViewModel() {
                 onFailure = {
                     _actionState.value = AdminActionState.Error(it)
                 }
+            )
+        }
+    }
+
+    fun fetchNonDummyTeams() {
+        adminRepository.fetchNonDummyTeams { _nonDummyTeams.value = it }
+    }
+
+    fun deleteTeam(teamId: String) {
+        _actionState.value = AdminActionState.Loading
+        viewModelScope.launch {
+            adminRepository.deleteTeam(
+                teamId = teamId,
+                onSuccess = { _actionState.value = AdminActionState.Success(it) },
+                onFailure = { _actionState.value = AdminActionState.Error(it) }
             )
         }
     }

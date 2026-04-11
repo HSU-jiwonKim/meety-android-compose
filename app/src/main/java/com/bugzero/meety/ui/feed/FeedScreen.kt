@@ -116,7 +116,7 @@ fun FeedScreen(
                                         teams         = uiState.allTeams,
                                         likedTeamIds  = uiState.likedTeamIds,
                                         passedTeamIds = uiState.passedTeamIds,
-                                        myTeamId      = uiState.myTeamId,
+                                        myTeamIds     = uiState.myTeamIds,
                                         onTeamClick   = { viewModel.selectTeam(it) },
                                         onLoadMore    = { viewModel.fetchAllTeams(loadMore = true) },
                                         hasMore       = uiState.allTeamsHasMore
@@ -138,7 +138,7 @@ fun FeedScreen(
             // selectedTeam의 액션 상태 계산 (MY_TEAM > LIKED > PASSED > NONE)
             val selectedStatus = uiState.selectedTeam?.let { team ->
                 when {
-                    uiState.myTeamId.isNotEmpty() && team.teamId == uiState.myTeamId ->
+                    uiState.myTeamIds.contains(team.teamId) ->
                         TeamActionStatus.MY_TEAM
                     uiState.likedTeamIds.contains(team.teamId) ->
                         TeamActionStatus.LIKED
@@ -289,7 +289,7 @@ private fun ListContent(
     teams: List<Team>,
     likedTeamIds: Set<String>,
     passedTeamIds: Set<String>,
-    myTeamId: String,
+    myTeamIds: Set<String>,
     onTeamClick: (String) -> Unit,
     onLoadMore: () -> Unit,
     hasMore: Boolean
@@ -317,7 +317,7 @@ private fun ListContent(
         items(teams) { team ->
             // 우선순위: MY_TEAM > LIKED > PASSED > NONE
             val status = when {
-                myTeamId.isNotEmpty() && team.teamId == myTeamId -> TeamActionStatus.MY_TEAM
+                myTeamIds.contains(team.teamId)                  -> TeamActionStatus.MY_TEAM
                 likedTeamIds.contains(team.teamId)               -> TeamActionStatus.LIKED
                 passedTeamIds.contains(team.teamId)              -> TeamActionStatus.PASSED
                 else                                             -> TeamActionStatus.NONE

@@ -120,11 +120,13 @@ fun AdminScreen(
             2 -> DemoManagementTab(
                 autoAcceptEnabled = autoAcceptEnabled,
                 demoUsers = demoUsers,
+                nonDummyTeams = viewModel.nonDummyTeams.collectAsState().value,
                 actionState = actionState,
                 padding = padding,
                 onToggleAutoAccept = { viewModel.toggleAutoAccept() },
                 onResetUser = { userId -> viewModel.resetUserDemoData(userId) },
-                onResetAll = { viewModel.resetAllDemoData() }
+                onResetAll = { viewModel.resetAllDemoData() },
+                onDeleteTeam = { teamId -> viewModel.deleteTeam(teamId) }
             )
         }
     }
@@ -137,14 +139,17 @@ fun AdminScreen(
 fun DemoManagementTab(
     autoAcceptEnabled: Boolean,
     demoUsers: List<UserInfo>,
+    nonDummyTeams: List<TeamInfo>,
     actionState: AdminActionState,
     padding: PaddingValues,
     onToggleAutoAccept: () -> Unit,
     onResetUser: (String) -> Unit,
-    onResetAll: () -> Unit
+    onResetAll: () -> Unit,
+    onDeleteTeam: (String) -> Unit
 ) {
     var showResetAllDialog by remember { mutableStateOf(false) }
     var showResetUserDialog by remember { mutableStateOf<UserInfo?>(null) }
+    var showDeleteTeamDialog by remember { mutableStateOf<TeamInfo?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -361,8 +366,124 @@ fun DemoManagementTab(
             }
         }
 
+        // ── 사용자 팀 삭제 ──
+        item {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "사용자 팀 삭제",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color(0xFF111827)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "더미팀을 제외한 사용자가 만든 팀을 삭제합니다",
+                fontSize = 12.sp,
+                color = Color(0xFF6B7280)
+            )
+        }
+
+        if (nonDummyTeams.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("삭제할 수 있는 팀이 없습니다", color = Color(0xFF6B7280), fontSize = 13.sp)
+                }
+            }
+        } else {
+            items(nonDummyTeams) { team ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFFA78BFA))),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Group,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                team.teamName.ifEmpty { "이름 없음" },
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF111827)
+                            )
+                            Text(
+                                "${team.memberCount}명",
+                                fontSize = 12.sp,
+                                color = Color(0xFF6B7280)
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { showDeleteTeamDialog = team },
+                            enabled = actionState !is AdminActionState.Loading,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("삭제", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
         // 하단 여백
         item { Spacer(modifier = Modifier.height(20.dp)) }
+    }
+
+    // ── 팀 삭제 확인 다이얼로그 ──
+    showDeleteTeamDialog?.let { team ->
+        AlertDialog(
+            onDismissRequest = { showDeleteTeamDialog = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444)) },
+            title = { Text("팀 삭제", fontWeight = FontWeight.Bold) },
+            text = { Text("'${team.teamName}' 팀을 삭제합니다.\n채팅, 좋아요 기록도 함께 삭제되며 되돌릴 수 없습니다.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteTeamDialog = null
+                        onDeleteTeam(team.teamId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteTeamDialog = null }) {
+                    Text("취소")
+                }
+            }
+        )
     }
 
     // ── 전체 초기화 확인 다이얼로그 ──

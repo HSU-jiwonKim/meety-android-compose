@@ -59,7 +59,7 @@ data class FeedUiState(
     // ── 상태 배지 계산용 ──
     val likedTeamIds: Set<String> = emptySet(),    // 좋아요 보낸 팀 ID 집합
     val passedTeamIds: Set<String> = emptySet(),   // 패스한 팀 ID 집합
-    val myTeamId: String = "",                     // 내가 소속된 팀 ID
+    val myTeamIds: Set<String> = emptySet(),        // 내가 소속된 팀 ID 목록
 
     // ── 팀 상세화면 — 팀원 프로필 ──
     val memberProfiles: List<MemberProfile> = emptyList(),

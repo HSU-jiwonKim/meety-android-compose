@@ -1,5 +1,6 @@
 package com.bugzero.meety
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,7 +19,10 @@ class MainActivity : ComponentActivity() {
     private val authViewModel: AuthViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 시스템 스플래시 즉시 종료
+        // 모든 기기에서 세로 방향 강제 고정
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+
+        // 시스템 스플래시 즉시 종료 → 커스텀 Compose 스플래시로 전환
         installSplashScreen()
 
         super.onCreate(savedInstanceState)

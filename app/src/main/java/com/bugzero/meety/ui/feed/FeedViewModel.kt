@@ -20,6 +20,57 @@ class FeedViewModel(
 
     init {
         loadPreferenceThenFetch()
+        observeResetSignal()
+        observeMyTeamIds()
+    }
+
+    // =====================
+    // 내 팀 목록 실시간 감지
+    // =====================
+
+    /**
+     * users/{userId}의 teamIds를 실시간으로 감시한다.
+     * 좋아요 승인으로 팀 합류 시 즉시 myTeamIds가 갱신되어
+     * 전체 목록에서 "내 팀" 배지가 바로 반영된다.
+     */
+    private fun observeMyTeamIds() {
+        viewModelScope.launch {
+            repository.observeMyTeamIds().collect { teamIds ->
+                _uiState.update { it.copy(myTeamIds = teamIds.toSet()) }
+            }
+        }
+    }
+
+    // =====================
+    // 어드민 리셋 실시간 감지
+    // =====================
+
+    /**
+     * resetSignals/{userId} 문서를 실시간으로 감시한다.
+     * 어드민이 초기화 버튼을 누르면 해당 문서에 타임스탬프가 기록되고,
+     * 이 함수가 감지해 피드 전체를 초기 상태로 리로드한다.
+     */
+    private fun observeResetSignal() {
+        viewModelScope.launch {
+            repository.observeResetSignal().collect {
+                // 좋아요·패스·선호도·스와이프 히스토리 전부 초기화
+                _uiState.update {
+                    it.copy(
+                        userPreferences = emptyMap(),
+                        likedTeamIds    = emptySet(),
+                        passedTeamIds   = emptySet(),
+                        currentIndex    = 0,
+                        history         = emptyList()
+                    )
+                }
+                // 내 팀 ID 갱신 (더미팀에서 제거됐을 수 있음)
+                val myTeamIds = repository.fetchMyTeamIds()
+                _uiState.update { it.copy(myTeamIds = myTeamIds.toSet()) }
+                // 팀 목록 재로드
+                fetchRemoteTeams()
+                fetchAllTeams()
+            }
+        }
     }
 
     // =====================
@@ -39,10 +90,8 @@ class FeedViewModel(
                 }
             }
 
-            // 변경: fetchMyTeamId() → fetchMyTeamIds() (배열 지원)
             val myTeamIds = repository.fetchMyTeamIds()
-            val myTeamId = myTeamIds.firstOrNull() ?: ""
-            _uiState.update { it.copy(myTeamId = myTeamId) }
+            _uiState.update { it.copy(myTeamIds = myTeamIds.toSet()) }
 
             fetchRemoteTeams()   // RECOMMEND 탭: 필터링된 추천 카드
             fetchAllTeams()      // LIST 탭: 전체 팀 목록

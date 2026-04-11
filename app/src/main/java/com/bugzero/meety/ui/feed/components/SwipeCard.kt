@@ -116,7 +116,7 @@ fun SwipeCard(
                                         val nextVal = offsetXAnim.value + dx
                                         val crossedThreshold =
                                             (nextVal > FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value <= FeedConstants.SWIPE_THRESHOLD) ||
-                                            (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
+                                                    (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
 
                                         if (crossedThreshold && !hapticFired) {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
