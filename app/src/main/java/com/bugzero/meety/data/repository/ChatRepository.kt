@@ -19,4 +19,5 @@ interface ChatRepository {
         content: String,
         type: String = "text"
     )
+    suspend fun transferLeadershipAndLeave(chatId: String, currentUserId: String, newLeaderId: String)
 }

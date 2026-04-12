@@ -19,6 +19,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Agora RTC SDK 저장소
+        maven { url = uri("https://packages.aliyun.com/maven/repository/2102809-release-PKFmhc/") }
     }
 }
 

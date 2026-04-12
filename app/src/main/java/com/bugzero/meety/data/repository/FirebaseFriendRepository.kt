@@ -140,7 +140,10 @@ class FirebaseFriendRepository : FriendRepository {
                                 age = (doc.getLong("age") ?: 0L).toInt(),
                                 mbti = doc.getString("mbti") ?: "",
                                 bio = doc.getString("bio") ?: "",
-                                location = doc.getString("location") ?: ""
+                                location = doc.getString("location") ?: "",
+                                height = (doc.getLong("height") ?: 0L).toInt(),
+                                interests = (doc.get("interests") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                                foodLikes = (doc.get("foodLikes") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
                             )
                         )
                     }
@@ -156,147 +159,5 @@ class FirebaseFriendRepository : FriendRepository {
                     }
                 }
         }
-    }
-    override fun sendFriendRequest(
-        fromUserId: String,
-        toUserId: String,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        val data = hashMapOf(
-            "fromUserId" to fromUserId,
-            "toUserId" to toUserId,
-            "createdAt" to System.currentTimeMillis()
-        )
-
-        db.collection("friendRequests")
-            .add(data)
-            .addOnSuccessListener {
-                onSuccess()
-            }
-            .addOnFailureListener {
-                onFailure(it.message ?: "친구 요청 생성 실패")
-            }
-    }
-
-    override fun loadReceivedFriendRequests(
-        myUserId: String,
-        onSuccess: (List<FriendRequestItem>) -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        db.collection("friendRequests")
-            .whereEqualTo("toUserId", myUserId)
-            .get()
-            .addOnSuccessListener { result ->
-                if (result.isEmpty) {
-                    onSuccess(emptyList())
-                    return@addOnSuccessListener
-                }
-
-                val requestDocs = result.documents
-                val requestList = mutableListOf<FriendRequestItem>()
-                var loadedCount = 0
-
-                for (doc in requestDocs) {
-                    val requestId = doc.id
-                    val fromUserId = doc.getString("fromUserId").orEmpty()
-
-                    if (fromUserId.isBlank()) {
-                        loadedCount++
-                        if (loadedCount == requestDocs.size) {
-                            onSuccess(requestList)
-                        }
-                        continue
-                    }
-
-                    db.collection("users")
-                        .document(fromUserId)
-                        .get()
-                        .addOnSuccessListener { userDoc ->
-                            if (userDoc.exists()) {
-                                val images = userDoc.get("profileImages") as? List<*>
-                                val firstImage = images?.firstOrNull() as? String ?: ""
-
-                                requestList.add(
-                                    FriendRequestItem(
-                                        requestId = requestId,
-                                        fromUserId = fromUserId,
-                                        name = userDoc.getString("name") ?: "",
-                                        email = userDoc.getString("email") ?: "",
-                                        profileImageUrl = firstImage,
-                                        department = userDoc.getString("department") ?: "",
-                                        age = (userDoc.getLong("age") ?: 0L).toInt(),
-                                        mbti = userDoc.getString("mbti") ?: "",
-                                        bio = userDoc.getString("bio") ?: "",
-                                        location = userDoc.getString("location") ?: ""
-                                    )
-                                )
-                            }
-
-                            loadedCount++
-                            if (loadedCount == requestDocs.size) {
-                                onSuccess(requestList)
-                            }
-                        }
-                        .addOnFailureListener {
-                            loadedCount++
-                            if (loadedCount == requestDocs.size) {
-                                onSuccess(requestList)
-                            }
-                        }
-                }
-            }
-            .addOnFailureListener {
-                onFailure(it.message ?: "받은 친구 요청 조회 실패")
-            }
-    }
-
-    override fun acceptFriendRequest(
-        requestId: String,
-        myUserId: String,
-        fromUserId: String,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        val data = hashMapOf(
-            "friendUserId" to fromUserId,
-            "createdAt" to System.currentTimeMillis()
-        )
-
-        db.collection("users")
-            .document(myUserId)
-            .collection("friends")
-            .document(fromUserId)
-            .set(data)
-            .addOnSuccessListener {
-                db.collection("friendRequests")
-                    .document(requestId)
-                    .delete()
-                    .addOnSuccessListener {
-                        onSuccess()
-                    }
-                    .addOnFailureListener {
-                        onFailure(it.message ?: "친구 요청 삭제 실패")
-                    }
-            }
-            .addOnFailureListener {
-                onFailure(it.message ?: "친구 수락 실패")
-            }
-    }
-
-    override fun rejectFriendRequest(
-        requestId: String,
-        onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
-    ) {
-        db.collection("friendRequests")
-            .document(requestId)
-            .delete()
-            .addOnSuccessListener {
-                onSuccess()
-            }
-            .addOnFailureListener {
-                onFailure(it.message ?: "친구 요청 거절 실패")
-            }
     }
 }

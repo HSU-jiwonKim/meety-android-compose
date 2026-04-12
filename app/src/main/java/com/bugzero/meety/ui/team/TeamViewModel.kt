@@ -8,6 +8,7 @@ import com.bugzero.meety.data.repository.FriendRepository
 import com.bugzero.meety.data.repository.FirebaseFriendRepository
 import com.google.firebase.auth.FirebaseAuth
 
+
 data class Team(
     val teamId: String = "",
     val leaderId: String = "",
@@ -30,8 +31,12 @@ data class FriendItem(
     val age: Int = 0,
     val mbti: String = "",
     val bio: String = "",
-    val location: String = ""
+    val location: String = "",
+    val height: Int = 0,
+    val interests: List<String> = emptyList(),
+    val foodLikes: List<String> = emptyList()
 )
+
 data class FriendRequestItem(
     val requestId: String = "",
     val fromUserId: String = "",
@@ -42,7 +47,10 @@ data class FriendRequestItem(
     val age: Int = 0,
     val mbti: String = "",
     val bio: String = "",
-    val location: String = ""
+    val location: String = "",
+    val height: Int = 0,
+    val interests: List<String> = emptyList(),
+    val foodLikes: List<String> = emptyList()
 )
 data class Invitation(
     val invitationId: String = "",
@@ -83,8 +91,6 @@ class TeamViewModel(
 
     private val _friendAddMessage = MutableStateFlow("")
     val friendAddMessage: StateFlow<String> = _friendAddMessage
-    private val _receivedFriendRequests = MutableStateFlow<List<FriendRequestItem>>(emptyList())
-    val receivedFriendRequests: StateFlow<List<FriendRequestItem>> = _receivedFriendRequests
 
 
     fun createTeam(
@@ -264,19 +270,9 @@ class TeamViewModel(
                             myUserId = myUserId,
                             friendUserId = friendUserId,
                             onSuccess = {
-                                friendRepository.sendFriendRequest(
-                                    fromUserId = myUserId,
-                                    toUserId = friendUserId,
-                                    onSuccess = {
-                                        _friendAddMessage.value = "친구 추가가 완료되었습니다."
-                                        _isLoading.value = false
-                                        loadFriends()
-                                    },
-                                    onFailure = {
-                                        _friendAddMessage.value = it
-                                        _isLoading.value = false
-                                    }
-                                )
+                                _friendAddMessage.value = "친구 추가가 완료되었습니다."
+                                _isLoading.value = false
+                                loadFriends()
                             },
                             onFailure = {
                                 _friendAddMessage.value = it
@@ -320,64 +316,7 @@ class TeamViewModel(
             }
         )
     }
-    fun loadReceivedFriendRequests() {
-        val myUserId = auth.currentUser?.uid
-        if (myUserId == null) {
-            _message.value = "로그인된 사용자가 없습니다."
-            _receivedFriendRequests.value = emptyList()
-            return
-        }
 
-        friendRepository.loadReceivedFriendRequests(
-            myUserId = myUserId,
-            onSuccess = { list ->
-                _receivedFriendRequests.value = list
-            },
-            onFailure = {
-                _message.value = it
-                _receivedFriendRequests.value = emptyList()
-            }
-        )
-    }
-    fun acceptFriendRequest(requestId: String, fromUserId: String) {
-        val myUserId = auth.currentUser?.uid
-        if (myUserId == null) {
-            _message.value = "로그인된 사용자가 없습니다."
-            return
-        }
-
-        _isLoading.value = true
-
-        friendRepository.acceptFriendRequest(
-            requestId = requestId,
-            myUserId = myUserId,
-            fromUserId = fromUserId,
-            onSuccess = {
-                _isLoading.value = false
-                loadFriends()
-                loadReceivedFriendRequests()
-            },
-            onFailure = {
-                _message.value = it
-                _isLoading.value = false
-            }
-        )
-    }
-    fun rejectFriendRequest(requestId: String) {
-        _isLoading.value = true
-
-        friendRepository.rejectFriendRequest(
-            requestId = requestId,
-            onSuccess = {
-                _isLoading.value = false
-                loadReceivedFriendRequests()
-            },
-            onFailure = {
-                _message.value = it
-                _isLoading.value = false
-            }
-        )
-    }
     fun clearFriendAddMessage() {
         _friendAddMessage.value = ""
     }

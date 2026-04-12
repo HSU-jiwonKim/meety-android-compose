@@ -30,6 +30,7 @@ import com.bugzero.meety.ui.auth.SetupProfileScreen
 import com.bugzero.meety.ui.auth.SignUpScreen
 import com.bugzero.meety.ui.auth.StudentIdUploadScreen
 import com.bugzero.meety.ui.auth.VerificationCheckState
+import com.bugzero.meety.ui.call.CallScreen
 import com.bugzero.meety.ui.chat.ChatListScreen
 import com.bugzero.meety.ui.chat.ChatRoomScreen
 import com.bugzero.meety.ui.chat.ScheduleSyncScreen
@@ -57,6 +58,7 @@ object Routes {
     const val CHAT_LIST = "chat_list"
     const val CHAT_ROOM = "chat_room"
     const val SCHEDULE_SYNC = "schedule_sync"
+    const val CALL = "call"   // call/{chatId}/{callType}/{isIncoming}
 }
 
 data class NavItem(
@@ -439,16 +441,47 @@ fun NavGraph(
                     }
                     Box(modifier = Modifier.fillMaxSize())
                 } else {
+                    val chatId   = backStackEntry.arguments?.getString("chatId") ?: ""
+                    val roomName = backStackEntry.arguments?.getString("roomName") ?: "채팅방"
                     ChatRoomScreen(
-                        chatId = backStackEntry.arguments?.getString("chatId") ?: "",
-                        roomName = backStackEntry.arguments?.getString("roomName") ?: "채팅방",
-                        onBackClick = { navController.popBackStack() }
+                        chatId = chatId,
+                        roomName = roomName,
+                        onBackClick = { navController.popBackStack() },
+                        onVideoCallClick = {
+                            navController.navigate("${Routes.CALL}/$chatId/video/false")
+                        },
+                        onVoiceCallClick = {
+                            navController.navigate("${Routes.CALL}/$chatId/voice/false")
+                        },
+                        onAcceptCall = { cId, callType ->
+                            navController.navigate("${Routes.CALL}/$cId/$callType/true")
+                        }
                     )
                 }
             }
             composable(Routes.SCHEDULE_SYNC) {
                 ScheduleSyncScreen(
                     onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            // ─── 화상/음성 통화 화면 ────────────────────────────────────────
+            composable(
+                route = "${Routes.CALL}/{chatId}/{callType}/{isIncoming}",
+                arguments = listOf(
+                    navArgument("chatId")     { type = NavType.StringType },
+                    navArgument("callType")   { type = NavType.StringType },
+                    navArgument("isIncoming") { type = NavType.BoolType   }
+                )
+            ) { backStackEntry ->
+                val currentUserId = com.google.firebase.auth.FirebaseAuth
+                    .getInstance().currentUser?.uid ?: ""
+                CallScreen(
+                    chatId        = backStackEntry.arguments?.getString("chatId")     ?: "",
+                    callType      = backStackEntry.arguments?.getString("callType")   ?: "voice",
+                    isIncoming    = backStackEntry.arguments?.getBoolean("isIncoming") ?: false,
+                    currentUserId = currentUserId,
+                    onCallEnded   = { navController.popBackStack() }
                 )
             }
         }

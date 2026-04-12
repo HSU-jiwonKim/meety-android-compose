@@ -22,13 +22,19 @@ class MainActivity : ComponentActivity() {
         // 모든 기기에서 세로 방향 강제 고정
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
-        // 시스템 스플래시 즉시 종료 → 커스텀 Compose 스플래시로 전환
-        installSplashScreen()
+        // 시스템 스플래시 유지 조건 설정 → Compose 준비 후 해제
+        val systemSplash = installSplashScreen()
 
         super.onCreate(savedInstanceState)
 
+        var keepSystemSplash = true
+        systemSplash.setKeepOnScreenCondition { keepSystemSplash }
+
         setContent {
             MeetyTheme {
+                // 시스템 스플래시 해제 → Compose 스플래시로 전환
+                LaunchedEffect(Unit) { keepSystemSplash = false }
+
                 var showSplash by remember { mutableStateOf(true) }
 
                 if (showSplash) {

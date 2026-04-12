@@ -11,7 +11,8 @@ data class ChatPreview(
     val teamName: String = "",
     val unreadCount: Int = 0,
     val emoji: String = "👥",
-    val type: String = "team"
+    val type: String = "team",
+    val participantCount: Int = 0
 )
 
 data class ChatMessage(

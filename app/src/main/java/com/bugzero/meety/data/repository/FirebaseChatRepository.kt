@@ -6,9 +6,13 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class FirebaseChatRepository : ChatRepository {
@@ -32,21 +36,72 @@ class FirebaseChatRepository : ChatRepository {
                     return@addSnapshotListener
                 }
 
-                val previews = docs.map { doc ->
-                    ChatPreview(
-                        id = doc.id,
-                        teamId = doc.getString("teamId") ?: "",
-                        lastMessage = doc.getString("lastMessage") ?: "",
-                        lastMessageAt = try { doc.getTimestamp("lastMessageAt") } catch (e: Exception) { null },
-                        createdAt = try { doc.getTimestamp("createdAt") } catch (e: Exception) { null },
-                        teamName = doc.getString("teamName") ?: "알 수 없는 팀",
-                        unreadCount = (doc.getLong("unreadCount") ?: 0L).toInt(),
-                        emoji = doc.getString("emoji") ?: "👥",
-                        type = doc.getString("type") ?: "team"
-                    )
-                }.sortedByDescending { it.lastMessageAt?.seconds ?: it.createdAt?.seconds ?: 0L }
+                launch {
+                    try {
+                        val previews = docs.map { doc ->
+                            async {
+                                val type = doc.getString("type") ?: "team"
+                                // ✨ 일단 DB에 저장된 방 이름을 그대로 가져옵니다.
+                                val dbTeamName = doc.getString("teamName") ?: ""
+                                var displayTeamName = dbTeamName
+                                val participants = doc.get("participants") as? List<String> ?: emptyList()
 
-                trySend(previews)
+                                // ✨ 핵심 수정: 저장된 이름이 비어있거나,
+                                // 이름 자체가 쉼표로 연결된 형태(기본 생성 형태)이거나,
+                                // 알 수 없는 팀인 경우에만 동적 이름 생성 로직을 탑니다!
+                                val isDefaultOrEmptyName = dbTeamName.isBlank() || dbTeamName == "알 수 없는 팀" || dbTeamName.contains(",")
+
+                                if ((type == "direct" || type == "group") && isDefaultOrEmptyName) {
+                                    val otherUserIds = participants.filter { it != userId }
+
+                                    if (otherUserIds.isNotEmpty()) {
+                                        try {
+                                            val otherNames = mutableListOf<String>()
+
+                                            for (pid in otherUserIds) {
+                                                val userDoc = db.collection("users").document(pid).get().await()
+                                                val name = userDoc.getString("name")
+                                                if (!name.isNullOrBlank()) {
+                                                    otherNames.add(name)
+                                                }
+                                            }
+
+                                            if (otherNames.isNotEmpty()) {
+                                                displayTeamName = if (otherNames.size <= 3) {
+                                                    otherNames.joinToString(", ") // 3명 이하면 전부 나열
+                                                } else {
+                                                    "${otherNames.take(3).joinToString(", ")} 외 ${otherNames.size - 3}명" // 4명 이상이면 줄임
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("ChatBug", "동적 방 이름 생성 실패: ${e.message}")
+                                        }
+                                    }
+                                }
+
+                                ChatPreview(
+                                    id = doc.id,
+                                    teamId = doc.getString("teamId") ?: "",
+                                    lastMessage = doc.getString("lastMessage") ?: "",
+                                    lastMessageAt = try { doc.getTimestamp("lastMessageAt") } catch (e: Exception) { null },
+                                    createdAt = try { doc.getTimestamp("createdAt") } catch (e: Exception) { null },
+                                    teamName = displayTeamName, // ✨ 이제 "test" 같이 설정한 이름은 보호받고 그대로 들어갑니다!
+                                    unreadCount = (doc.getLong("unreadCount") ?: 0L).toInt(),
+                                    emoji = doc.getString("emoji") ?: "👥",
+                                    type = type,
+                                    participantCount = participants.size
+                                )
+                            }
+                        }.awaitAll()
+
+                        // 시간순 예쁘게 정렬 후 화면으로 쏘기
+                        val sortedPreviews = previews.sortedByDescending { it.lastMessageAt?.seconds ?: it.createdAt?.seconds ?: 0L }
+                        trySend(sortedPreviews)
+
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatBug", "채팅 목록 매핑 중 전체 에러 발생: ${e.message}")
+                    }
+                }
             }
 
         awaitClose { listener.remove() }
@@ -54,7 +109,6 @@ class FirebaseChatRepository : ChatRepository {
 
     override fun observeMessages(chatId: String): Flow<List<ChatMessage>> = callbackFlow {
         val currentUserId = auth.currentUser?.uid ?: ""
-
         val profileCache = mutableMapOf<String, Pair<String, String>>()
 
         val listener = db.collection("chats")
@@ -205,5 +259,24 @@ class FirebaseChatRepository : ChatRepository {
                 )
             )
             .await()
+    }
+    override suspend fun transferLeadershipAndLeave(chatId: String, currentUserId: String, newLeaderId: String) {
+        val chatRef = db.collection("chats").document(chatId)
+
+        // runTransaction을 쓰면 여러 수정을 '하나의 묶음'으로 안전하게 처리합니다.
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(chatRef)
+            val participants = snapshot.get("participants") as? MutableList<String> ?: mutableListOf()
+
+            // 1. 참여자 명단에서 나(기존 팀장)를 제거
+            participants.remove(currentUserId)
+
+            // 2. 새로운 팀장 ID로 교체하고 참여자 명단 업데이트
+            transaction.update(chatRef, mapOf(
+                "leaderId" to newLeaderId,
+                "participants" to participants,
+                "teamName" to "" // 1:1이 아닌 팀 채팅이라면 필요에 따라 처리
+            ))
+        }.await()
     }
 }

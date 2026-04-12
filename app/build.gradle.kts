@@ -64,6 +64,9 @@ dependencies {
     // FCM (푸시 알림)
     implementation("com.google.firebase:firebase-messaging")
 
+    // Agora RTC SDK (화상/음성 통화)
+    implementation("io.agora.rtc:full-sdk:4.3.2")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
