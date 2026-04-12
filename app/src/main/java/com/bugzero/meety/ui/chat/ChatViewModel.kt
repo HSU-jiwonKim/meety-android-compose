@@ -7,13 +7,16 @@ import com.bugzero.meety.data.repository.FirebaseChatRepository
 import com.bugzero.meety.ui.team.FirebaseTeamRepository
 import com.bugzero.meety.ui.team.ReceivedLikeItem
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -134,7 +137,7 @@ class ChatViewModel(
         _errorMessage.value = null
     }
 
-    // 채팅방 진입 시 호출
+    // ── 채팅방 진입 ───────────────────────────────────────────────
     fun enterChatRoom(chatId: String, roomName: String) {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) {
@@ -147,7 +150,7 @@ class ChatViewModel(
         loadParticipants(chatId)
     }
 
-    // 채팅 목록 실시간 구독
+    // ── 채팅 목록 실시간 구독 ──────────────────────────────────────
     fun loadChatList() {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) {
@@ -185,7 +188,7 @@ class ChatViewModel(
         }
     }
 
-    // 요청 목록 불러오기
+    // ── 요청 목록 실시간 구독 ──────────────────────────────────────
     fun loadRequestList() {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) {
@@ -214,7 +217,7 @@ class ChatViewModel(
         )
     }
 
-    // 요청 수락
+    // ── 요청 수락 ─────────────────────────────────────────────────
     fun acceptRequest(
         likeId: String,
         onSuccess: () -> Unit = {},
@@ -240,7 +243,7 @@ class ChatViewModel(
         )
     }
 
-    // 요청 거절
+    // ── 요청 거절 ─────────────────────────────────────────────────
     fun rejectRequest(
         likeId: String,
         onSuccess: () -> Unit = {},
@@ -265,7 +268,7 @@ class ChatViewModel(
         )
     }
 
-    // 특정 채팅방 메시지 실시간 구독
+    // ── 메시지 실시간 구독 ─────────────────────────────────────────
     fun observeMessages(chatId: String) {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) {
@@ -288,7 +291,7 @@ class ChatViewModel(
         }
     }
 
-    // 메시지 전송
+    // ── 메시지 전송 ───────────────────────────────────────────────
     fun sendMessage(chatId: String, content: String) {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) return
@@ -312,7 +315,7 @@ class ChatViewModel(
         }
     }
 
-    // 시간 포맷
+    // ── 시간 포맷 ─────────────────────────────────────────────────
     fun formatTime(timestamp: com.google.firebase.Timestamp?): String {
         timestamp ?: return ""
         val date = timestamp.toDate()
@@ -350,7 +353,7 @@ class ChatViewModel(
             }
     }
 
-    // 대화상대 목록 불러오기
+    // ── 대화상대 목록 불러오기 ─────────────────────────────────────
     fun loadParticipants(chatId: String) {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) {
@@ -411,29 +414,76 @@ class ChatViewModel(
         }
     }
 
-    // 채팅방 나가기
-    fun leaveChatRoom(chatId: String) {
+    // ── 채팅방 나가기 ─────────────────────────────────────────────
+    fun leaveChatRoom(
+        chatId: String,
+        onSuccess: () -> Unit = {},
+        onFailure: (String) -> Unit = {}
+    ) {
         val userId = currentUserIdOrNull
-        if (userId.isNullOrBlank()) return
+        if (userId.isNullOrBlank()) {
+            onFailure("로그인된 사용자가 없습니다.")
+            return
+        }
 
         viewModelScope.launch {
             try {
-                FirebaseFirestore.getInstance()
-                    .collection("chats")
+                val db = FirebaseFirestore.getInstance()
+
+                val chatDoc = db.collection("chats")
                     .document(chatId)
-                    .update(
-                        "participants",
-                        com.google.firebase.firestore.FieldValue.arrayRemove(userId)
-                    )
+                    .get()
                     .await()
+
+                val chatType = chatDoc.getString("type").orEmpty()
+
+                if (chatType == "team") {
+                    val systemMessage = mapOf(
+                        "senderId" to "system",
+                        "senderName" to "system",
+                        "content" to "팀원이 나갔습니다.",
+                        "type" to "system",
+                        "createdAt" to com.google.firebase.Timestamp.now()
+                    )
+
+                    db.collection("chats").document(chatId)
+                        .collection("messages")
+                        .add(systemMessage)
+                        .await()
+
+                    db.collection("chats").document(chatId)
+                        .update("participants", FieldValue.arrayRemove(userId))
+                        .await()
+
+                    db.collection("teams").document(chatId)
+                        .update("memberIds", FieldValue.arrayRemove(userId))
+                        .await()
+
+                    db.collection("users").document(userId)
+                        .update("teamIds", FieldValue.arrayRemove(chatId))
+                        .await()
+                } else {
+                    db.collection("chats").document(chatId)
+                        .update("participants", FieldValue.arrayRemove(userId))
+                        .await()
+                }
+
+                withContext(Dispatchers.Main) {
+                    onSuccess()
+                }
             } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "채팅방 나가기 실패: ${e.message}")
                 if (FirebaseAuth.getInstance().currentUser != null) {
                     _errorMessage.value = "채팅방 나가기에 실패했어요"
+                }
+                withContext(Dispatchers.Main) {
+                    onFailure("채팅방 나가기에 실패했어요")
                 }
             }
         }
     }
 
+    // ── 유저 프로필 불러오기 ───────────────────────────────────────
     fun loadUserProfile(userId: String) {
         val loginUserId = currentUserIdOrNull
         if (loginUserId.isNullOrBlank()) {
@@ -476,6 +526,7 @@ class ChatViewModel(
         _selectedUserProfile.value = null
     }
 
+    // ── 친구 목록 불러오기 ────────────────────────────────────────
     fun loadFriendList() {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) {
@@ -554,6 +605,7 @@ class ChatViewModel(
         }
     }
 
+    // ── 1:1 채팅방 생성 또는 조회 ──────────────────────────────────
     fun createOrGetDirectChat(
         friend: UserProfileData,
         onSuccess: (chatId: String, roomName: String) -> Unit,
@@ -583,7 +635,6 @@ class ChatViewModel(
 
                 if (!chatDoc.exists()) {
                     val now = com.google.firebase.Timestamp.now()
-
                     val chatData = hashMapOf(
                         "type" to "direct",
                         "participants" to ids,
@@ -595,12 +646,10 @@ class ChatViewModel(
                         "lastMessageAt" to now,
                         "unreadCount" to 0
                     )
-
                     chatRef.set(chatData).await()
                 } else {
                     val currentParticipants = chatDoc.get("participants") as? List<String> ?: emptyList()
                     val currentType = chatDoc.getString("type") ?: ""
-
                     if (currentType != "direct" || currentParticipants.sorted() != ids) {
                         onFailure("기존 채팅방 데이터가 올바르지 않습니다.")
                         return@launch
@@ -611,6 +660,132 @@ class ChatViewModel(
             } catch (e: Exception) {
                 android.util.Log.e("ChatVM", "1:1 채팅방 생성 실패: ${e.message}")
                 onFailure("채팅방 생성에 실패했어요")
+            }
+        }
+    }
+
+    // ── 현재 유저가 팀장인지 확인 ─────────────────────────────────────
+    val isCurrentUserLeader: Boolean
+        get() = _participants.value.firstOrNull { it.isLeader }?.userId == currentUserIdOrNull
+
+    // ── 팀장 양도 후 나가기 ───────────────────────────────────────────
+    fun transferLeaderAndLeave(
+        chatId: String,
+        newLeaderUserId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        val userId = currentUserIdOrNull
+        if (userId.isNullOrBlank()) {
+            onFailure("로그인된 사용자가 없습니다.")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+
+                db.collection("teams").document(chatId)
+                    .update("leaderId", newLeaderUserId)
+                    .await()
+
+                val currentParticipants = _participants.value.map { it.userId }.toMutableList()
+                currentParticipants.remove(newLeaderUserId)
+                currentParticipants.remove(userId)
+
+                val newParticipants = mutableListOf(newLeaderUserId) + currentParticipants
+
+                db.collection("chats").document(chatId)
+                    .update("participants", newParticipants)
+                    .await()
+
+                val newLeaderName = _participants.value.find { it.userId == newLeaderUserId }?.name ?: "새 팀장"
+                val systemMessage = mapOf(
+                    "senderId" to "system",
+                    "senderName" to "system",
+                    "content" to "${newLeaderName}님이 팀장이 되었습니다.",
+                    "type" to "system",
+                    "createdAt" to com.google.firebase.Timestamp.now()
+                )
+                db.collection("chats").document(chatId)
+                    .collection("messages")
+                    .add(systemMessage)
+                    .await()
+
+                db.collection("teams").document(chatId)
+                    .update("memberIds", FieldValue.arrayRemove(userId))
+                    .await()
+
+                db.collection("users").document(userId)
+                    .update("teamIds", FieldValue.arrayRemove(chatId))
+                    .await()
+
+                withContext(Dispatchers.Main) {
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "팀장 양도 실패: ${e.message}")
+                if (FirebaseAuth.getInstance().currentUser != null) {
+                    _errorMessage.value = "팀장 양도에 실패했어요"
+                }
+                withContext(Dispatchers.Main) {
+                    onFailure("팀장 양도에 실패했어요")
+                }
+            }
+        }
+    }
+
+    // ── 팀 해체 (팀장 혼자 남았을 때) ────────────────────────────────
+    fun disbandTeam(
+        chatId: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        val userId = currentUserIdOrNull
+        if (userId.isNullOrBlank()) {
+            onFailure("로그인된 사용자가 없습니다.")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+
+                val systemMessage = mapOf(
+                    "senderId" to "system",
+                    "senderName" to "system",
+                    "content" to "팀이 해체되었습니다.",
+                    "type" to "system",
+                    "createdAt" to com.google.firebase.Timestamp.now()
+                )
+                db.collection("chats").document(chatId)
+                    .collection("messages")
+                    .add(systemMessage)
+                    .await()
+
+                db.collection("chats").document(chatId)
+                    .update("participants", emptyList<String>())
+                    .await()
+
+                db.collection("teams").document(chatId)
+                    .update("status", "disbanded")
+                    .await()
+
+                db.collection("users").document(userId)
+                    .update("teamIds", FieldValue.arrayRemove(chatId))
+                    .await()
+
+                withContext(Dispatchers.Main) {
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "팀 해체 실패: ${e.message}")
+                if (FirebaseAuth.getInstance().currentUser != null) {
+                    _errorMessage.value = "팀 해체에 실패했어요"
+                }
+                withContext(Dispatchers.Main) {
+                    onFailure("팀 해체에 실패했어요")
+                }
             }
         }
     }

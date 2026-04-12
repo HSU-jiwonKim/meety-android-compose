@@ -50,7 +50,7 @@ class FirebaseTeamRepository : TeamRepository {
                 teamRef.set(team)
                     .addOnSuccessListener {
 
-                        // 🔥 2. 팀 채팅방 생성 (핵심)
+                        // 🔥 2. 팀 채팅방 생성
                         val chatData = mapOf(
                             "chatId" to teamId,
                             "teamId" to teamId,
@@ -68,11 +68,11 @@ class FirebaseTeamRepository : TeamRepository {
                             .set(chatData)
                             .addOnSuccessListener {
 
-                                // 🔥 3. 유저 teamId 설정
+                                // 🔥 3. 유저 teamIds 배열에 추가
                                 db.collection("users").document(userId)
-                                    .update("teamId", teamId)
+                                    .update("teamIds", FieldValue.arrayUnion(teamId))
                                     .addOnSuccessListener { onSuccess(teamId) }
-                                    .addOnFailureListener { onFailure(it.message ?: "users.teamId 업데이트 실패") }
+                                    .addOnFailureListener { onFailure(it.message ?: "users.teamIds 업데이트 실패") }
                             }
                             .addOnFailureListener { onFailure(it.message ?: "팀 채팅방 생성 실패") }
                     }
@@ -87,56 +87,83 @@ class FirebaseTeamRepository : TeamRepository {
 
         db.collection("users").document(currentUserId).get()
             .addOnSuccessListener { userDoc ->
-                val myTeamId = userDoc.getString("teamId").orEmpty()
-                if (myTeamId.isBlank()) { onSuccess(emptyList()); return@addOnSuccessListener }
+                @Suppress("UNCHECKED_CAST")
+                val myTeamIds = (userDoc.get("teamIds") as? List<String>) ?: emptyList()
+                if (myTeamIds.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
 
-                db.collection("likes")
-                    .whereEqualTo("toTeamId", myTeamId)
-                    .whereEqualTo("status", "pending")
-                    .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .get()
-                    .addOnSuccessListener { likeSnapshot ->
-                        if (likeSnapshot.isEmpty) { onSuccess(emptyList()); return@addOnSuccessListener }
+                // whereIn 10개 제한 대응 chunked 처리
+                val allResults = mutableListOf<ReceivedLikeItem>()
+                val chunks = myTeamIds.chunked(10)
+                var chunkCompleted = 0
 
-                        val results = mutableListOf<ReceivedLikeItem>()
-                        val docs = likeSnapshot.documents
-                        var completedCount = 0
-
-                        for (likeDoc in docs) {
-                            val likeId = likeDoc.getString("likeId").orEmpty().ifBlank { likeDoc.id }
-                            val fromUserId = likeDoc.getString("fromUserId").orEmpty()
-                            val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
-                            val createdAt = likeDoc.getLong("createdAt") ?: 0L
-
-                            if (fromUserId.isBlank()) {
-                                completedCount++
-                                if (completedCount == docs.size) onSuccess(results.sortedByDescending { it.createdAt })
-                                continue
+                for (chunk in chunks) {
+                    db.collection("likes")
+                        .whereIn("toTeamId", chunk)
+                        .whereEqualTo("status", "pending")
+                        .orderBy("createdAt", Query.Direction.DESCENDING)
+                        .get()
+                        .addOnSuccessListener { likeSnapshot ->
+                            if (likeSnapshot.isEmpty) {
+                                chunkCompleted++
+                                if (chunkCompleted == chunks.size) onSuccess(allResults.sortedByDescending { it.createdAt })
+                                return@addOnSuccessListener
                             }
 
-                            db.collection("users").document(fromUserId).get()
-                                .addOnSuccessListener { senderDoc ->
-                                    results.add(ReceivedLikeItem(
-                                        likeId = likeId,
-                                        fromUserId = fromUserId,
-                                        fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
-                                        fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
-                                        fromUserMbti = senderDoc.getString("mbti").orEmpty(),
-                                        fromUserDepartment = senderDoc.getString("department").orEmpty(),
-                                        fromTeamId = fromTeamId,
-                                        createdAt = createdAt
-                                    ))
+                            val docs = likeSnapshot.documents
+                            val results = mutableListOf<ReceivedLikeItem>()
+                            var completedCount = 0
+
+                            for (likeDoc in docs) {
+                                val likeId = likeDoc.getString("likeId").orEmpty().ifBlank { likeDoc.id }
+                                val fromUserId = likeDoc.getString("fromUserId").orEmpty()
+                                val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
+                                val createdAt = likeDoc.getLong("createdAt") ?: 0L
+
+                                if (fromUserId.isBlank()) {
                                     completedCount++
-                                    if (completedCount == docs.size) onSuccess(results.sortedByDescending { it.createdAt })
+                                    if (completedCount == docs.size) {
+                                        allResults.addAll(results)
+                                        chunkCompleted++
+                                        if (chunkCompleted == chunks.size) onSuccess(allResults.sortedByDescending { it.createdAt })
+                                    }
+                                    continue
                                 }
-                                .addOnFailureListener {
-                                    results.add(ReceivedLikeItem(likeId = likeId, fromUserId = fromUserId, fromUserName = "이름 없음", fromTeamId = fromTeamId, createdAt = createdAt))
-                                    completedCount++
-                                    if (completedCount == docs.size) onSuccess(results.sortedByDescending { it.createdAt })
-                                }
+
+                                db.collection("users").document(fromUserId).get()
+                                    .addOnSuccessListener { senderDoc ->
+                                        results.add(ReceivedLikeItem(
+                                            likeId = likeId,
+                                            fromUserId = fromUserId,
+                                            fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
+                                            fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
+                                            fromUserMbti = senderDoc.getString("mbti").orEmpty(),
+                                            fromUserDepartment = senderDoc.getString("department").orEmpty(),
+                                            fromTeamId = fromTeamId,
+                                            createdAt = createdAt
+                                        ))
+                                        completedCount++
+                                        if (completedCount == docs.size) {
+                                            allResults.addAll(results)
+                                            chunkCompleted++
+                                            if (chunkCompleted == chunks.size) onSuccess(allResults.sortedByDescending { it.createdAt })
+                                        }
+                                    }
+                                    .addOnFailureListener {
+                                        results.add(ReceivedLikeItem(likeId = likeId, fromUserId = fromUserId, fromUserName = "이름 없음", fromTeamId = fromTeamId, createdAt = createdAt))
+                                        completedCount++
+                                        if (completedCount == docs.size) {
+                                            allResults.addAll(results)
+                                            chunkCompleted++
+                                            if (chunkCompleted == chunks.size) onSuccess(allResults.sortedByDescending { it.createdAt })
+                                        }
+                                    }
+                            }
                         }
-                    }
-                    .addOnFailureListener { e -> onFailure(e.message ?: "받은 관심 조회 실패") }
+                        .addOnFailureListener { e ->
+                            chunkCompleted++
+                            if (chunkCompleted == chunks.size) onSuccess(allResults.sortedByDescending { it.createdAt })
+                        }
+                }
             }
             .addOnFailureListener { e -> onFailure(e.message ?: "사용자 정보 조회 실패") }
     }
@@ -156,6 +183,7 @@ class FirebaseTeamRepository : TeamRepository {
                     .addOnSuccessListener { userDoc ->
                         val mbti = userDoc.getString("mbti").orEmpty()
                         val profileImage = userDoc.getString("profileImage").orEmpty()
+                        val userName = userDoc.getString("name").orEmpty().ifBlank { "새 팀원" }
 
                         // 🔥 1. 팀에 추가
                         db.collection("teams").document(toTeamId)
@@ -168,9 +196,9 @@ class FirebaseTeamRepository : TeamRepository {
                             )
                             .addOnSuccessListener {
 
-                                // 🔥 2. 유저 teamId 업데이트
+                                // 🔥 2. 유저 teamIds 배열에 추가
                                 db.collection("users").document(fromUserId)
-                                    .update("teamId", toTeamId)
+                                    .update("teamIds", FieldValue.arrayUnion(toTeamId))
                                     .addOnSuccessListener {
 
                                         // 🔥 3. 좋아요 상태 변경
@@ -183,19 +211,16 @@ class FirebaseTeamRepository : TeamRepository {
                                             )
                                             .addOnSuccessListener {
 
-                                                // 🔥🔥🔥 핵심: 기존 채팅방에 참가자 추가 (절대 새 채팅 생성 X)
+                                                // 🔥 4. 채팅방 참가자 추가
                                                 db.collection("chats").document(toTeamId)
-                                                    .update(
-                                                        "participants",
-                                                        FieldValue.arrayUnion(fromUserId)
-                                                    )
+                                                    .update("participants", FieldValue.arrayUnion(fromUserId))
                                                     .addOnSuccessListener {
 
-                                                        // 시스템 메시지
+                                                        // 🔥 5. 시스템 메시지 (userName 포함)
                                                         val systemMessage = mapOf(
                                                             "senderId" to "system",
                                                             "senderName" to "system",
-                                                            "content" to "새 팀원이 입장했습니다.",
+                                                            "content" to "${userName}님이 입장했습니다.",
                                                             "type" to "system",
                                                             "createdAt" to com.google.firebase.Timestamp.now()
                                                         )
@@ -205,13 +230,13 @@ class FirebaseTeamRepository : TeamRepository {
                                                             .collection("messages")
                                                             .add(systemMessage)
                                                             .addOnSuccessListener { onSuccess() }
-                                                            .addOnFailureListener { onSuccess() }
+                                                            .addOnFailureListener { onSuccess() } // 메시지 실패해도 입장은 성공
                                                     }
                                                     .addOnFailureListener { onFailure(it.message ?: "채팅방 참가자 추가 실패") }
                                             }
                                             .addOnFailureListener { onFailure(it.message ?: "좋아요 상태 업데이트 실패") }
                                     }
-                                    .addOnFailureListener { onFailure(it.message ?: "사용자 teamId 업데이트 실패") }
+                                    .addOnFailureListener { onFailure(it.message ?: "사용자 teamIds 업데이트 실패") }
                             }
                             .addOnFailureListener { onFailure(it.message ?: "팀원 추가 실패") }
                     }
@@ -262,9 +287,9 @@ class FirebaseTeamRepository : TeamRepository {
                     )
                     .addOnSuccessListener {
                         db.collection("users").document(userId)
-                            .update("teamId", "")
+                            .update("teamIds", FieldValue.arrayRemove(teamId))
                             .addOnSuccessListener { onSuccess() }
-                            .addOnFailureListener { onFailure(it.message ?: "teamId 초기화 실패") }
+                            .addOnFailureListener { onFailure(it.message ?: "teamIds 제거 실패") }
                     }
                     .addOnFailureListener { onFailure(it.message ?: "팀 탈퇴 실패") }
             }
@@ -289,6 +314,7 @@ class FirebaseTeamRepository : TeamRepository {
             }
             .addOnFailureListener { onFailure(it.message ?: "이미지 업로드 실패") }
     }
+
     fun observeReceivedLikes(
         onUpdate: (List<ReceivedLikeItem>) -> Unit,
         onFailure: (String) -> Unit
@@ -300,61 +326,84 @@ class FirebaseTeamRepository : TeamRepository {
 
         db.collection("users").document(currentUserId).get()
             .addOnSuccessListener { userDoc ->
-                val myTeamId = userDoc.getString("teamId").orEmpty()
-                if (myTeamId.isBlank()) { onUpdate(emptyList()); return@addOnSuccessListener }
+                @Suppress("UNCHECKED_CAST")
+                val myTeamIds = (userDoc.get("teamIds") as? List<String>) ?: emptyList()
+                if (myTeamIds.isEmpty()) { onUpdate(emptyList()); return@addOnSuccessListener }
 
-                listenerRegistration = db.collection("likes")
-                    .whereEqualTo("toTeamId", myTeamId)
-                    .whereEqualTo("status", "pending")
-                    .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .addSnapshotListener { snapshot, error ->
-                        if (error != null) { onFailure(error.message ?: "실시간 구독 실패"); return@addSnapshotListener }
-                        if (snapshot == null) { onUpdate(emptyList()); return@addSnapshotListener }
+                // whereIn 10개 제한 대응 chunked 처리
+                val allResults = mutableListOf<ReceivedLikeItem>()
+                val chunks = myTeamIds.chunked(10)
+                var chunkCompleted = 0
 
-                        val docs = snapshot.documents
-                        if (docs.isEmpty()) { onUpdate(emptyList()); return@addSnapshotListener }
+                for (chunk in chunks) {
+                    listenerRegistration = db.collection("likes")
+                        .whereIn("toTeamId", chunk)
+                        .whereEqualTo("status", "pending")
+                        .orderBy("createdAt", Query.Direction.DESCENDING)
+                        .addSnapshotListener { snapshot, error ->
+                            if (error != null) { onFailure(error.message ?: "실시간 구독 실패"); return@addSnapshotListener }
+                            if (snapshot == null) { onUpdate(emptyList()); return@addSnapshotListener }
 
-                        val results = mutableListOf<ReceivedLikeItem>()
-                        var completedCount = 0
-
-                        for (likeDoc in docs) {
-                            val likeId = likeDoc.getString("likeId").orEmpty().ifBlank { likeDoc.id }
-                            val fromUserId = likeDoc.getString("fromUserId").orEmpty()
-                            val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
-                            val createdAt = likeDoc.getLong("createdAt") ?: 0L
-
-                            if (fromUserId.isBlank()) {
-                                completedCount++
-                                if (completedCount == docs.size) onUpdate(results.sortedByDescending { it.createdAt })
-                                continue
+                            val docs = snapshot.documents
+                            if (docs.isEmpty()) {
+                                chunkCompleted++
+                                if (chunkCompleted == chunks.size) onUpdate(allResults.sortedByDescending { it.createdAt })
+                                return@addSnapshotListener
                             }
 
-                            db.collection("users").document(fromUserId).get()
-                                .addOnSuccessListener { senderDoc ->
-                                    results.add(ReceivedLikeItem(
-                                        likeId = likeId,
-                                        fromUserId = fromUserId,
-                                        fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
-                                        fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
-                                        fromUserMbti = senderDoc.getString("mbti").orEmpty(),
-                                        fromUserDepartment = senderDoc.getString("department").orEmpty(),
-                                        fromTeamId = fromTeamId,
-                                        createdAt = createdAt
-                                    ))
+                            val results = mutableListOf<ReceivedLikeItem>()
+                            var completedCount = 0
+
+                            for (likeDoc in docs) {
+                                val likeId = likeDoc.getString("likeId").orEmpty().ifBlank { likeDoc.id }
+                                val fromUserId = likeDoc.getString("fromUserId").orEmpty()
+                                val fromTeamId = likeDoc.getString("fromTeamId").orEmpty()
+                                val createdAt = likeDoc.getLong("createdAt") ?: 0L
+
+                                if (fromUserId.isBlank()) {
                                     completedCount++
-                                    if (completedCount == docs.size) onUpdate(results.sortedByDescending { it.createdAt })
+                                    if (completedCount == docs.size) {
+                                        allResults.addAll(results)
+                                        chunkCompleted++
+                                        if (chunkCompleted == chunks.size) onUpdate(allResults.sortedByDescending { it.createdAt })
+                                    }
+                                    continue
                                 }
-                                .addOnFailureListener {
-                                    results.add(ReceivedLikeItem(likeId = likeId, fromUserId = fromUserId, fromUserName = "이름 없음", fromTeamId = fromTeamId, createdAt = createdAt))
-                                    completedCount++
-                                    if (completedCount == docs.size) onUpdate(results.sortedByDescending { it.createdAt })
-                                }
+
+                                db.collection("users").document(fromUserId).get()
+                                    .addOnSuccessListener { senderDoc ->
+                                        results.add(ReceivedLikeItem(
+                                            likeId = likeId,
+                                            fromUserId = fromUserId,
+                                            fromUserName = senderDoc.getString("name").orEmpty().ifBlank { "이름 없음" },
+                                            fromUserProfileImage = senderDoc.getString("profileImage").orEmpty(),
+                                            fromUserMbti = senderDoc.getString("mbti").orEmpty(),
+                                            fromUserDepartment = senderDoc.getString("department").orEmpty(),
+                                            fromTeamId = fromTeamId,
+                                            createdAt = createdAt
+                                        ))
+                                        completedCount++
+                                        if (completedCount == docs.size) {
+                                            allResults.addAll(results)
+                                            chunkCompleted++
+                                            if (chunkCompleted == chunks.size) onUpdate(allResults.sortedByDescending { it.createdAt })
+                                        }
+                                    }
+                                    .addOnFailureListener {
+                                        results.add(ReceivedLikeItem(likeId = likeId, fromUserId = fromUserId, fromUserName = "이름 없음", fromTeamId = fromTeamId, createdAt = createdAt))
+                                        completedCount++
+                                        if (completedCount == docs.size) {
+                                            allResults.addAll(results)
+                                            chunkCompleted++
+                                            if (chunkCompleted == chunks.size) onUpdate(allResults.sortedByDescending { it.createdAt })
+                                        }
+                                    }
+                            }
                         }
-                    }
+                }
             }
             .addOnFailureListener { onFailure(it.message ?: "사용자 정보 조회 실패") }
 
         return listenerRegistration
     }
-
 }

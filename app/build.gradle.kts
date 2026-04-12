@@ -49,6 +49,9 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
 
+    // Splash Screen API
+    implementation("androidx.core:core-splashscreen:1.0.1")
+
     // Firebase
 
     implementation(platform("com.google.firebase:firebase-bom:34.10.0"))

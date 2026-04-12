@@ -80,7 +80,7 @@ fun NavGraph(
     val bottomNavItems = remember(isAdmin) {
         buildList {
             add(NavItem(Routes.FEED, "홈", "home"))
-            add(NavItem(Routes.MY_TEAM, "매칭", "heart"))
+            add(NavItem(Routes.MY_TEAM, "친구", "heart"))
             add(NavItem(Routes.MEETING_CREATE, "팀 만들기", "plus"))
             add(NavItem(Routes.CHAT_LIST, "채팅", "chat"))
             add(NavItem(Routes.MY_PAGE, "프로필", "person"))
@@ -357,6 +357,13 @@ fun NavGraph(
                         onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) },
                         onScheduleClick = { navController.navigate(Routes.SCHEDULE_SYNC) },
                         onRequireLogin = {
+                            navController.navigate(Routes.ONBOARDING) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        },
+                        onLogoutClick = {
+                            authViewModel.logout()
                             navController.navigate(Routes.ONBOARDING) {
                                 popUpTo(0) { inclusive = true }
                                 launchSingleTop = true

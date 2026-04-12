@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
@@ -97,7 +98,8 @@ fun MyPageScreen(
     onSearchClick: () -> Unit = {},
     onNotificationClick: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
-    onScheduleClick: () -> Unit = {}
+    onScheduleClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -124,6 +126,7 @@ fun MyPageScreen(
             onAddPhotoClick = {
                 imagePickerLauncher.launch("image/*")
             },
+            onLogoutClick = onLogoutClick,
             modifier = Modifier.padding(innerPadding)
         )
     }
@@ -135,6 +138,7 @@ fun MyPageBody(
     onEditProfileClick: () -> Unit,
     onScheduleClick: () -> Unit = {},
     onAddPhotoClick: () -> Unit,
+    onLogoutClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -156,6 +160,7 @@ fun MyPageBody(
         item { ScheduleSection(schedule = uiState.schedule, onScheduleClick = onScheduleClick) }
         item { FoodPreferenceSection(likes = uiState.foodLikes, dislikes = uiState.foodDislikes) }
         item { EditProfileButton(onClick = onEditProfileClick) }
+        item { LogoutButton(onClick = onLogoutClick) }
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
@@ -444,5 +449,31 @@ private fun AddPhotoItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = "사진 추가", style = MaterialTheme.typography.bodySmall, color = Color(0xFF8E24AA))
         }
+    }
+}
+
+@Composable
+private fun LogoutButton(onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFF5F5F5),
+            contentColor = Color(0xFF888888)
+        )
+    ) {
+        Icon(
+            imageVector = Icons.Default.ExitToApp,
+            contentDescription = "로그아웃",
+            tint = Color(0xFF888888)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "로그아웃",
+            fontWeight = FontWeight.Medium
+        )
     }
 }
