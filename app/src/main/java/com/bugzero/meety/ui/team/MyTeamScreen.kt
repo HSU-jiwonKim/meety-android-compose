@@ -51,6 +51,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.HorizontalDivider
+import com.bugzero.meety.ui.theme.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.style.TextAlign
+import com.bugzero.meety.ui.feed.FeedConstants
 
 private enum class MyTeamTab {
     FRIENDS, ADD_FRIEND
@@ -59,24 +68,32 @@ private enum class MyTeamTab {
 data class FriendUiState(
     val id: String,
     val name: String,
+    val email: String = "",
     val profileImageUrl: String = "",
     val department: String = "",
     val age: Int = 0,
     val mbti: String = "",
     val bio: String = "",
-    val location: String = ""
+    val location: String = "",
+    val height: Int = 0,
+    val interests: List<String> = emptyList(),
+    val foodLikes: List<String> = emptyList()
 )
 
+
 data class ProfilePreviewUiState(
+    val id: String = "",
     val name: String = "",
     val profileImageUrl: String = "",
     val department: String = "",
     val age: Int = 0,
     val mbti: String = "",
     val bio: String = "",
-    val location: String = ""
+    val location: String = "",
+    val height: Int = 0,
+    val interests: List<String> = emptyList(),
+    val foodLikes: List<String> = emptyList()
 )
-
 @Composable
 fun MyTeamScreen(
     viewModel: TeamViewModel = viewModel(),
@@ -99,28 +116,33 @@ fun MyTeamScreen(
     val friends by viewModel.friends.collectAsState()
     val friendAddMessage by viewModel.friendAddMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val receivedFriendRequests by viewModel.receivedFriendRequests.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadFriends()
-        viewModel.loadReceivedFriendRequests()
     }
 
     val friendList = friends.map {
         FriendUiState(
             id = it.userId,
             name = if (it.name.isBlank()) "이름 없음" else it.name,
+            email = it.email,
             profileImageUrl = it.profileImageUrl,
             department = it.department,
             age = it.age,
             mbti = it.mbti,
             bio = it.bio,
-            location = it.location
+            location = it.location,
+            height = it.height,
+            interests = it.interests,
+            foodLikes = it.foodLikes
         )
     }
 
     val filteredFriendList = friendList.filter { friend ->
-        friend.name.contains(friendSearchQuery.trim(), ignoreCase = true)
+        val query = friendSearchQuery.trim()
+        query.isBlank() ||
+                friend.name.contains(query, ignoreCase = true) ||
+                friend.email.contains(query, ignoreCase = true)
     }
 
     selectedProfile?.let { profile ->
@@ -155,7 +177,6 @@ fun MyTeamScreen(
                 MyTeamTabRow(
                     selectedTab = selectedTab,
                     friendCount = friendList.size,
-                    addCount = receivedFriendRequests.size,
                     onTabSelected = {
                         selectedTab = it
                         if (it != MyTeamTab.FRIENDS) {
@@ -196,13 +217,17 @@ fun MyTeamScreen(
                                 friend = friend,
                                 onProfileClick = {
                                     selectedProfile = ProfilePreviewUiState(
+                                        id = friend.id,
                                         name = friend.name,
                                         profileImageUrl = friend.profileImageUrl,
                                         department = friend.department,
                                         age = friend.age,
                                         mbti = friend.mbti,
                                         bio = friend.bio,
-                                        location = friend.location
+                                        location = friend.location,
+                                        height = friend.height,
+                                        interests = friend.interests,
+                                        foodLikes = friend.foodLikes
                                     )
                                 },
                                 onRemoveClick = { viewModel.removeFriend(friend.id) }
@@ -233,42 +258,6 @@ fun MyTeamScreen(
                             }
                         )
                     }
-
-                    item {
-                        SectionTitle(text = "받은 친구 요청")
-                    }
-
-                    if (receivedFriendRequests.isEmpty() && !isLoading) {
-                        item {
-                            EmptyFriendCard(text = "받은 친구 요청이 없습니다.")
-                        }
-                    } else {
-                        items(receivedFriendRequests) { request ->
-                            ReceivedFriendRequestCard(
-                                request = request,
-                                onProfileClick = {
-                                    selectedProfile = ProfilePreviewUiState(
-                                        name = request.name,
-                                        profileImageUrl = request.profileImageUrl,
-                                        department = request.department,
-                                        age = request.age,
-                                        mbti = request.mbti,
-                                        bio = request.bio,
-                                        location = request.location
-                                    )
-                                },
-                                onAcceptClick = {
-                                    viewModel.acceptFriendRequest(
-                                        requestId = request.requestId,
-                                        fromUserId = request.fromUserId
-                                    )
-                                },
-                                onRejectClick = {
-                                    viewModel.rejectFriendRequest(request.requestId)
-                                }
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -286,6 +275,10 @@ private fun FriendSearchSection(
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         shape = RoundedCornerShape(18.dp),
+        colors = androidx.compose.material3.TextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White
+        ),
         placeholder = {
             Text(
                 text = "친구 이름 검색",
@@ -306,7 +299,6 @@ private fun FriendSearchSection(
 private fun MyTeamTabRow(
     selectedTab: MyTeamTab,
     friendCount: Int,
-    addCount: Int,
     onTabSelected: (MyTeamTab) -> Unit
 ) {
     Row(
@@ -327,7 +319,7 @@ private fun MyTeamTabRow(
 
         TeamTabButton(
             text = "친구 추가",
-            count = addCount,
+            count = null,
             selected = selectedTab == MyTeamTab.ADD_FRIEND,
             modifier = Modifier.weight(1f),
             onClick = { onTabSelected(MyTeamTab.ADD_FRIEND) }
@@ -736,100 +728,196 @@ private fun ProfilePreviewDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "닫기",
-                        tint = Color(0xFF666666),
-                        modifier = Modifier
-                            .size(22.dp)
-                            .clickable { onDismiss() }
-                    )
-                }
+                val colorIndex = (profile.id.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
+                val avatarColors = FeedConstants.CardColorPalette[colorIndex]
 
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFF2F3F5)),
+                        .size(80.dp)
+                        .clip(CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     if (profile.profileImageUrl.isNotBlank()) {
                         AsyncImage(
                             model = profile.profileImageUrl,
-                            contentDescription = "프로필 이미지",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
+                            contentDescription = "${profile.name} 프로필 사진",
+                            modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "기본 프로필",
-                            tint = Color(0xFF9CA3AF),
-                            modifier = Modifier.size(42.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(androidx.compose.ui.graphics.Brush.verticalGradient(avatarColors)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = profile.name.firstOrNull()?.toString() ?: "?",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = profile.name,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Gray900
+                    )
+
+                    if (profile.age > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Gray100, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "${profile.age}세",
+                                fontSize = 12.sp,
+                                color = Gray500
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Gray200)
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = if (profile.name.isBlank()) "이름 없음" else profile.name,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = Color(0xFF111111)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val infoLine = buildList {
-                    if (profile.department.isNotBlank()) add(profile.department)
-                    if (profile.age > 0) add("${profile.age}세")
-                    if (profile.mbti.isNotBlank()) add(profile.mbti)
-                }.joinToString(" · ")
-
-                if (infoLine.isNotBlank()) {
-                    Text(
-                        text = infoLine,
-                        color = Color(0xFF666666),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (profile.department.isNotBlank()) MemberInfoRow("학과", profile.department)
+                    if (profile.height > 0) MemberInfoRow("키", "${profile.height}cm")
+                    if (profile.location.isNotBlank()) MemberInfoRow("거주지", profile.location)
+                    if (profile.mbti.isNotBlank()) MemberInfoRow("MBTI", profile.mbti)
+                    if (profile.bio.isNotBlank()) MemberInfoRow("소개", profile.bio)
                 }
 
-                if (profile.bio.isNotBlank()) {
+                if (profile.interests.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = profile.bio,
-                        color = Color(0xFF444444),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "관심사",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Gray500
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            profile.interests.forEach { interest ->
+                                Box(
+                                    modifier = Modifier
+                                        .background(FeedConstants.LightPurpleBg, RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = interest,
+                                        fontSize = 12.sp,
+                                        color = Purple
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
-                if (profile.location.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                if (profile.foodLikes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "좋아하는 음식",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Gray500
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            profile.foodLikes.forEach { food ->
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color(0xFFDCFCE7), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = food,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF16A34A)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Purple)
+                ) {
                     Text(
-                        text = profile.location,
-                        color = Color(0xFF888888),
-                        style = MaterialTheme.typography.bodySmall
+                        text = "닫기",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MemberInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            color = Gray400,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            color = Gray900,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
