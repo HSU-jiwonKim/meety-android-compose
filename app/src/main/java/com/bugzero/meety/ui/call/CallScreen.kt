@@ -1,6 +1,7 @@
 package com.bugzero.meety.ui.call
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.view.SurfaceView
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bugzero.meety.VoiceCallService
 import kotlinx.coroutines.delay
 
 /**
@@ -47,6 +49,46 @@ fun CallScreen(
     callViewModel: CallViewModel = viewModel()
 ) {
     val context = LocalContext.current
+
+    // VoiceCallService가 이미 실행 중인지 확인 (알림에서 음성 수락 → 서비스 → 앱 열기)
+    val serviceRunning by VoiceCallService.isRunning.collectAsState()
+    val useService = callType == "voice" && serviceRunning
+
+    // ─── 서비스 기반 음성 통화 (VoiceCallService가 Agora를 관리) ──────────────
+    if (useService) {
+        val svcState   by VoiceCallService.callState.collectAsState()
+        val svcMuted   by VoiceCallService.isMuted.collectAsState()
+        val svcSpeaker by VoiceCallService.isSpeakerOn.collectAsState()
+
+        // 서비스에서 통화 종료 감지
+        LaunchedEffect(svcState) {
+            if (svcState is VoiceCallService.VoiceCallState.Ended) {
+                delay(800)
+                onCallEnded()
+            }
+        }
+
+        val serviceCallState: CallUiState = when (svcState) {
+            is VoiceCallService.VoiceCallState.Calling -> CallUiState.Calling("voice", (svcState as VoiceCallService.VoiceCallState.Calling).channelName)
+            is VoiceCallService.VoiceCallState.InCall  -> CallUiState.InCall("voice", (svcState as VoiceCallService.VoiceCallState.InCall).channelName)
+            is VoiceCallService.VoiceCallState.Ended   -> CallUiState.Ended
+            else -> CallUiState.Idle
+        }
+
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            VoiceCallContent(
+                callState   = serviceCallState,
+                isMuted     = svcMuted,
+                isSpeakerOn = svcSpeaker,
+                onMuteClick    = { context.startService(Intent(context, VoiceCallService::class.java).apply { action = VoiceCallService.ACTION_TOGGLE_MUTE }) },
+                onSpeakerClick = { context.startService(Intent(context, VoiceCallService::class.java).apply { action = VoiceCallService.ACTION_TOGGLE_SPEAKER }) },
+                onEndCall      = { context.startService(VoiceCallService.createEndIntent(context)) }
+            )
+        }
+        return
+    }
+
+    // ─── 일반 통화 (CallViewModel이 Agora를 관리) ────────────────────────────
     val callState  by callViewModel.callUiState.collectAsState()
     val isMuted    by callViewModel.isMuted.collectAsState()
     val isCameraOff by callViewModel.isCameraOff.collectAsState()

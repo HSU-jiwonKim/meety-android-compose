@@ -1,7 +1,6 @@
 package com.bugzero.meety
 
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -18,35 +17,19 @@ class CallActionReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val chatId   = intent.getStringExtra(EXTRA_CHAT_ID)   ?: return
-        val callType = intent.getStringExtra(EXTRA_CALL_TYPE) ?: "voice"
+        val chatId = intent.getStringExtra(EXTRA_CHAT_ID) ?: return
 
         // 알림 즉시 제거
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(NOTIFICATION_ID)
+        try { nm.cancel(null, NOTIFICATION_ID) } catch (_: Exception) {}
+
+        // Firestore 상태 감시 리스너 정리 (수락/거절 모두)
+        MyFirebaseMessagingService.removeCallStatusListener()
 
         when (intent.action) {
-            ACTION_ACCEPT -> {
-                // BroadcastReceiver 안에서 startActivity()는 Android 10+ 에서 차단됨.
-                // 해결책: MyFirebaseMessagingService에서 만든 fullScreenPending과
-                // 동일한 파라미터(requestCode = NOTIFICATION_ID)로 PendingIntent를 재조회한 뒤
-                // send()로 실행 → 시스템 컨텍스트에서 발동되므로 백그라운드 제한 없음.
-                val launchIntent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    putExtra("chatId",         chatId)
-                    putExtra("callType",       callType)
-                    putExtra("isIncomingCall", true)
-                }
-                val pending = PendingIntent.getActivity(
-                    context,
-                    NOTIFICATION_ID,          // fullScreenPending과 동일한 requestCode
-                    launchIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                pending.send()
-            }
+            ACTION_ACCEPT -> { /* 알림 제거 완료 — Activity는 시스템이 직접 실행 */ }
+
             ACTION_DECLINE -> {
                 FirebaseFirestore.getInstance()
                     .collection("calls")

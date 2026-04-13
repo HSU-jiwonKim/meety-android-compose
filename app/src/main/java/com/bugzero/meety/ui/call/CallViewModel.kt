@@ -1,10 +1,13 @@
 package com.bugzero.meety.ui.call
 
 import android.app.Application
+import android.util.Log
 import android.view.SurfaceView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.repository.AgoraCallRepository
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import io.agora.rtc2.ChannelMediaOptions
 import io.agora.rtc2.Constants
 import io.agora.rtc2.IRtcEngineEventHandler
@@ -57,6 +60,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
     private var rtcEngine: RtcEngine? = null
     private var currentChatId = ""
+    private var callStatusListener: ListenerRegistration? = null
 
     // ─── Agora 이벤트 핸들러 ──────────────────────────────────────────────────
     private val rtcEventHandler = object : IRtcEngineEventHandler() {
@@ -126,6 +130,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             val channelName = callRepository.startCall(chatId, callType, callerId)
             _callUiState.value = CallUiState.Calling(callType, channelName)
             joinChannel(channelName, callType)
+            startCallStatusListener(chatId)
         }
     }
 
@@ -137,6 +142,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             _callUiState.value = CallUiState.Calling(callType, channelName)
             joinChannel(channelName, callType)
             _incomingCallState.value = null
+            startCallStatusListener(chatId)
         }
     }
 
@@ -150,6 +156,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
     // ─── 통화 종료 ────────────────────────────────────────────────────────────
     fun endCall() {
+        callStatusListener?.remove()
+        callStatusListener = null
         viewModelScope.launch {
             if (currentChatId.isNotEmpty()) callRepository.endCall(currentChatId)
             leaveChannel()
@@ -217,6 +225,33 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         _isSpeakerOn.value  = true
     }
 
+    // ─── Firestore 상태 감시 (상대방이 endCall → "ended" → 이쪽도 종료) ─────
+    private fun startCallStatusListener(chatId: String) {
+        callStatusListener?.remove()
+        var isFirst = true
+        callStatusListener = FirebaseFirestore.getInstance()
+            .collection("calls").document(chatId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("CallVM", "callStatus 리스너 에러: ${error.message}")
+                    return@addSnapshotListener
+                }
+                val status = snapshot?.getString("status") ?: return@addSnapshotListener
+                // 첫 스냅샷은 현재 상태이므로 무시
+                if (isFirst) { isFirst = false; return@addSnapshotListener }
+
+                if (status == "ended" && _callUiState.value !is CallUiState.Ended) {
+                    Log.d("CallVM", "상대방이 통화 종료 → 이쪽도 종료")
+                    callStatusListener?.remove()
+                    callStatusListener = null
+                    viewModelScope.launch {
+                        leaveChannel()
+                        _callUiState.value = CallUiState.Ended
+                    }
+                }
+            }
+    }
+
     // ─── Private Helpers ──────────────────────────────────────────────────────
     private fun joinChannel(channelName: String, callType: String) {
         val engine = rtcEngine ?: return
@@ -248,6 +283,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        callStatusListener?.remove()
+        callStatusListener = null
         callRepository.stopListeningForCalls(currentChatId)
         rtcEngine?.leaveChannel()
         rtcEngine?.stopPreview()

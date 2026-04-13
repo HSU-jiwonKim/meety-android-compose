@@ -1,6 +1,8 @@
 package com.bugzero.meety
 
 import android.Manifest
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -39,6 +41,23 @@ class MainActivity : ComponentActivity() {
     // 알림에서 받은 Intent를 Compose에 전달하기 위한 StateFlow
     private val pendingIntent = MutableStateFlow<Intent?>(null)
 
+    companion object {
+        /** 앱(Activity)이 포그라운드에 있는지 여부 — VoiceCallService에서 참조 */
+        @Volatile
+        var isInForeground: Boolean = false
+            private set
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isInForeground = false
+    }
+
     // 전화 알림 권한 설정화면에서 돌아올 때 재확인용
     private val fullScreenPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
@@ -66,15 +85,27 @@ class MainActivity : ComponentActivity() {
         }
 
         // onCreate로 들어온 알림 Intent 저장 (인증 완료 후 처리)
+        val isLaunchedFromCall = intent?.getBooleanExtra("isIncomingCall", false) == true
         if (intent?.hasExtra("chatId") == true) {
             pendingIntent.value = intent
+        }
+
+        // 부재중 알림 탭으로 열린 경우 → 해당 사람의 부재중 카운트 초기화
+        //clearMissedCountIfNeeded(intent)
+
+        // 수신 전화 수락으로 앱이 열리면 통화 알림 즉시 제거 + Firestore 리스너 정리
+        if (isLaunchedFromCall) {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(CallActionReceiver.NOTIFICATION_ID)
+            MyFirebaseMessagingService.removeCallStatusListener()
         }
 
         setContent {
             MeetyTheme {
                 LaunchedEffect(Unit) { keepSystemSplash = false }
 
-                var showSplash by remember { mutableStateOf(true) }
+                // 수신 전화 수락으로 앱이 열리면 스플래시 건너뛰기
+                var showSplash by remember { mutableStateOf(!isLaunchedFromCall) }
 
                 if (showSplash) {
                     SplashScreen(onSplashFinished = { showSplash = false })
@@ -165,15 +196,19 @@ class MainActivity : ComponentActivity() {
                                 is VerificationCheckState.Verified -> {
                                     authNavigationDone = true
                                     val pendingCall = pendingIntent.value
-                                    if (pendingCall?.getBooleanExtra("isIncomingCall", false) == true) {
-                                        // 전화 수락으로 앱이 열린 경우: FEED 거치지 않고 바로 통화 화면
+                                    val pIsIncoming = pendingCall?.getBooleanExtra("isIncomingCall", false) == true
+                                    val pIsCallBack = pendingCall?.getBooleanExtra("isCallBack", false) == true
+
+                                    if (pIsIncoming || pIsCallBack) {
+                                        // 전화 수락 또는 부재중 콜백으로 앱이 열린 경우
                                         pendingIntent.value = null
-                                        val chatId   = pendingCall.getStringExtra("chatId") ?: ""
-                                        val callType = pendingCall.getStringExtra("callType") ?: "voice"
+                                        val chatId   = pendingCall?.getStringExtra("chatId") ?: ""
+                                        val callType = pendingCall?.getStringExtra("callType") ?: "voice"
+                                        val isIncoming = if (pIsIncoming) "true" else "false"
                                         navController.navigate(Routes.FEED) {
                                             popUpTo(startDestination) { inclusive = true }
                                         }
-                                        navController.navigate("${Routes.CALL}/$chatId/$callType/true")
+                                        navController.navigate("${Routes.CALL}/$chatId/$callType/$isIncoming")
                                     } else {
                                         navController.navigate(Routes.FEED) {
                                             popUpTo(startDestination) { inclusive = true }
@@ -212,6 +247,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.hasExtra("chatId")) {
+            // 수신 전화 수락이면 알림 즉시 제거 + Firestore 리스너 정리
+            if (intent.getBooleanExtra("isIncomingCall", false)) {
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.cancel(CallActionReceiver.NOTIFICATION_ID)
+                MyFirebaseMessagingService.removeCallStatusListener()
+            }
+            // 부재중 알림 탭 → 카운트 초기화
+            //clearMissedCountIfNeeded(intent)
             pendingIntent.value = intent
         }
     }
@@ -224,6 +267,7 @@ class MainActivity : ComponentActivity() {
         if (!isLoggedIn) return
         val chatId         = intent.getStringExtra("chatId") ?: return
         val isIncomingCall = intent.getBooleanExtra("isIncomingCall", false)
+        val isCallBack     = intent.getBooleanExtra("isCallBack", false)
         val callType       = intent.getStringExtra("callType") ?: "voice"
         val type           = intent.getStringExtra("type")
 
@@ -232,8 +276,15 @@ class MainActivity : ComponentActivity() {
 
         when {
             isIncomingCall && chatId.isNotEmpty() -> {
-                // 현재 어떤 화면에 있든 FEED까지 팝업 후 CALL 화면으로 이동
+                // 수신 전화 수락 → 통화 화면
                 navController.navigate("${Routes.CALL}/$chatId/$callType/true") {
+                    popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+            isCallBack && chatId.isNotEmpty() -> {
+                // 부재중 전화 "다시 전화" 버튼 → 발신 통화 화면
+                navController.navigate("${Routes.CALL}/$chatId/$callType/false") {
                     popUpTo(navController.graph.startDestinationId) { inclusive = false }
                     launchSingleTop = true
                 }

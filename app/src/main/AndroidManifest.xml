@@ -57,9 +57,15 @@
             </intent-filter>
         </receiver>
 
-        <!-- 수락 시 백그라운드에서 Activity 시작을 위한 Foreground Service -->
+        <!-- 영상 수락 시 백그라운드에서 Activity 시작을 위한 Foreground Service -->
         <service
             android:name="com.bugzero.meety.CallLaunchService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall" />
+
+        <!-- 음성 통화 백그라운드 처리 Foreground Service (Agora 오디오) -->
+        <service
+            android:name="com.bugzero.meety.VoiceCallService"
             android:exported="false"
             android:foregroundServiceType="phoneCall" />
 
