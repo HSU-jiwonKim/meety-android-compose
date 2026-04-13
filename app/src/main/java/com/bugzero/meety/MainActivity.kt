@@ -119,8 +119,8 @@ class MainActivity : ComponentActivity() {
                             text = {
                                 Text(
                                     "잠금화면에서 수신 전화 알림(초록/빨간 버튼)을 표시하려면 " +
-                                    "\"전체화면 알림\" 권한이 필요합니다.\n\n" +
-                                    "설정에서 Meety 앱의 권한을 허용해 주세요."
+                                            "\"전체화면 알림\" 권한이 필요합니다.\n\n" +
+                                            "설정에서 Meety 앱의 권한을 허용해 주세요."
                                 )
                             },
                             confirmButton = {
@@ -161,16 +161,23 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(verificationState) {
                         if (isLoggedIn && !authNavigationDone) {
                             when (verificationState) {
-                                is VerificationCheckState.Admin -> {
-                                    authNavigationDone = true
-                                    navController.navigate(Routes.FEED) {
-                                        popUpTo(startDestination) { inclusive = true }
-                                    }
-                                }
+                                is VerificationCheckState.Admin,
                                 is VerificationCheckState.Verified -> {
                                     authNavigationDone = true
-                                    navController.navigate(Routes.FEED) {
-                                        popUpTo(startDestination) { inclusive = true }
+                                    val pendingCall = pendingIntent.value
+                                    if (pendingCall?.getBooleanExtra("isIncomingCall", false) == true) {
+                                        // 전화 수락으로 앱이 열린 경우: FEED 거치지 않고 바로 통화 화면
+                                        pendingIntent.value = null
+                                        val chatId   = pendingCall.getStringExtra("chatId") ?: ""
+                                        val callType = pendingCall.getStringExtra("callType") ?: "voice"
+                                        navController.navigate(Routes.FEED) {
+                                            popUpTo(startDestination) { inclusive = true }
+                                        }
+                                        navController.navigate("${Routes.CALL}/$chatId/$callType/true")
+                                    } else {
+                                        navController.navigate(Routes.FEED) {
+                                            popUpTo(startDestination) { inclusive = true }
+                                        }
                                     }
                                 }
                                 is VerificationCheckState.NotYet -> {
@@ -184,9 +191,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // 알림 Intent 처리:
-                    // - 앱 꺼진 상태에서 탭: authNavigationDone이 true 될 때까지 대기
-                    // - 앱 켜진 상태에서 탭(onNewIntent): 이미 true이므로 즉시 처리
+                    // 앱이 이미 켜진 상태에서 알림 탭/수락 버튼 → onNewIntent 경유
                     LaunchedEffect(incoming, authNavigationDone) {
                         val intent = incoming ?: return@LaunchedEffect
                         if (!authNavigationDone) return@LaunchedEffect
@@ -227,13 +232,16 @@ class MainActivity : ComponentActivity() {
 
         when {
             isIncomingCall && chatId.isNotEmpty() -> {
+                // 현재 어떤 화면에 있든 FEED까지 팝업 후 CALL 화면으로 이동
                 navController.navigate("${Routes.CALL}/$chatId/$callType/true") {
-                    popUpTo(Routes.FEED) { inclusive = false }
+                    popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                    launchSingleTop = true
                 }
             }
             type == "chat" && chatId.isNotEmpty() -> {
                 navController.navigate("${Routes.CHAT_ROOM}/$chatId") {
-                    popUpTo(Routes.FEED) { inclusive = false }
+                    popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                    launchSingleTop = true
                 }
             }
         }

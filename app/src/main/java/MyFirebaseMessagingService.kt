@@ -115,16 +115,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 수락 버튼 → 직접 MainActivity 열기
-        // ⚠️ BroadcastReceiver를 거치면 Android 10+ 백그라운드 Activity 시작 제한에 막힘
-        //    → PendingIntent.getActivity()로 직접 열어야 앱이 뜸
-        val acceptIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("chatId",         chatId)
-            putExtra("callType",       callType)
-            putExtra("isIncomingCall", true)
+        // 수락 버튼 → CallActionReceiver로 알림 취소 + 앱 실행
+        val acceptIntent = Intent(this, CallActionReceiver::class.java).apply {
+            action = ACTION_ACCEPT
+            putExtra(EXTRA_CHAT_ID,   chatId)
+            putExtra(EXTRA_CALL_TYPE, callType)
         }
-        val acceptPending = PendingIntent.getActivity(
+        val acceptPending = PendingIntent.getBroadcast(
             this, NOTIFICATION_ID + 1, acceptIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -152,7 +149,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setAutoCancel(true)
-            .setOngoing(true)  // 스와이프로 못 지우게 (통화 알림 유지)
 
         if (canUseFullScreen) {
             // ── CallStyle: 초록 수락 / 빨간 거절 다이얼 버튼 ──────────────────
