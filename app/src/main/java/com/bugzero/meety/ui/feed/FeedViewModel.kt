@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.repository.FeedRepository
 import com.bugzero.meety.ui.team.Team
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +23,7 @@ class FeedViewModel(
         loadPreferenceThenFetch()
         observeResetSignal()
         observeMyTeamIds()
+        startPeriodicRefresh()
     }
 
     // =====================
@@ -70,6 +72,46 @@ class FeedViewModel(
                 fetchRemoteTeams()
                 fetchAllTeams()
             }
+        }
+    }
+
+    // =====================
+    // 자동 새로고침 (백그라운드)
+    // =====================
+
+    /**
+     * AUTO_REFRESH_INTERVAL_MS 주기로 새로 생성된 팀을 스와이프 큐 끝에 추가한다.
+     *
+     * - 이미 큐에 있거나 좋아요·패스·내 팀인 경우 제외
+     * - 선호도 기준으로 정렬 후 아직 안 본 카드 뒤에 삽입
+     */
+    private fun startPeriodicRefresh() {
+        viewModelScope.launch {
+            while (true) {
+                delay(FeedConstants.AUTO_REFRESH_INTERVAL_MS)
+                refreshNewTeams()
+            }
+        }
+    }
+
+    private fun refreshNewTeams() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val excludeIds = state.likedTeamIds +
+                    state.passedTeamIds +
+                    state.myTeamIds +
+                    state.teams.map { it.teamId }.toSet()
+
+            repository.fetchNewTeams(excludeIds)
+                .onSuccess { newTeams ->
+                    if (newTeams.isEmpty()) return@onSuccess
+                    _uiState.update { current ->
+                        val sorted = sortByPreference(newTeams)
+                        val seen   = current.teams.take(current.currentIndex)
+                        val unseen = current.teams.drop(current.currentIndex)
+                        current.copy(teams = seen + unseen + sorted)
+                    }
+                }
         }
     }
 
@@ -419,6 +461,7 @@ class FeedViewModel(
      * 상세화면 — 좋아요 취소 (LIKED 상태에서 호출)
      *
      * Firebase에서 like 문서를 삭제하고 선호도를 역산한다.
+     * 취소한 팀은 현재 스와이프 위치에 다시 삽입되어 재확인 가능하다.
      */
     fun onCancelLikeFromDetail() {
         val team = _uiState.value.selectedTeam ?: return
@@ -428,7 +471,10 @@ class FeedViewModel(
         }
         reversePreferenceInMemory(team, wasLike = true)
         _uiState.update {
+            // 취소된 팀을 현재 인덱스 위치에 다시 삽입 → 다음에 바로 다시 볼 수 있음
+            val newTeams = it.teams.toMutableList().apply { add(it.currentIndex, team) }
             it.copy(
+                teams          = newTeams,
                 selectedTeam   = null,
                 memberProfiles = emptyList(),
                 likedTeamIds   = it.likedTeamIds - team.teamId
@@ -469,8 +515,8 @@ class FeedViewModel(
     // =====================
 
     private fun updatePreferenceInMemory(team: Team, isLike: Boolean) {
-        val tagWeight  = if (isLike) TAG_LIKE_WEIGHT  else TAG_PASS_WEIGHT
-        val mbtiWeight = if (isLike) MBTI_LIKE_WEIGHT else MBTI_PASS_WEIGHT
+        val tagWeight  = if (isLike) FeedConstants.TAG_LIKE_WEIGHT  else FeedConstants.TAG_PASS_WEIGHT
+        val mbtiWeight = if (isLike) FeedConstants.MBTI_LIKE_WEIGHT else FeedConstants.MBTI_PASS_WEIGHT
 
         val updated = _uiState.value.userPreferences.toMutableMap()
         team.tags.forEach     { tag  -> updated[tag]  = (updated[tag]  ?: 0) + tagWeight }
@@ -481,8 +527,8 @@ class FeedViewModel(
     }
 
     private fun reversePreferenceInMemory(team: Team, wasLike: Boolean) {
-        val tagWeight  = if (wasLike) TAG_PASS_WEIGHT  else TAG_LIKE_WEIGHT
-        val mbtiWeight = if (wasLike) MBTI_PASS_WEIGHT else MBTI_LIKE_WEIGHT
+        val tagWeight  = if (wasLike) FeedConstants.TAG_PASS_WEIGHT  else FeedConstants.TAG_LIKE_WEIGHT
+        val mbtiWeight = if (wasLike) FeedConstants.MBTI_PASS_WEIGHT else FeedConstants.MBTI_LIKE_WEIGHT
 
         val updated = _uiState.value.userPreferences.toMutableMap()
         team.tags.forEach     { tag  -> updated[tag]  = (updated[tag]  ?: 0) + tagWeight }
@@ -517,10 +563,4 @@ class FeedViewModel(
         }
     }
 
-    companion object {
-        private const val TAG_LIKE_WEIGHT  = 1
-        private const val TAG_PASS_WEIGHT  = -1
-        private const val MBTI_LIKE_WEIGHT = 2
-        private const val MBTI_PASS_WEIGHT = -2
-    }
 }

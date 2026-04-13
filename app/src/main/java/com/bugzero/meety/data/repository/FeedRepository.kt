@@ -1,5 +1,6 @@
 package com.bugzero.meety.data.repository
 
+import com.bugzero.meety.ui.feed.FeedConstants
 import com.bugzero.meety.ui.feed.Like
 import com.bugzero.meety.ui.feed.MemberProfile
 import com.bugzero.meety.ui.feed.UserPreference
@@ -10,7 +11,9 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
@@ -80,10 +83,12 @@ class FeedRepository(
                 lastDocument = snapshot.documents.last()
             }
 
-            val actionedIds = currentUserId?.let { fetchActionedTeamIds(it) } ?: emptySet()
-
-            // 변경: 내가 속한 팀들(teamIds) 전부 필터링
-            val myTeamIds = currentUserId?.let { fetchMyTeamIds(it) } ?: emptyList()
+            // 병렬 fetch: actionedIds + myTeamIds 를 동시에 조회해 지연을 절반으로 줄임
+            val (actionedIds, myTeamIds) = coroutineScope {
+                val actionedDeferred = async { currentUserId?.let { fetchActionedTeamIds(it) } ?: emptySet() }
+                val myTeamDeferred   = async { currentUserId?.let { fetchMyTeamIds(it) } ?: emptyList() }
+                Pair(actionedDeferred.await(), myTeamDeferred.await())
+            }
 
             val teams = snapshot.documents.mapNotNull { doc ->
                 doc.toObject(Team::class.java)?.takeIf { it.teamId.isNotBlank() }
@@ -191,33 +196,6 @@ class FeedRepository(
                 @Suppress("UNCHECKED_CAST")
                 val teamIds = (snapshot.get("teamIds") as? List<String>) ?: emptyList()
                 trySend(teamIds)
-            }
-
-        awaitClose { listener.remove() }
-    }
-
-    /**
-     * teams 컬렉션의 실시간 변경사항을 Flow로 받는다.
-     */
-    fun observeActiveTeams(): Flow<Result<List<Team>>> = callbackFlow {
-        val currentUserId = auth.currentUser?.uid
-
-        val listener = db.collection("teams")
-            .whereEqualTo("status", "active")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    trySend(Result.failure(error))
-                    return@addSnapshotListener
-                }
-
-                val teams = snapshot?.documents?.mapNotNull { doc ->
-                    doc.toObject(Team::class.java)
-                }?.filter { team ->
-                    currentUserId == null || !team.memberIds.contains(currentUserId)
-                } ?: emptyList()
-
-                trySend(Result.success(teams))
             }
 
         awaitClose { listener.remove() }
@@ -332,8 +310,8 @@ class FeedRepository(
             val userId = auth.currentUser?.uid
                 ?: return Result.failure(Exception("로그인된 사용자가 없습니다."))
 
-            val tagWeight  = if (wasLike) TAG_PASS_WEIGHT  else TAG_LIKE_WEIGHT
-            val mbtiWeight = if (wasLike) MBTI_PASS_WEIGHT else MBTI_LIKE_WEIGHT
+            val tagWeight  = if (wasLike) FeedConstants.TAG_PASS_WEIGHT  else FeedConstants.TAG_LIKE_WEIGHT
+            val mbtiWeight = if (wasLike) FeedConstants.MBTI_PASS_WEIGHT else FeedConstants.MBTI_LIKE_WEIGHT
             val teamIdField = if (wasLike) "likedTeamIds" else "passedTeamIds"
 
             val updates = mutableMapOf<String, Any>()
@@ -417,21 +395,21 @@ class FeedRepository(
         team: Team,
         isLike: Boolean
     ) {
-        val tagWeight  = if (isLike) TAG_LIKE_WEIGHT  else TAG_PASS_WEIGHT
-        val mbtiWeight = if (isLike) MBTI_LIKE_WEIGHT else MBTI_PASS_WEIGHT
+        val tagWeight   = if (isLike) FeedConstants.TAG_LIKE_WEIGHT  else FeedConstants.TAG_PASS_WEIGHT
+        val mbtiWeight  = if (isLike) FeedConstants.MBTI_LIKE_WEIGHT else FeedConstants.MBTI_PASS_WEIGHT
         val teamIdField = if (isLike) "likedTeamIds" else "passedTeamIds"
 
-        db.collection("userPreferences").document(userId)
-            .set(mapOf("userId" to userId), SetOptions.mergeFields("userId"))
-            .await()
-
-        val updates = mutableMapOf<String, Any>()
+        // set(merge=true) 한 번으로: 문서 없으면 생성, 있으면 병합
+        // → 기존 2단계(set userId + update scores) 에서 Firestore 왕복 1회 절감
+        val updates = mutableMapOf<String, Any>("userId" to userId)
         team.tags.forEach     { tag  -> updates["tagScores.$tag"]   = FieldValue.increment(tagWeight.toLong()) }
         team.mbtiTags.forEach { mbti -> updates["mbtiScores.$mbti"] = FieldValue.increment(mbtiWeight.toLong()) }
         updates[teamIdField] = FieldValue.arrayUnion(team.teamId)
         updates["updatedAt"] = System.currentTimeMillis()
 
-        db.collection("userPreferences").document(userId).update(updates).await()
+        db.collection("userPreferences").document(userId)
+            .set(updates, SetOptions.merge())
+            .await()
     }
 
     // =====================
@@ -517,15 +495,46 @@ class FeedRepository(
     }
 
     // =====================
+    // 신규 팀 조회 (자동 갱신용)
+    // =====================
+
+    /**
+     * 이미 큐에 있거나 액션한 팀을 제외하고 최신 활성 팀을 가져온다.
+     *
+     * FeedViewModel이 주기적으로 호출해 새로 생성된 팀을 추천 큐에 추가한다.
+     * 페이지네이션 커서를 쓰지 않고 항상 최신순(top-N)으로 가져온다.
+     *
+     * @param excludeIds 이미 큐에 있거나 액션한 팀 ID 집합
+     */
+    suspend fun fetchNewTeams(excludeIds: Set<String>): Result<List<Team>> {
+        return try {
+            val userId = auth.currentUser?.uid
+
+            val snapshot = db.collection("teams")
+                .whereEqualTo("status", "active")
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .limit(PAGE_SIZE.toLong())
+                .get()
+                .await()
+
+            val teams = snapshot.documents.mapNotNull { doc ->
+                doc.toObject(Team::class.java)?.takeIf { it.teamId.isNotBlank() }
+            }.filter { team ->
+                !excludeIds.contains(team.teamId) &&
+                (userId == null || !team.memberIds.contains(userId))
+            }
+
+            Result.success(teams)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // =====================
     // 상수
     // =====================
 
     companion object {
-        private const val TAG_LIKE_WEIGHT  = 1
-        private const val TAG_PASS_WEIGHT  = -1
-        private const val MBTI_LIKE_WEIGHT = 2
-        private const val MBTI_PASS_WEIGHT = -2
-
         /** 한 번에 불러올 팀 수 */
         const val PAGE_SIZE = 20
     }
