@@ -61,8 +61,16 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     // ─── Agora 이벤트 핸들러 ──────────────────────────────────────────────────
     private val rtcEventHandler = object : IRtcEngineEventHandler() {
 
+        /** 내가 채널 입장 성공 → Calling 상태 유지 (상대방 대기 중) */
+        override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
+            android.util.Log.d("AgoraRTC", "채널 입장 성공: $channel, uid=$uid")
+            // 상태는 상대방이 들어올 때(onUserJoined) InCall로 전환
+            // 단, 수신측이 먼저 채널에 없으면 여기서 Calling 유지
+        }
+
         /** 상대방이 채널에 입장 → 통화 중 상태로 전환 */
         override fun onUserJoined(uid: Int, elapsed: Int) {
+            android.util.Log.d("AgoraRTC", "상대방 입장: uid=$uid")
             _remoteUid.value = uid
             val current = _callUiState.value
             if (current is CallUiState.Calling) {
@@ -70,10 +78,31 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        /** 상대방이 채널 이탈 → 통화 종료 */
+        /**
+         * 상대방이 채널 이탈 → InCall 상태일 때만 통화 종료
+         * ⚠️ Calling 상태에서 오는 onUserOffline은 이전 세션 잔여 이벤트이므로 무시
+         */
         override fun onUserOffline(uid: Int, reason: Int) {
-            _remoteUid.value = 0
-            viewModelScope.launch { endCall() }
+            android.util.Log.d("AgoraRTC", "상대방 이탈: uid=$uid, reason=$reason, state=${_callUiState.value}")
+            if (_callUiState.value is CallUiState.InCall) {
+                _remoteUid.value = 0
+                viewModelScope.launch { endCall() }
+            }
+        }
+
+        /** Agora 에러 → 로그 출력 + 에러 코드별 처리 */
+        override fun onError(err: Int) {
+            android.util.Log.e("AgoraRTC", "에러 발생: code=$err")
+            when (err) {
+                17 -> {
+                    // ERR_JOIN_CHANNEL_REJECTED: Agora 프로젝트가 Secure 모드(토큰 필요)
+                    // → console.agora.io 에서 해당 프로젝트를 Testing 모드로 전환하세요
+                    android.util.Log.e("AgoraRTC", "채널 입장 거부 (err=17): Agora 콘솔에서 Testing 모드로 변경 필요")
+                }
+                110 -> android.util.Log.e("AgoraRTC", "연결 타임아웃 (err=110)")
+                else -> android.util.Log.e("AgoraRTC", "알 수 없는 에러 (err=$err)")
+            }
+            // 에러 시 화면은 닫지 않음 - 사용자가 수동으로 종료 가능
         }
     }
 

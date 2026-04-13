@@ -5,10 +5,16 @@
     <!-- 네트워크 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 알림 (Android 13 / API 33+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- 화상/음성 통화 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- 수신 전화 알림: 잠금화면/화면꺼짐 상태에서 전체화면 표시 (CallStyle 필수) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Bluetooth 오디오 장치 (이어폰 등) -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
@@ -28,6 +34,25 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Meetycompose">
+        <!-- FCM 메시지 수신 서비스 -->
+        <service
+            android:name="com.bugzero.meety.MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- 전화 알림 수락/거절 버튼 처리 -->
+        <receiver
+            android:name="com.bugzero.meety.CallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.bugzero.meety.ACTION_ACCEPT_CALL" />
+                <action android:name="com.bugzero.meety.ACTION_DECLINE_CALL" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
