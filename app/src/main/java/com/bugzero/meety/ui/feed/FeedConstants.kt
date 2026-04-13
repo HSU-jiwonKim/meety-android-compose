@@ -41,4 +41,17 @@ object FeedConstants {
     const val SWIPE_THRESHOLD = 400f
     /** 카드 회전 정도를 조절하는 값 (클수록 덜 회전) */
     const val ROTATION_DIVISOR = 60f
+
+    // ── 선호도 가중치 ──
+    // FeedViewModel · FeedRepository 양쪽이 여기서만 참조해
+    // 수치를 바꿔도 두 레이어가 항상 일치한다.
+    const val TAG_LIKE_WEIGHT  = 1
+    const val TAG_PASS_WEIGHT  = -1
+    /** MBTI는 태그보다 2배 가중 */
+    const val MBTI_LIKE_WEIGHT = 2
+    const val MBTI_PASS_WEIGHT = -2
+
+    // ── 자동 새로고침 ──
+    /** 추천 피드를 백그라운드에서 자동 갱신하는 주기 (밀리초) — 기본 5분 */
+    const val AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1_000L
 }

@@ -43,7 +43,7 @@ data class FeedUiState(
     val currentIndex: Int = 0,
     val teams: List<Team> = emptyList(),          // 필터링된 추천 목록
     val history: List<HistoryEntry> = emptyList(),
-    val isLoading: Boolean = false,
+    val isLoading: Boolean = true,   // 초기값 true: 첫 프레임에서 빈 화면이 아닌 로딩 UI를 표시
     val isRefreshing: Boolean = false,            // pull-to-refresh (RECOMMEND 탭)
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,

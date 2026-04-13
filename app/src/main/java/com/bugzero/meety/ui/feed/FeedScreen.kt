@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -226,34 +227,38 @@ private fun RecommendContent(
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             if (currentTeam != null) {
-                // 다음 카드 스택 효과
-                nextTeam?.let { next ->
-                    val nextColorIndex = (next.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
-                    val nextColors = FeedConstants.CardColorPalette[nextColorIndex].map { it.copy(alpha = 0.55f) }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
-                            .shadow(3.dp, RoundedCornerShape(24.dp))
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Brush.verticalGradient(nextColors))
-                    )
-                }
+                // key(teamId): currentTeam이 바뀌면 그라데이션 + SwipeCard를 동시에 교체한다.
+                // → 이전 카드의 그라데이션이 새 카드 화면에 남아있는 타이밍 버그 해소
+                key(currentTeam.teamId) {
+                    // 다음 카드 스택 효과
+                    nextTeam?.let { next ->
+                        val nextColorIndex = (next.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
+                        val nextColors = FeedConstants.CardColorPalette[nextColorIndex].map { it.copy(alpha = 0.55f) }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .shadow(3.dp, RoundedCornerShape(24.dp))
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Brush.verticalGradient(nextColors))
+                        )
+                    }
 
-                SwipeCard(
-                    team   = currentTeam,
-                    onLike = onLike,
-                    onPass = onPass,
-                    onInfo = onInfo
-                )
-
-                // 추가 페이지 로딩 중 표시
-                if (isLoadingMore) {
-                    CircularProgressIndicator(
-                        modifier    = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                        color       = Purple.copy(alpha = 0.6f),
-                        strokeWidth = 2.dp
+                    SwipeCard(
+                        team   = currentTeam,
+                        onLike = onLike,
+                        onPass = onPass,
+                        onInfo = onInfo
                     )
+
+                    // 추가 페이지 로딩 중 표시
+                    if (isLoadingMore) {
+                        CircularProgressIndicator(
+                            modifier    = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                            color       = Purple.copy(alpha = 0.6f),
+                            strokeWidth = 2.dp
+                        )
+                    }
                 }
             } else {
                 Column(
