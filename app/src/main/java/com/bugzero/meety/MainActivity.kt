@@ -41,22 +41,6 @@ class MainActivity : ComponentActivity() {
     // 알림에서 받은 Intent를 Compose에 전달하기 위한 StateFlow
     private val pendingIntent = MutableStateFlow<Intent?>(null)
 
-    companion object {
-        /** 앱(Activity)이 포그라운드에 있는지 여부 — VoiceCallService에서 참조 */
-        @Volatile
-        var isInForeground: Boolean = false
-            private set
-    }
-
-    override fun onResume() {
-        super.onResume()
-        isInForeground = true
-    }
-
-    override fun onPause() {
-        super.onPause()
-        isInForeground = false
-    }
 
     // 전화 알림 권한 설정화면에서 돌아올 때 재확인용
     private val fullScreenPermissionLauncher =
@@ -91,7 +75,7 @@ class MainActivity : ComponentActivity() {
         }
 
         // 부재중 알림 탭으로 열린 경우 → 해당 사람의 부재중 카운트 초기화
-        //clearMissedCountIfNeeded(intent)
+        clearMissedCountIfNeeded(intent)
 
         // 수신 전화 수락으로 앱이 열리면 통화 알림 즉시 제거 + Firestore 리스너 정리
         if (isLaunchedFromCall) {
@@ -254,9 +238,24 @@ class MainActivity : ComponentActivity() {
                 MyFirebaseMessagingService.removeCallStatusListener()
             }
             // 부재중 알림 탭 → 카운트 초기화
-            //clearMissedCountIfNeeded(intent)
+            clearMissedCountIfNeeded(intent)
             pendingIntent.value = intent
         }
+    }
+
+    /**
+     * 부재중 알림 탭/다시 전화로 앱이 열린 경우, 해당 사람(chatId)의 부재중 카운트를 초기화.
+     * SharedPreferences의 "missed_count_<chatId>" 값을 0으로 리셋.
+     */
+    private fun clearMissedCountIfNeeded(intent: Intent?) {
+        if (intent == null) return
+        val shouldClear = intent.getBooleanExtra("clearMissedCount", false)
+        if (!shouldClear) return
+        val missedChatId = intent.getStringExtra("missedChatId") ?: return
+        if (missedChatId.isEmpty()) return
+
+        val prefs = getSharedPreferences("meety_notification_prefs", Context.MODE_PRIVATE)
+        prefs.edit().remove("missed_count_$missedChatId").apply()
     }
 
     private fun handleNotificationIntent(

@@ -30,7 +30,6 @@ import com.bugzero.meety.ui.auth.SetupProfileScreen
 import com.bugzero.meety.ui.auth.SignUpScreen
 import com.bugzero.meety.ui.auth.StudentIdUploadScreen
 import com.bugzero.meety.ui.auth.VerificationCheckState
-import com.bugzero.meety.VoiceCallService
 import com.bugzero.meety.ui.call.CallScreen
 import com.bugzero.meety.ui.call.CallUiState
 import com.bugzero.meety.ui.call.CallViewModel
@@ -448,13 +447,10 @@ fun NavGraph(
                     val roomName = backStackEntry.arguments?.getString("roomName") ?: "채팅방"
 
                     // ── 통화 중 전화 버튼 완전 차단 ──────────────────────────────
-                    // CallViewModel 상태 확인 (앱 내 통화)
                     val callViewModel: CallViewModel = viewModel()
                     val vmCallState by callViewModel.callUiState.collectAsState()
-                    // VoiceCallService 상태 확인 (백그라운드 음성 통화)
-                    val voiceServiceRunning by VoiceCallService.isRunning.collectAsState()
 
-                    val isAnyCallActive = voiceServiceRunning ||
+                    val isAnyCallActive =
                         vmCallState is CallUiState.Calling ||
                         vmCallState is CallUiState.InCall
 

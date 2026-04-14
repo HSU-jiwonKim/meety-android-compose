@@ -11,8 +11,16 @@ interface CallRepository {
     /** 수신 통화 수락 — Firestore 상태를 "accepted"로 바꾸고 채널 이름 반환 */
     suspend fun acceptCall(chatId: String): String
 
-    /** 특정 채팅방의 수신 통화를 실시간 감지 */
-    fun listenForIncomingCall(chatId: String, onIncomingCall: (callType: String, callerId: String) -> Unit)
+    /**
+     * 특정 채팅방의 수신 통화를 실시간 감지.
+     * @param onIncomingCall status == "calling" 일 때 호출 (수신 전화 시작)
+     * @param onCallEnded    status == "ended" 일 때 호출 (상대방이 끊음 → 다이얼로그 닫기)
+     */
+    fun listenForIncomingCall(
+        chatId: String,
+        onIncomingCall: (callType: String, callerId: String) -> Unit,
+        onCallEnded: () -> Unit = {}
+    )
 
     /** 수신 통화 리스너 해제 */
     fun stopListeningForCalls(chatId: String)

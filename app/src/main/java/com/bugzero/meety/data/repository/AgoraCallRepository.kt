@@ -65,7 +65,8 @@ class AgoraCallRepository : CallRepository {
 
     override fun listenForIncomingCall(
         chatId: String,
-        onIncomingCall: (callType: String, callerId: String) -> Unit
+        onIncomingCall: (callType: String, callerId: String) -> Unit,
+        onCallEnded: () -> Unit
     ) {
         listeners[chatId]?.remove()
 
@@ -79,8 +80,9 @@ class AgoraCallRepository : CallRepository {
                 val status   = snapshot.getString("status")   ?: return@addSnapshotListener
                 val callType = snapshot.getString("callType") ?: "voice"
                 val callerId = snapshot.getString("callerId") ?: ""
-                if (status == "calling") {
-                    onIncomingCall(callType, callerId)
+                when (status) {
+                    "calling" -> onIncomingCall(callType, callerId)
+                    "ended"   -> onCallEnded()   // 상대방이 끊음 → 다이얼로그 닫기
                 }
             }
         listeners[chatId] = listener

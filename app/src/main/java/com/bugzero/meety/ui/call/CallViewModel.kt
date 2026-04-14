@@ -119,7 +119,10 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 mAppId        = AGORA_APP_ID
                 mEventHandler = rtcEventHandler
             }
+            // RtcEngine.create()는 싱글톤을 반환 — 이전 인스턴스가 살아있으면 기존 엔진이 반환됨
             rtcEngine = RtcEngine.create(config)
+            // ★ 싱글톤이라도 이 ViewModel의 이벤트 핸들러를 추가로 등록 (다중 ViewModel 안전)
+            rtcEngine?.addHandler(rtcEventHandler)
         }.onFailure { it.printStackTrace() }
     }
 
@@ -167,11 +170,18 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
     // ─── 수신 통화 감지 시작/중단 (ChatRoomScreen에서 사용) ──────────────────
     fun listenForIncomingCall(chatId: String, currentUserId: String) {
-        callRepository.listenForIncomingCall(chatId) { callType, callerId ->
-            if (callerId != currentUserId) {
-                _incomingCallState.value = callType to callerId
+        callRepository.listenForIncomingCall(
+            chatId = chatId,
+            onIncomingCall = { callType, callerId ->
+                if (callerId != currentUserId) {
+                    _incomingCallState.value = callType to callerId
+                }
+            },
+            onCallEnded = {
+                // 상대방이 통화 시작 전에 끊음 → 인앱 다이얼로그 즉시 닫기
+                _incomingCallState.value = null
             }
-        }
+        )
     }
 
     fun stopListeningForCalls(chatId: String) {
@@ -286,9 +296,17 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         callStatusListener?.remove()
         callStatusListener = null
         callRepository.stopListeningForCalls(currentChatId)
-        rtcEngine?.leaveChannel()
-        rtcEngine?.stopPreview()
-        RtcEngine.destroy()
+        // ⚠️ RtcEngine.destroy()는 static 전역 호출이라 다른 ViewModel의 엔진까지 파괴됨 → 호출 금지
+        // ChatRoomScreen에서 CallScreen으로 이동 시 ChatRoom의 ViewModel이 cleared되면서
+        // CallScreen에서 새로 만든 엔진까지 함께 파괴되어 통화가 즉시 끊기는 버그의 원인
+        // leaveChannel만 수행하고 엔진 인스턴스는 참조만 끊음 (다음 ViewModel이 재사용)
+        // ★ 이 ViewModel의 핸들러만 제거 (싱글톤 엔진은 유지)
+        rtcEngine?.removeHandler(rtcEventHandler)
+        // 활성 통화가 있을 때만 leaveChannel (ChatRoom ViewModel은 채널 join 안 하므로 no-op)
+        if (_callUiState.value is CallUiState.Calling || _callUiState.value is CallUiState.InCall) {
+            rtcEngine?.leaveChannel()
+            rtcEngine?.stopPreview()
+        }
         rtcEngine = null
     }
 }

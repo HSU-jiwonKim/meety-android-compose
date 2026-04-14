@@ -257,30 +257,19 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 수락 버튼 → 음성/영상에 따라 다른 PendingIntent
-        val acceptPending: PendingIntent
-        if (callType == "voice") {
-            // 음성 통화: VoiceCallService로 백그라운드 처리 (앱 안 열림)
-            val serviceIntent = VoiceCallService.createStartIntent(this, chatId, callType)
-            acceptPending = PendingIntent.getForegroundService(
-                this, NOTIFICATION_ID + 1, serviceIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        } else {
-            // 영상 통화: Activity PendingIntent로 직접 MainActivity 실행
-            val acceptIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("chatId",         chatId)
-                putExtra("callType",       callType)
-                putExtra("isIncomingCall", true)
-            }
-            acceptPending = PendingIntent.getActivity(
-                this, NOTIFICATION_ID + 1, acceptIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+        // 수락 버튼 → 음성/영상 모두 앱 켜지고 통화 화면으로 이동
+        val acceptIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("chatId",         chatId)
+            putExtra("callType",       callType)
+            putExtra("isIncomingCall", true)
         }
+        val acceptPending = PendingIntent.getActivity(
+            this, NOTIFICATION_ID + 1, acceptIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         // 거절 버튼 → CallActionReceiver
         val declineIntent = Intent(this, CallActionReceiver::class.java).apply {
