@@ -23,10 +23,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.ui.window.Dialog
+import com.bugzero.meety.data.repository.PlaceResult
 import com.bugzero.meety.ui.call.CallViewModel
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,12 +38,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.bugzero.meety.ui.team.ReceivedLikeItem
@@ -56,6 +61,7 @@ fun ChatRoomScreen(
     onVideoCallClick: () -> Unit = {},
     onVoiceCallClick: () -> Unit = {},
     onAcceptCall: (chatId: String, callType: String) -> Unit = { _, _ -> },
+    onJoinCall: (chatId: String, callType: String) -> Unit = { _, _ -> },
     viewModel: ChatViewModel = viewModel(),
     callViewModel: CallViewModel = viewModel()
 ) {
@@ -78,7 +84,23 @@ fun ChatRoomScreen(
 
     // 수신 통화 감지
     val incomingCall by callViewModel.incomingCallState.collectAsState()
+    val activeCallInfo by callViewModel.activeCallInfo.collectAsState()
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+
+    // 장소 추천
+    val placeRecommendations by viewModel.placeRecommendations.collectAsState()
+    val isLoadingPlaces by viewModel.isLoadingPlaces.collectAsState()
+    val placeError by viewModel.placeError.collectAsState()
+    val transitAverages by viewModel.transitAverages.collectAsState()
+    val transitBreakdowns by viewModel.transitBreakdowns.collectAsState()
+    val refreshNotice by viewModel.refreshNotice.collectAsState()
+    val savedPlaces by viewModel.savedPlaces.collectAsState()
+    val savedPlaceKeys by viewModel.savedPlaceKeys.collectAsState()
+    val showConditionSheet by viewModel.showConditionSheet.collectAsState()
+    val searchRegion by viewModel.searchRegion.collectAsState()
+    var showPlaceDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackScope = rememberCoroutineScope()
 
     // 채팅방 진입 시 수신 통화 리스너 시작
     LaunchedEffect(chatId) {
@@ -127,7 +149,7 @@ fun ChatRoomScreen(
                 callViewModel.clearIncomingCall()
                 onAcceptCall(chatId, callType)
             },
-            onDecline = { callViewModel.declineCall(chatId) }
+            onDecline = { callViewModel.declineCall(chatId, currentUserId ?: "") }
         )
     }
 
@@ -173,6 +195,7 @@ fun ChatRoomScreen(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             contentWindowInsets = WindowInsets.safeDrawing,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -212,13 +235,23 @@ fun ChatRoomScreen(
             containerColor = Color(0xFFF9FAFB)
         ) { innerPadding ->
             Column(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
+
+                // ── 통화 중 배너 (참여 가능한 경우에만 표시) ──────────────────
+                activeCallInfo?.let { info ->
+                    ActiveCallBanner(
+                        callType = info.callType,
+                        participantCount = info.participantCount,
+                        onJoinClick = { onJoinCall(chatId, info.callType) }
+                    )
+                }
+
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                         reverseLayout = true,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp)
+                        contentPadding = PaddingValues(top = 52.dp, bottom = 12.dp)
                     ) {
                         val reversedMessages = messages.reversed()
                         itemsIndexed(items = reversedMessages, key = { _, it -> it.id }) { index, message ->
@@ -237,8 +270,80 @@ fun ChatRoomScreen(
                     }
                     val showScrollToBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
                     ScrollToBottomButton(isVisible = showScrollToBottom, onClick = { coroutineScope.launch { listState.animateScrollToItem(0) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 8.dp))
+
+                    // ── 장소 추천 버튼 (상단 가운데 — 피그마 디자인) ──────────
+                    PlaceRecommendButton(
+                        isLoading = isLoadingPlaces,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp),
+                        onClick = {
+                            showPlaceDialog = true
+                            if (placeRecommendations.isEmpty() && !isLoadingPlaces) {
+                                viewModel.recommendMeetingPlaces(chatId)
+                            }
+                        }
+                    )
                 }
                 MessageInputBar(text = inputText, isSending = isSending, onTextChange = { inputText = it }, onSendClick = { if (inputText.isNotBlank()) { viewModel.sendMessage(chatId, inputText); inputText = "" } })
+            }
+        }
+    }
+
+    // ── 장소 추천 풀스크린 ────────────────────────────────────────────────
+    if (showPlaceDialog) {
+        Dialog(onDismissRequest = { showPlaceDialog = false; viewModel.clearPlaceRecommendations() }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+                    .clip(RoundedCornerShape(20.dp))
+            ) {
+                PlaceRecommendationScreen(
+                    isLoading = isLoadingPlaces,
+                    places = placeRecommendations,
+                    error = placeError,
+                    areaName = "",
+                    participantCount = participants.size,
+                    transitAverages = transitAverages,
+                    transitBreakdowns = transitBreakdowns,
+                    onRefresh = { viewModel.onRefreshPlaceRecommendations(chatId) },
+                    onDismiss = { showPlaceDialog = false; viewModel.clearPlaceRecommendations() },
+                    onFilterChanged = { filters ->
+                        // 필터 변경 시 해당 키워드로 재검색
+                        if (filters.isNotEmpty()) {
+                            viewModel.recommendMeetingPlaces(chatId, filters)
+                        } else {
+                            viewModel.recommendMeetingPlaces(chatId)
+                        }
+                    },
+                    onSharePlace = { place ->
+                        viewModel.sharePlaceToChat(chatId, place)
+                        showPlaceDialog = false
+                        viewModel.clearPlaceRecommendations()
+                        snackScope.launch {
+                            snackbarHostState.showSnackbar("'${place.name}' 장소를 공유했어요")
+                        }
+                    },
+                    notice = refreshNotice,
+                    onDismissNotice = { viewModel.dismissRefreshNotice() },
+                    savedPlaces = savedPlaces,
+                    savedPlaceKeys = savedPlaceKeys,
+                    onToggleSave = { viewModel.toggleSavePlace(it) },
+                    initialRadiusMeters = viewModel.currentRadiusMeters,
+                    showConditionSheet = showConditionSheet,
+                    onOpenConditionSheet = { viewModel.openConditionSheet() },
+                    onCloseConditionSheet = { viewModel.closeConditionSheet() },
+                    onApplyConditions = { r, kw, inc -> viewModel.applyConditionSheet(chatId, r, kw, inc) },
+                    // ── "다른 지역으로 검색" / "중간 지점으로 돌아가기" ───────────
+                    searchRegion = searchRegion,
+                    onSelectRegion = { region ->
+                        viewModel.searchByRegion(chatId, region, keywords = null)
+                    },
+                    onReturnToMidpoint = {
+                        viewModel.returnToMidpoint(chatId)
+                    }
+                )
             }
         }
     }
@@ -408,6 +513,16 @@ private fun MessageInputBar(text: String, isSending: Boolean, onTextChange: (Str
 
 @Composable
 private fun MessageItem(message: ChatMessage, timeText: String) {
+    // 통화 로그 메시지 — 카카오톡 스타일 카드
+    if (message.type == "call_log") {
+        CallLogMessage(message = message, timeText = timeText)
+        return
+    }
+    // 장소 카드 메시지 — 네이버 지도 딥링크 포함
+    if (message.type == "place_card") {
+        PlaceCardMessage(message = message, timeText = timeText)
+        return
+    }
     if (message.senderId == "system") {
         Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
             Box(modifier = Modifier.background(Color(0xFFE5E7EB), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
@@ -591,6 +706,558 @@ fun IncomingCallDialog(
             }
         }
     )
+}
+
+// ─── 장소 카드 메시지 (채팅방에서 렌더) ──────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaceCardMessage(message: ChatMessage, timeText: String) {
+    val context = LocalContext.current
+    val isMe = message.isMe
+
+    fun openPlaceDetail() {
+        val nmapUri = if (message.placePlaceId.isNotBlank()) {
+            android.net.Uri.parse("nmap://place?id=${message.placePlaceId}&appname=com.bugzero.meety")
+        } else {
+            android.net.Uri.parse("nmap://search?query=${android.net.Uri.encode(message.placeName)}&appname=com.bugzero.meety")
+        }
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, nmapUri)
+        intent.addCategory(android.content.Intent.CATEGORY_BROWSABLE)
+        val fallbackUri = if (message.placePlaceId.isNotBlank()) {
+            android.net.Uri.parse("https://m.place.naver.com/place/${message.placePlaceId}/home")
+        } else {
+            android.net.Uri.parse("https://map.naver.com/v5/search/${android.net.Uri.encode(message.placeName)}")
+        }
+        val fallback = android.content.Intent(android.content.Intent.ACTION_VIEW, fallbackUri)
+        try { context.startActivity(intent) } catch (_: Exception) {
+            try { context.startActivity(fallback) } catch (_: Exception) {}
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        if (isMe) {
+            Text(text = timeText, fontSize = 10.sp, color = Color.LightGray,
+                modifier = Modifier.padding(end = 4.dp))
+        }
+        Surface(
+            onClick = { openPlaceDetail() },
+            shape = RoundedCornerShape(
+                topStart = if (isMe) 16.dp else 4.dp,
+                topEnd = if (isMe) 4.dp else 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
+            ),
+            color = Color.White,
+            shadowElevation = 2.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEAE8F4)),
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                // 상단 뱃지 + 네이버 지도
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📍", fontSize = 14.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "공유된 장소",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF6C5CE7)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // 이미지 + 정보
+                Row(verticalAlignment = Alignment.Top) {
+                    if (message.placeImageUrl.isNotBlank()) {
+                        coil.compose.AsyncImage(
+                            model = message.placeImageUrl,
+                            contentDescription = message.placeName,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFF3F1FA)),
+                            contentAlignment = Alignment.Center
+                        ) { Text("🗺️", fontSize = 24.sp) }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        if (message.placeCategory.isNotBlank()) {
+                            Text(
+                                text = message.placeCategory,
+                                fontSize = 11.sp,
+                                color = Color(0xFF9CA3AF)
+                            )
+                        }
+                        Text(
+                            text = message.placeName,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1A1A2E),
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        if (message.placeAddress.isNotBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = message.placeAddress,
+                                fontSize = 11.sp,
+                                color = Color(0xFF6B7280),
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        if (message.placeReviewCount > 0) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "방문자 리뷰 ${message.placeReviewCount}개",
+                                fontSize = 11.sp,
+                                color = Color(0xFF6C5CE7),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // "네이버 지도에서 상세보기" 힌트
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF3F1FA), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = Color(0xFF6C5CE7),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "네이버 지도에서 상세보기",
+                        fontSize = 11.sp,
+                        color = Color(0xFF6C5CE7),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+        if (!isMe) {
+            Text(text = timeText, fontSize = 10.sp, color = Color.LightGray,
+                modifier = Modifier.padding(start = 4.dp))
+        }
+    }
+}
+
+// ─── 통화 로그 메시지 (카카오톡 스타일) ────────────────────────────────────
+@Composable
+private fun CallLogMessage(message: ChatMessage, timeText: String) {
+    val isVideo = message.callType == "video"
+    val isMissedOrCanceled = message.callStatus == "call_missed" || message.callStatus == "call_canceled"
+    val bgColor = if (isMissedOrCanceled) Color(0xFFFDECEC) else Color(0xFFF3F0FF)
+    val accent = if (isMissedOrCanceled) Color(0xFFEF4444) else Color(0xFF7C3AED)
+
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(bgColor)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(28.dp).clip(CircleShape).background(accent),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = callLogTitle(message),
+                    color = accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = callLogSubtitle(message),
+                    color = Color(0xFF6B7280),
+                    fontSize = 11.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(text = timeText, fontSize = 10.sp, color = Color(0xFF9CA3AF))
+        }
+    }
+}
+
+private fun callLogTitle(message: ChatMessage): String {
+    val kind = if (message.callType == "video") "영상통화" else "음성통화"
+    return when (message.callStatus) {
+        "call_missed" -> "부재중 $kind"
+        "call_canceled" -> "취소된 $kind"
+        else -> kind
+    }
+}
+
+private fun callLogSubtitle(message: ChatMessage): String {
+    return when (message.callStatus) {
+        "call_missed" -> "응답 없음"
+        "call_canceled" -> "상대방이 수락하기 전에 취소됨"
+        else -> {
+            val sec = message.callDurationSec
+            val m = sec / 60
+            val s = sec % 60
+            if (m > 0) "통화시간 ${m}분 ${s}초" else "통화시간 ${s}초"
+        }
+    }
+}
+
+// ─── 장소 추천 버튼 (상단 좌측 그라디언트 필 — 스크린샷 디자인) ──────────────
+@Composable
+private fun PlaceRecommendButton(
+    isLoading: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val gradient = Brush.horizontalGradient(
+        colors = listOf(Color(0xFF4285F4), Color(0xFF7C3AED))
+    )
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(gradient)
+            .clickable(enabled = !isLoading, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 9.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(14.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = if (isLoading) "분석 중..." else "장소 추천",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+// ─── 장소 추천 다이얼로그 (스크린샷 디자인) ────────────────────────────────
+@Composable
+private fun PlaceRecommendationDialog(
+    isLoading: Boolean,
+    isApiReady: Boolean,
+    places: List<PlaceResult>,
+    error: String?,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                // 헤더
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(listOf(Color(0xFF4285F4), Color(0xFF7C3AED)))
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text("장소 추천", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937))
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                when {
+                    // ── API 키 미설정: 예정 기능 안내 (스크린샷 디자인과 동일) ──
+                    !isApiReady -> {
+                        Text(
+                            text = "예정 기능:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1F2937)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        val features = listOf(
+                            "참여자 중간 지점 계산",
+                            "근처 카페/식당 추천",
+                            "AI 기반 맞춤 장소 추천",
+                            "음식 취향 기반 필터링"
+                        )
+                        features.forEach { feature ->
+                            Row(
+                                modifier = Modifier.padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF7C3AED))
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(feature, fontSize = 14.sp, color = Color(0xFF374151))
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "※ 네이버 API 키를 설정하면 실제 추천이 활성화됩니다.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF9CA3AF)
+                        )
+                    }
+
+                    // ── 로딩 중 ───────────────────────────────────────────────
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Color(0xFF7C3AED), modifier = Modifier.size(36.dp))
+                                Spacer(Modifier.height(12.dp))
+                                Text("참여자 위치 분석 중...", fontSize = 13.sp, color = Color(0xFF6B7280))
+                                Text("중간 지점을 계산하고 있어요", fontSize = 11.sp, color = Color(0xFF9CA3AF))
+                            }
+                        }
+                    }
+
+                    // ── 에러 ─────────────────────────────────────────────────
+                    error != null && places.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("😅", fontSize = 32.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Text(error, fontSize = 13.sp, color = Color(0xFF6B7280), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Spacer(Modifier.height(12.dp))
+                                TextButton(onClick = onRefresh) {
+                                    Text("다시 시도", color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Top 5 결과 ────────────────────────────────────────────
+                    places.isNotEmpty() -> {
+                        Text(
+                            text = "📍 만나기 좋은 장소 TOP ${places.size}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF7C3AED)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        places.forEachIndexed { idx, place ->
+                            PlaceResultCard(rank = idx + 1, place = place)
+                            if (idx < places.lastIndex) Spacer(Modifier.height(8.dp))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        TextButton(
+                            onClick = onRefresh,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) {
+                            Text("다시 검색", color = Color(0xFF9CA3AF), fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // 확인 버튼 (스크린샷 디자인과 동일)
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4285F4)
+                    )
+                ) {
+                    Text("확인", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceResultCard(rank: Int, place: PlaceResult) {
+    val rankColors = listOf(
+        Color(0xFFFFD700), // 1위: 금
+        Color(0xFFC0C0C0), // 2위: 은
+        Color(0xFFCD7F32), // 3위: 동
+        Color(0xFF9CA3AF), // 4위
+        Color(0xFF9CA3AF)  // 5위
+    )
+    val rankColor = rankColors.getOrNull(rank - 1) ?: Color(0xFF9CA3AF)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF9FAFB))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 순위 뱃지
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(rankColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$rank",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = place.name,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1F2937),
+                maxLines = 1
+            )
+            Text(
+                text = place.category,
+                fontSize = 11.sp,
+                color = Color(0xFF7C3AED)
+            )
+            if (place.address.isNotBlank()) {
+                Text(
+                    text = place.address,
+                    fontSize = 11.sp,
+                    color = Color(0xFF6B7280),
+                    maxLines = 1
+                )
+            }
+        }
+        if (place.phone.isNotBlank()) {
+            Icon(
+                Icons.Default.Phone,
+                contentDescription = "전화",
+                tint = Color(0xFF9CA3AF),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+// ─── 통화 중 배너 (채팅방 상단 고정) ─────────────────────────────────────────
+@Composable
+private fun ActiveCallBanner(
+    callType: String,
+    participantCount: Int,
+    onJoinClick: () -> Unit
+) {
+    val isVideo = callType == "video"
+    val accentColor = Color(0xFF7C3AED)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF5F3FF))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 아이콘
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(accentColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        // 텍스트
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (isVideo) "영상통화 진행 중" else "음성통화 진행 중",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = accentColor
+            )
+            Text(
+                text = "${participantCount}명 참여 중 · 탭하여 참여하세요",
+                fontSize = 11.sp,
+                color = Color(0xFF6B7280)
+            )
+        }
+
+        // 참여 버튼
+        Button(
+            onClick = onJoinClick,
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+        ) {
+            Text("참여하기", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+
+    HorizontalDivider(color = Color(0xFFE9E5FF), thickness = 1.dp)
 }
 
 fun formatKakaoDate(timestamp: com.google.firebase.Timestamp?): String {

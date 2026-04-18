@@ -188,9 +188,14 @@ class MainActivity : ComponentActivity() {
                                         pendingIntent.value = null
                                         val chatId   = pendingCall?.getStringExtra("chatId") ?: ""
                                         val callType = pendingCall?.getStringExtra("callType") ?: "voice"
+                                        val roomName = pendingCall?.getStringExtra("roomName") ?: "채팅방"
                                         val isIncoming = if (pIsIncoming) "true" else "false"
+                                        // FEED → CHAT_ROOM → CALL 순으로 쌓아서 통화 종료 시 ChatRoom 에 남도록
                                         navController.navigate(Routes.FEED) {
                                             popUpTo(startDestination) { inclusive = true }
+                                        }
+                                        if (chatId.isNotEmpty()) {
+                                            navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName")
                                         }
                                         navController.navigate("${Routes.CALL}/$chatId/$callType/$isIncoming")
                                     } else {
@@ -273,23 +278,41 @@ class MainActivity : ComponentActivity() {
         // 중복 처리 방지
         pendingIntent.value = null
 
+        val roomName = intent.getStringExtra("roomName") ?: "채팅방"
         when {
             isIncomingCall && chatId.isNotEmpty() -> {
-                // 수신 전화 수락 → 통화 화면
+                // 수신 전화 수락 → 해당 채팅방으로 먼저 이동 후, 통화 화면을 그 위에 쌓음
+                // 통화 종료 시 popBackStack() 으로 자동으로 채팅방에 남는다.
+                val alreadyInRoom = navController.currentDestination?.route
+                    ?.startsWith(Routes.CHAT_ROOM) == true &&
+                    navController.currentBackStackEntry?.arguments?.getString("chatId") == chatId
+                if (!alreadyInRoom) {
+                    navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName") {
+                        popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                }
                 navController.navigate("${Routes.CALL}/$chatId/$callType/true") {
-                    popUpTo(navController.graph.startDestinationId) { inclusive = false }
                     launchSingleTop = true
                 }
             }
             isCallBack && chatId.isNotEmpty() -> {
-                // 부재중 전화 "다시 전화" 버튼 → 발신 통화 화면
+                // 부재중 전화 "다시 전화" → 채팅방 거쳐서 통화 화면
+                val alreadyInRoom = navController.currentDestination?.route
+                    ?.startsWith(Routes.CHAT_ROOM) == true &&
+                    navController.currentBackStackEntry?.arguments?.getString("chatId") == chatId
+                if (!alreadyInRoom) {
+                    navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName") {
+                        popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                }
                 navController.navigate("${Routes.CALL}/$chatId/$callType/false") {
-                    popUpTo(navController.graph.startDestinationId) { inclusive = false }
                     launchSingleTop = true
                 }
             }
             type == "chat" && chatId.isNotEmpty() -> {
-                navController.navigate("${Routes.CHAT_ROOM}/$chatId") {
+                navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName") {
                     popUpTo(navController.graph.startDestinationId) { inclusive = false }
                     launchSingleTop = true
                 }

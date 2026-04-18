@@ -104,6 +104,10 @@ exports.sendCallNotification = functions.firestore
     const recipients = members.filter((uid) => uid !== callerId);
     if (recipients.length === 0) return null;
 
+    // 채팅방 이름 (알림/네비게이션에 사용)
+    const roomName = chatData.teamName ?? chatData.name ?? chatData.roomName ?? "채팅";
+    const isGroup  = (members.length > 2) || chatData.type === "group" || chatData.type === "team";
+
     // 발신자 이름 조회
     let callerName = "Meety";
     try {
@@ -122,6 +126,8 @@ exports.sendCallNotification = functions.firestore
     if (tokens.length === 0) return null;
 
     const callLabel = callType === "video" ? "영상 통화" : "음성 통화";
+    // 그룹 통화면 발신자 이름에 방 이름을 덧붙여 구분
+    const displayCallerName = isGroup ? `${roomName} · ${callerName}` : callerName;
 
     // ⚠️ notification 필드 제거 → data-only 메시지
     // notification 필드가 있으면 앱이 꺼졌을 때 Firebase가 기본 알림을 직접 띄워서
@@ -133,8 +139,9 @@ exports.sendCallNotification = functions.firestore
         callerId,
         callType:      callType ?? "voice",
         type:          "incoming_call",
-        callerName,
+        callerName:    displayCallerName,
         callLabel,
+        roomName,
       },
       android: {
         priority: "high",   // data-only일 때 반드시 high 설정해야 즉시 전달됨

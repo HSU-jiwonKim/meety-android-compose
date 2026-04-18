@@ -19,5 +19,20 @@ interface ChatRepository {
         content: String,
         type: String = "text"
     )
+
+    /** 장소 카드 메시지 전송 (type = "place_card") */
+    suspend fun sendPlaceCard(
+        chatId: String,
+        senderId: String,
+        placeName: String,
+        placeCategory: String,
+        placeAddress: String,
+        placeImageUrl: String,
+        placeReviewCount: Int,
+        placePlaceId: String,
+        placeLat: Double,
+        placeLng: Double
+    )
+
     suspend fun transferLeadershipAndLeave(chatId: String, currentUserId: String, newLeaderId: String)
 }

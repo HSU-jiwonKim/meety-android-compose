@@ -7,6 +7,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,7 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 
 /**
- * 화상/음성 통화 화면.
+ * 화상/음성 통화 화면 (1:1 및 다자간 지원).
  *
  * @param chatId       채팅방 ID (Agora 채널 이름과 Firebase 시그널링에 사용)
  * @param callType     "video" 또는 "voice"
@@ -48,14 +51,12 @@ fun CallScreen(
 ) {
     val context = LocalContext.current
 
-    // ─── CallViewModel이 Agora를 관리 ────────────────────────────────────────
     val callState  by callViewModel.callUiState.collectAsState()
     val isMuted    by callViewModel.isMuted.collectAsState()
     val isCameraOff by callViewModel.isCameraOff.collectAsState()
     val isSpeakerOn by callViewModel.isSpeakerOn.collectAsState()
-    val remoteUid  by callViewModel.remoteUid.collectAsState()
+    val remoteUids by callViewModel.remoteUids.collectAsState()
 
-    // 통화에 필요한 런타임 권한
     val requiredPermissions = if (callType == "video") {
         arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     } else {
@@ -67,12 +68,11 @@ fun CallScreen(
     ) { results ->
         if (results.values.all { it }) {
             callViewModel.initEngine()
-            if (isIncoming) callViewModel.acceptCall(chatId, callType)
+            if (isIncoming) callViewModel.acceptCall(chatId, callType, currentUserId)
             else callViewModel.startCall(chatId, callType, currentUserId)
         }
     }
 
-    // 통화 종료 → 잠깐 대기 후 화면 복귀
     LaunchedEffect(callState) {
         if (callState is CallUiState.Ended) {
             delay(800)
@@ -81,14 +81,13 @@ fun CallScreen(
         }
     }
 
-    // 진입 시 권한 확인 → 통화 시작
     LaunchedEffect(Unit) {
         val allGranted = requiredPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
         if (allGranted) {
             callViewModel.initEngine()
-            if (isIncoming) callViewModel.acceptCall(chatId, callType)
+            if (isIncoming) callViewModel.acceptCall(chatId, callType, currentUserId)
             else callViewModel.startCall(chatId, callType, currentUserId)
         } else {
             permissionLauncher.launch(requiredPermissions)
@@ -99,7 +98,7 @@ fun CallScreen(
         if (callType == "video") {
             VideoCallContent(
                 callState   = callState,
-                remoteUid   = remoteUid,
+                remoteUids  = remoteUids,
                 isMuted     = isMuted,
                 isCameraOff = isCameraOff,
                 onMuteClick       = { callViewModel.toggleMute() },
@@ -112,6 +111,7 @@ fun CallScreen(
         } else {
             VoiceCallContent(
                 callState   = callState,
+                remoteUids  = remoteUids,
                 isMuted     = isMuted,
                 isSpeakerOn = isSpeakerOn,
                 onMuteClick   = { callViewModel.toggleMute() },
@@ -122,12 +122,12 @@ fun CallScreen(
     }
 }
 
-// ─── 화상통화 UI ─────────────────────────────────────────────────────────────
+// ─── 화상통화 UI (다자간 그리드) ─────────────────────────────────────────────
 
 @Composable
 private fun VideoCallContent(
     callState: CallUiState,
-    remoteUid: Int,
+    remoteUids: Set<Int>,
     isMuted: Boolean,
     isCameraOff: Boolean,
     onMuteClick: () -> Unit,
@@ -137,31 +137,58 @@ private fun VideoCallContent(
     onSetupLocalVideo: (SurfaceView) -> Unit,
     onSetupRemoteVideo: (SurfaceView, Int) -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A2E))) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0B0B14))) {
 
-        // 원격 영상 (전체 화면)
-        if (remoteUid != 0) {
-            AndroidView(
-                factory = { ctx -> SurfaceView(ctx).also { onSetupRemoteVideo(it, remoteUid) } },
-                update  = { surface -> onSetupRemoteVideo(surface, remoteUid) },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // 상대방 연결 대기 중
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
-                    Text(
-                        text = if (callState is CallUiState.Calling) "연결 중..." else "연결 중...",
-                        color = Color.White,
-                        fontSize = 18.sp
-                    )
+        val uids = remoteUids.toList()
+        when {
+            uids.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
+                        Text(
+                            text = if (callState is CallUiState.Calling) "연결 중..." else "연결 중...",
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                    }
+                }
+            }
+            uids.size == 1 -> {
+                // 1:1 화상통화: 상대방 전체화면
+                AndroidView(
+                    factory = { ctx -> SurfaceView(ctx).also { onSetupRemoteVideo(it, uids.first()) } },
+                    update  = { surface -> onSetupRemoteVideo(surface, uids.first()) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            else -> {
+                // 다자간: 나 포함 그리드 (KakaoTalk/Webex 스타일 — 내 화면도 같은 크기 타일)
+                val LOCAL_UID = -1
+                val allUids = listOf(LOCAL_UID) + uids
+                val cols = if (allUids.size <= 4) 2 else 3
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(cols),
+                    modifier = Modifier.fillMaxSize().padding(top = 48.dp, bottom = 140.dp, start = 6.dp, end = 6.dp),
+                    contentPadding = PaddingValues(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(items = allUids, key = { it }) { uid ->
+                        if (uid == LOCAL_UID) {
+                            LocalVideoTile(
+                                onSetupLocalVideo = onSetupLocalVideo,
+                                isCameraOff = isCameraOff
+                            )
+                        } else {
+                            RemoteVideoTile(uid = uid, onSetupRemoteVideo = onSetupRemoteVideo)
+                        }
+                    }
                 }
             }
         }
 
-        // 내 카메라 미리보기 (우상단 PiP)
-        if (!isCameraOff) {
+        // 내 카메라 미리보기: 1:1 통화일 때만 PiP, 다자간은 그리드 타일에 포함됨
+        if (!isCameraOff && uids.size == 1) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -174,6 +201,26 @@ private fun VideoCallContent(
                     factory = { ctx -> SurfaceView(ctx).also { onSetupLocalVideo(it) } },
                     modifier = Modifier.fillMaxSize()
                 )
+            }
+        }
+
+        // 상단 참여자 수 & 타이머
+        Box(
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 56.dp, start = 16.dp)
+                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Column {
+                Text(
+                    text = if (uids.isEmpty()) "참여자 1명" else "참여자 ${uids.size + 1}명",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (callState is CallUiState.InCall) {
+                    Spacer(Modifier.height(2.dp))
+                    CallDurationTimer(fontSize = 12.sp)
+                }
             }
         }
 
@@ -212,11 +259,68 @@ private fun VideoCallContent(
     }
 }
 
-// ─── 음성통화 UI ─────────────────────────────────────────────────────────────
+@Composable
+private fun LocalVideoTile(
+    onSetupLocalVideo: (SurfaceView) -> Unit,
+    isCameraOff: Boolean
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(3f / 4f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1F1F28)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isCameraOff) {
+            Icon(
+                Icons.Default.Person,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.6f),
+                modifier = Modifier.size(40.dp)
+            )
+        } else {
+            AndroidView(
+                factory = { ctx -> SurfaceView(ctx).also { onSetupLocalVideo(it) } },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        // "나" 라벨 (좌하단)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(6.dp)
+                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text("나", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun RemoteVideoTile(uid: Int, onSetupRemoteVideo: (SurfaceView, Int) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(3f / 4f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1F1F28))
+    ) {
+        AndroidView(
+            factory = { ctx -> SurfaceView(ctx).also { onSetupRemoteVideo(it, uid) } },
+            update  = { surface -> onSetupRemoteVideo(surface, uid) },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+// ─── 음성통화 UI (다자간 참여자 그리드) ──────────────────────────────────────
 
 @Composable
 private fun VoiceCallContent(
     callState: CallUiState,
+    remoteUids: Set<Int>,
     isMuted: Boolean,
     isSpeakerOn: Boolean,
     onMuteClick: () -> Unit,
@@ -232,30 +336,13 @@ private fun VoiceCallContent(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(140.dp))
-
-            // 아바타
-            Box(
-                modifier = Modifier
-                    .size(110.dp)
-                    .background(Color.White.copy(alpha = 0.2f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(64.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(80.dp))
 
             // 통화 상태 텍스트
             Text(
                 text = when (callState) {
                     is CallUiState.Calling -> "연결 중..."
-                    is CallUiState.InCall  -> "통화 중"
+                    is CallUiState.InCall  -> if (remoteUids.size > 1) "그룹 통화 중 (${remoteUids.size + 1}명)" else "통화 중"
                     else                   -> ""
                 },
                 color = Color.White,
@@ -267,6 +354,43 @@ private fun VoiceCallContent(
             if (callState is CallUiState.InCall) {
                 Spacer(modifier = Modifier.height(8.dp))
                 CallDurationTimer()
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // 참여자 아바타 그리드 (나 + 원격 참여자들)
+            if (remoteUids.isEmpty()) {
+                // 연결 대기 — 아바타 1개만
+                Box(
+                    modifier = Modifier
+                        .size(110.dp)
+                        .background(Color.White.copy(alpha = 0.2f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(64.dp)
+                    )
+                }
+            } else {
+                val all = listOf(0) + remoteUids.toList()  // 0 = 나
+                val cols = if (all.size <= 4) 2 else 3
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(cols),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .heightIn(max = 380.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(4.dp)
+                ) {
+                    items(items = all, key = { it }) { uid ->
+                        ParticipantAvatar(uid = uid, isMe = uid == 0)
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -296,6 +420,31 @@ private fun VoiceCallContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ParticipantAvatar(uid: Int, isMe: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .background(Color.White.copy(alpha = 0.2f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Person,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(40.dp)
+            )
+        }
+        Text(
+            text = if (isMe) "나" else "참여자",
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -343,7 +492,7 @@ private fun EndCallButton(size: Int = 64, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CallDurationTimer() {
+private fun CallDurationTimer(fontSize: androidx.compose.ui.unit.TextUnit = 16.sp) {
     var totalSeconds by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -354,6 +503,6 @@ private fun CallDurationTimer() {
     Text(
         text = "%02d:%02d".format(totalSeconds / 60, totalSeconds % 60),
         color = Color.White.copy(alpha = 0.8f),
-        fontSize = 16.sp
+        fontSize = fontSize
     )
 }

@@ -137,6 +137,20 @@ class FirebaseChatRepository : ChatRepository {
                     val type = doc.getString("type") ?: "text"
                     val createdAt = try { doc.getTimestamp("createdAt") } catch (e: Exception) { null }
                     val isMe = senderId == currentUserId
+                    // 통화 로그 전용 필드
+                    val callType = doc.getString("callType") ?: ""
+                    val callStatus = doc.getString("callStatus") ?: ""
+                    val callDurationSec = (doc.getLong("callDurationSec") ?: 0L).toInt()
+                    val callerId = doc.getString("callerId") ?: ""
+                    // 장소 공유 카드 전용 필드
+                    val placeName = doc.getString("placeName") ?: ""
+                    val placeCategory = doc.getString("placeCategory") ?: ""
+                    val placeAddress = doc.getString("placeAddress") ?: ""
+                    val placeImageUrl = doc.getString("placeImageUrl") ?: ""
+                    val placeReviewCount = (doc.getLong("placeReviewCount") ?: 0L).toInt()
+                    val placePlaceId = doc.getString("placePlaceId") ?: ""
+                    val placeLat = doc.getDouble("placeLat") ?: 0.0
+                    val placeLng = doc.getDouble("placeLng") ?: 0.0
 
                     if (senderId == "system") {
                         messages.add(
@@ -148,7 +162,19 @@ class FirebaseChatRepository : ChatRepository {
                                 content = content,
                                 type = type,
                                 createdAt = createdAt,
-                                isMe = false
+                                isMe = false,
+                                callType = callType,
+                                callStatus = callStatus,
+                                callDurationSec = callDurationSec,
+                                callerId = callerId,
+                                placeName = placeName,
+                                placeCategory = placeCategory,
+                                placeAddress = placeAddress,
+                                placeImageUrl = placeImageUrl,
+                                placeReviewCount = placeReviewCount,
+                                placePlaceId = placePlaceId,
+                                placeLat = placeLat,
+                                placeLng = placeLng
                             )
                         )
                         completed++
@@ -166,7 +192,19 @@ class FirebaseChatRepository : ChatRepository {
                                 content = content,
                                 type = type,
                                 createdAt = createdAt,
-                                isMe = isMe
+                                isMe = isMe,
+                                callType = callType,
+                                callStatus = callStatus,
+                                callDurationSec = callDurationSec,
+                                callerId = callerId,
+                                placeName = placeName,
+                                placeCategory = placeCategory,
+                                placeAddress = placeAddress,
+                                placeImageUrl = placeImageUrl,
+                                placeReviewCount = placeReviewCount,
+                                placePlaceId = placePlaceId,
+                                placeLat = placeLat,
+                                placeLng = placeLng
                             )
                         )
                         completed++
@@ -191,7 +229,19 @@ class FirebaseChatRepository : ChatRepository {
                                         content = content,
                                         type = type,
                                         createdAt = createdAt,
-                                        isMe = false
+                                        isMe = false,
+                                        callType = callType,
+                                        callStatus = callStatus,
+                                        callDurationSec = callDurationSec,
+                                        callerId = callerId,
+                                        placeName = placeName,
+                                        placeCategory = placeCategory,
+                                        placeAddress = placeAddress,
+                                        placeImageUrl = placeImageUrl,
+                                        placeReviewCount = placeReviewCount,
+                                        placePlaceId = placePlaceId,
+                                        placeLat = placeLat,
+                                        placeLng = placeLng
                                     )
                                 )
                                 completed++
@@ -207,7 +257,19 @@ class FirebaseChatRepository : ChatRepository {
                                         content = content,
                                         type = type,
                                         createdAt = createdAt,
-                                        isMe = false
+                                        isMe = false,
+                                        callType = callType,
+                                        callStatus = callStatus,
+                                        callDurationSec = callDurationSec,
+                                        callerId = callerId,
+                                        placeName = placeName,
+                                        placeCategory = placeCategory,
+                                        placeAddress = placeAddress,
+                                        placeImageUrl = placeImageUrl,
+                                        placeReviewCount = placeReviewCount,
+                                        placePlaceId = placePlaceId,
+                                        placeLat = placeLat,
+                                        placeLng = placeLng
                                     )
                                 )
                                 completed++
@@ -260,6 +322,63 @@ class FirebaseChatRepository : ChatRepository {
             )
             .await()
     }
+    override suspend fun sendPlaceCard(
+        chatId: String,
+        senderId: String,
+        placeName: String,
+        placeCategory: String,
+        placeAddress: String,
+        placeImageUrl: String,
+        placeReviewCount: Int,
+        placePlaceId: String,
+        placeLat: Double,
+        placeLng: Double
+    ) {
+        val now = Timestamp.now()
+
+        val senderName = try {
+            val userDoc = db.collection("users").document(senderId).get().await()
+            userDoc.getString("name") ?: "알 수 없음"
+        } catch (e: Exception) {
+            "알 수 없음"
+        }
+
+        // 채팅방 하단 lastMessage 프리뷰용 텍스트
+        val previewContent = "📍 $placeName"
+
+        val messageData = mapOf(
+            "senderId" to senderId,
+            "senderName" to senderName,
+            "content" to previewContent,
+            "type" to "place_card",
+            "createdAt" to now,
+            "placeName" to placeName,
+            "placeCategory" to placeCategory,
+            "placeAddress" to placeAddress,
+            "placeImageUrl" to placeImageUrl,
+            "placeReviewCount" to placeReviewCount,
+            "placePlaceId" to placePlaceId,
+            "placeLat" to placeLat,
+            "placeLng" to placeLng
+        )
+
+        db.collection("chats")
+            .document(chatId)
+            .collection("messages")
+            .add(messageData)
+            .await()
+
+        db.collection("chats")
+            .document(chatId)
+            .update(
+                mapOf(
+                    "lastMessage" to previewContent,
+                    "lastMessageAt" to now
+                )
+            )
+            .await()
+    }
+
     override suspend fun transferLeadershipAndLeave(chatId: String, currentUserId: String, newLeaderId: String) {
         val chatRef = db.collection("chats").document(chatId)
 

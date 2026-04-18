@@ -483,6 +483,12 @@ fun NavGraph(
                             if (isCallClickAllowed()) {
                                 navController.navigate("${Routes.CALL}/$cId/$callType/true")
                             }
+                        },
+                        onJoinCall = { cId, callType ->
+                            // 진행 중인 통화에 새로 참여 (isIncoming=true → acceptCall 경유)
+                            if (isCallClickAllowed()) {
+                                navController.navigate("${Routes.CALL}/$cId/$callType/true")
+                            }
                         }
                     )
                 }

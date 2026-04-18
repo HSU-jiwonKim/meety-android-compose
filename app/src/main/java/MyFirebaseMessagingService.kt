@@ -51,13 +51,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         val callType   = remoteMessage.data["callType"]   ?: "voice"
         val callerName = remoteMessage.data["callerName"] ?: "Meety"
         val callLabel  = remoteMessage.data["callLabel"]  ?: if (callType == "video") "영상 통화" else "음성 통화"
+        val roomName   = remoteMessage.data["roomName"]   ?: callerName
 
         when (type) {
-            "incoming_call" -> showCallNotification(callerName, callLabel, chatId, callType)
+            "incoming_call" -> showCallNotification(callerName, callLabel, chatId, callType, roomName)
             "call_cancelled", "call_ended" -> {
-                // 상대방이 전화를 끊음 → 수락/거절 알림 제거 + 부재중 알림 표시
                 dismissCallNotification()
-                showMissedCallNotification(callerName, callLabel, chatId, callType)
+                showMissedCallNotification(callerName, callLabel, chatId, callType, roomName)
             }
             else -> {
                 val title = remoteMessage.notification?.title ?: remoteMessage.data["title"] ?: "새 메시지"
@@ -138,7 +138,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         callerName: String,
         callLabel:  String,
         chatId:     String,
-        callType:   String
+        callType:   String,
+        roomName:   String = callerName
     ) {
         val channelId = "meety_missed_call"
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -159,6 +160,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("chatId", chatId)
             putExtra("type",   "chat")
+            putExtra("roomName", roomName)
             putExtra("clearMissedCount", true)
             putExtra("missedChatId",     chatId)
         }
@@ -175,6 +177,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             putExtra("chatId",           chatId)
             putExtra("callType",         callType)
             putExtra("isCallBack",       true)
+            putExtra("roomName",         roomName)
             putExtra("clearMissedCount", true)
             putExtra("missedChatId",     chatId)
         }
@@ -232,7 +235,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         callerName: String,
         callLabel:  String,
         chatId:     String,
-        callType:   String
+        callType:   String,
+        roomName:   String = callerName
     ) {
         val channelId = "meety_call"
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -250,6 +254,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("chatId",         chatId)
             putExtra("callType",       callType)
+            putExtra("roomName",       roomName)
             putExtra("isIncomingCall", true)
         }
         val fullScreenPending = PendingIntent.getActivity(
@@ -264,6 +269,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("chatId",         chatId)
             putExtra("callType",       callType)
+            putExtra("roomName",       roomName)
             putExtra("isIncomingCall", true)
         }
         val acceptPending = PendingIntent.getActivity(
@@ -322,7 +328,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         nm.notify(NOTIFICATION_ID, builder.build())
 
         // ── Firestore 리스너: 상대방이 전화를 끊으면(status→ended) 알림 자동 제거 ──
-        startCallStatusListener(callerName, callLabel, chatId, callType)
+        startCallStatusListener(callerName, callLabel, chatId, callType, roomName)
     }
 
     /**
@@ -334,7 +340,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         callerName: String,
         callLabel:  String,
         chatId:     String,
-        callType:   String
+        callType:   String,
+        roomName:   String = callerName
     ) {
         // 기존 리스너가 있으면 제거
         removeCallStatusListener()
@@ -367,15 +374,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 // 두 번째 스냅샷부터 상태 변화에 반응
                 when (status) {
                     "ended" -> {
-                        // 상대방이 끊음 → 수신 전화 알림 제거 + 부재중 알림
+                        // 전체 종료 → 수신 전화 알림 제거 + 부재중 알림
                         dismissCallNotification()
-                        showMissedCallNotification(callerName, callLabel, chatId, callType)
+                        showMissedCallNotification(callerName, callLabel, chatId, callType, roomName)
                         removeCallStatusListener()
                     }
-                    "accepted" -> {
-                        // 본인이 수락함 → 리스너만 정리
-                        removeCallStatusListener()
-                    }
+                    // 그룹 통화에서는 "active" 상태여도 다른 참여자는 계속 벨이 울리므로
+                    // 상태만으로는 내가 수락했는지 알 수 없음. 수락 시에는 MainActivity 에서
+                    // removeCallStatusListener() 를 직접 호출해 리스너를 정리한다.
                 }
             }
     }

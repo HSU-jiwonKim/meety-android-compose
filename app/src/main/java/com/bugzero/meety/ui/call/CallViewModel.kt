@@ -6,6 +6,7 @@ import android.view.SurfaceView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.repository.AgoraCallRepository
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import io.agora.rtc2.ChannelMediaOptions
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 // ─── 통화 UI 상태 ────────────────────────────────────────────────────────────
 sealed class CallUiState {
@@ -26,6 +28,12 @@ sealed class CallUiState {
     data class InCall(val callType: String, val channelName: String) : CallUiState()
     object Ended : CallUiState()
 }
+
+/** 채팅방 내 "통화 중" 배너에 표시할 정보 */
+data class ActiveCallInfo(
+    val callType: String,       // "video" | "voice"
+    val participantCount: Int   // 현재 통화 중인 인원 수
+)
 
 class CallViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -50,63 +58,60 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSpeakerOn  = MutableStateFlow(true)
     val isSpeakerOn: StateFlow<Boolean> = _isSpeakerOn.asStateFlow()
 
-    // ─── 원격 사용자 UID (Agora에서 자동 부여) ───────────────────────────────
-    private val _remoteUid = MutableStateFlow(0)
-    val remoteUid: StateFlow<Int> = _remoteUid.asStateFlow()
+    // ─── 원격 사용자 UID 목록 (Agora에서 자동 부여) ─────────────────────────
+    private val _remoteUids = MutableStateFlow<Set<Int>>(emptySet())
+    val remoteUids: StateFlow<Set<Int>> = _remoteUids.asStateFlow()
 
-    // ─── 채팅방에서 수신 통화 감지용 (chatId → callType to callerId) ─────────
+    // ─── 채팅방에서 수신 통화 감지용 (callType, callerId) ───────────────────
     private val _incomingCallState = MutableStateFlow<Pair<String, String>?>(null)
     val incomingCallState: StateFlow<Pair<String, String>?> = _incomingCallState.asStateFlow()
 
+    // ─── 채팅방 "통화 중" 배너용 ─────────────────────────────────────────────
+    private val _activeCallInfo = MutableStateFlow<ActiveCallInfo?>(null)
+    val activeCallInfo: StateFlow<ActiveCallInfo?> = _activeCallInfo.asStateFlow()
+
+    private var activeBannerListener: ListenerRegistration? = null
+
     private var rtcEngine: RtcEngine? = null
     private var currentChatId = ""
+    private var currentUserId = ""
+    private var currentCallerId = ""
+    private var currentCallType = "voice"
+    private var isCaller = false
+    private var callConnectedAt: Long = 0L   // 첫 원격 참여자 입장 시각 (통화 연결 시각)
+    private var callEndedEmitted = false     // 로그 중복 기록 방지 플래그
     private var callStatusListener: ListenerRegistration? = null
 
     // ─── Agora 이벤트 핸들러 ──────────────────────────────────────────────────
     private val rtcEventHandler = object : IRtcEngineEventHandler() {
 
-        /** 내가 채널 입장 성공 → Calling 상태 유지 (상대방 대기 중) */
         override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
-            android.util.Log.d("AgoraRTC", "채널 입장 성공: $channel, uid=$uid")
-            // 상태는 상대방이 들어올 때(onUserJoined) InCall로 전환
-            // 단, 수신측이 먼저 채널에 없으면 여기서 Calling 유지
+            Log.d("AgoraRTC", "채널 입장 성공: $channel, uid=$uid")
         }
 
-        /** 상대방이 채널에 입장 → 통화 중 상태로 전환 */
+        /** 새 참여자 입장 → 목록에 추가 + InCall 상태 전이 */
         override fun onUserJoined(uid: Int, elapsed: Int) {
-            android.util.Log.d("AgoraRTC", "상대방 입장: uid=$uid")
-            _remoteUid.value = uid
+            Log.d("AgoraRTC", "상대방 입장: uid=$uid")
+            _remoteUids.value = _remoteUids.value + uid
+            if (callConnectedAt == 0L) callConnectedAt = System.currentTimeMillis()
             val current = _callUiState.value
             if (current is CallUiState.Calling) {
                 _callUiState.value = CallUiState.InCall(current.callType, current.channelName)
             }
         }
 
-        /**
-         * 상대방이 채널 이탈 → InCall 상태일 때만 통화 종료
-         * ⚠️ Calling 상태에서 오는 onUserOffline은 이전 세션 잔여 이벤트이므로 무시
-         */
+        /** 한 명이 이탈 → 목록에서 제거. 모두 빠지면 종료 */
         override fun onUserOffline(uid: Int, reason: Int) {
-            android.util.Log.d("AgoraRTC", "상대방 이탈: uid=$uid, reason=$reason, state=${_callUiState.value}")
-            if (_callUiState.value is CallUiState.InCall) {
-                _remoteUid.value = 0
+            Log.d("AgoraRTC", "상대방 이탈: uid=$uid, reason=$reason")
+            _remoteUids.value = _remoteUids.value - uid
+            // 남은 원격 참여자가 없고 내가 InCall 이면 통화 종료
+            if (_remoteUids.value.isEmpty() && _callUiState.value is CallUiState.InCall) {
                 viewModelScope.launch { endCall() }
             }
         }
 
-        /** Agora 에러 → 로그 출력 + 에러 코드별 처리 */
         override fun onError(err: Int) {
-            android.util.Log.e("AgoraRTC", "에러 발생: code=$err")
-            when (err) {
-                17 -> {
-                    // ERR_JOIN_CHANNEL_REJECTED: Agora 프로젝트가 Secure 모드(토큰 필요)
-                    // → console.agora.io 에서 해당 프로젝트를 Testing 모드로 전환하세요
-                    android.util.Log.e("AgoraRTC", "채널 입장 거부 (err=17): Agora 콘솔에서 Testing 모드로 변경 필요")
-                }
-                110 -> android.util.Log.e("AgoraRTC", "연결 타임아웃 (err=110)")
-                else -> android.util.Log.e("AgoraRTC", "알 수 없는 에러 (err=$err)")
-            }
-            // 에러 시 화면은 닫지 않음 - 사용자가 수동으로 종료 가능
+            Log.e("AgoraRTC", "에러 발생: code=$err")
         }
     }
 
@@ -119,16 +124,20 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 mAppId        = AGORA_APP_ID
                 mEventHandler = rtcEventHandler
             }
-            // RtcEngine.create()는 싱글톤을 반환 — 이전 인스턴스가 살아있으면 기존 엔진이 반환됨
             rtcEngine = RtcEngine.create(config)
-            // ★ 싱글톤이라도 이 ViewModel의 이벤트 핸들러를 추가로 등록 (다중 ViewModel 안전)
             rtcEngine?.addHandler(rtcEventHandler)
         }.onFailure { it.printStackTrace() }
     }
 
-    // ─── 발신 ─────────────────────────────────────────────────────────────────
+    // ─── 발신 (그룹 포함) ─────────────────────────────────────────────────────
     fun startCall(chatId: String, callType: String, callerId: String) {
         currentChatId = chatId
+        currentUserId = callerId
+        currentCallerId = callerId
+        currentCallType = callType
+        isCaller = true
+        callEndedEmitted = false
+        callConnectedAt = 0L
         viewModelScope.launch {
             val channelName = callRepository.startCall(chatId, callType, callerId)
             _callUiState.value = CallUiState.Calling(callType, channelName)
@@ -138,10 +147,20 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ─── 수신 수락 ────────────────────────────────────────────────────────────
-    fun acceptCall(chatId: String, callType: String) {
+    fun acceptCall(chatId: String, callType: String, userId: String = "") {
         currentChatId = chatId
+        currentCallType = callType
+        currentUserId = userId
+        isCaller = false
+        callEndedEmitted = false
         viewModelScope.launch {
-            val channelName = callRepository.acceptCall(chatId)
+            // 발신자 정보를 Firestore에서 미리 조회 (callLog 작성시 필요)
+            runCatching {
+                val doc = FirebaseFirestore.getInstance()
+                    .collection("calls").document(chatId).get().await()
+                currentCallerId = doc.getString("callerId") ?: ""
+            }
+            val channelName = callRepository.acceptCall(chatId, userId)
             _callUiState.value = CallUiState.Calling(callType, channelName)
             joinChannel(channelName, callType)
             _incomingCallState.value = null
@@ -150,10 +169,20 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ─── 수신 거절 ────────────────────────────────────────────────────────────
-    fun declineCall(chatId: String) {
+    fun declineCall(chatId: String, userId: String = "") {
         viewModelScope.launch {
-            callRepository.endCall(chatId)
             _incomingCallState.value = null
+            // 1:1이면 전체 종료, 그룹이면 내 다이얼로그만 닫고 나머지는 계속 벨 울림
+            runCatching {
+                val chatDoc = FirebaseFirestore.getInstance()
+                    .collection("chats").document(chatId).get().await()
+                @Suppress("UNCHECKED_CAST")
+                val participants = (chatDoc.get("participants") as? List<String>) ?: emptyList()
+                val isOneOnOne = participants.size <= 2
+                if (isOneOnOne) {
+                    callRepository.endCall(chatId, userId, forceEndForAll = true)
+                }
+            }
         }
     }
 
@@ -161,10 +190,95 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     fun endCall() {
         callStatusListener?.remove()
         callStatusListener = null
+        val chatIdSnapshot = currentChatId
+        val userIdSnapshot = currentUserId
+        val hadRemote = _remoteUids.value.isNotEmpty() || callConnectedAt > 0L
+        val wasCaller = isCaller
+        val callTypeSnapshot = currentCallType
+
         viewModelScope.launch {
-            if (currentChatId.isNotEmpty()) callRepository.endCall(currentChatId)
+            if (chatIdSnapshot.isNotEmpty()) {
+                val forceEnd = wasCaller && !hadRemote
+                callRepository.endCall(chatIdSnapshot, userIdSnapshot, forceEndForAll = forceEnd)
+                tryWriteCallLog(chatIdSnapshot, callTypeSnapshot, hadRemote, wasCaller && !hadRemote)
+            }
             leaveChannel()
             _callUiState.value = CallUiState.Ended
+        }
+    }
+
+    /** 원자적 claim 성공 시에만 call_log 메시지를 기록 */
+    private suspend fun tryWriteCallLog(
+        chatId: String,
+        callType: String,
+        hadRemote: Boolean,
+        canceledByCaller: Boolean
+    ) {
+        if (callEndedEmitted) return
+        callEndedEmitted = true
+        val durationSec = if (callConnectedAt > 0L)
+            ((System.currentTimeMillis() - callConnectedAt) / 1000L).toInt()
+        else 0
+        val didClaim = callRepository.tryClaimCallLog(chatId)
+        if (didClaim) {
+            writeCallLogMessage(
+                chatId = chatId,
+                callType = callType,
+                durationSec = durationSec,
+                connected = hadRemote,
+                canceledByCaller = canceledByCaller
+            )
+        }
+    }
+
+    /** 카카오톡 스타일 통화 로그 시스템 메시지 저장 */
+    private suspend fun writeCallLogMessage(
+        chatId: String,
+        callType: String,
+        durationSec: Int,
+        connected: Boolean,
+        canceledByCaller: Boolean
+    ) {
+        runCatching {
+            val db = FirebaseFirestore.getInstance()
+            val now = Timestamp.now()
+            val label = when {
+                !connected && canceledByCaller -> "call_canceled"
+                !connected -> "call_missed"
+                else -> "call_completed"
+            }
+            val contentText = buildCallLogText(callType, durationSec, label)
+            val messageData = mapOf(
+                "senderId" to "system",
+                "senderName" to "system",
+                "content" to contentText,
+                "type" to "call_log",
+                "callType" to callType,
+                "callStatus" to label,
+                "callDurationSec" to durationSec,
+                "callerId" to currentCallerId,
+                "createdAt" to now
+            )
+            db.collection("chats").document(chatId)
+                .collection("messages")
+                .add(messageData).await()
+            db.collection("chats").document(chatId)
+                .update(mapOf("lastMessage" to contentText, "lastMessageAt" to now))
+                .await()
+        }.onFailure { Log.e("CallVM", "call log 저장 실패: ${it.message}") }
+    }
+
+    private fun buildCallLogText(callType: String, durationSec: Int, status: String): String {
+        val kindLabel = if (callType == "video") "영상통화" else "음성통화"
+        return when (status) {
+            "call_missed" -> "부재중 $kindLabel"
+            "call_canceled" -> "취소된 $kindLabel"
+            else -> {
+                val m = durationSec / 60
+                val s = durationSec % 60
+                val durText = if (m > 0) "${m}분 ${s}초" else "${s}초"
+                "$kindLabel · 통화시간 $durText"
+            }
         }
     }
 
@@ -172,20 +286,54 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     fun listenForIncomingCall(chatId: String, currentUserId: String) {
         callRepository.listenForIncomingCall(
             chatId = chatId,
+            currentUserId = currentUserId,
             onIncomingCall = { callType, callerId ->
                 if (callerId != currentUserId) {
                     _incomingCallState.value = callType to callerId
                 }
             },
             onCallEnded = {
-                // 상대방이 통화 시작 전에 끊음 → 인앱 다이얼로그 즉시 닫기
                 _incomingCallState.value = null
+                _activeCallInfo.value = null
             }
         )
+        // "통화 중" 배너용 별도 리스너 시작
+        listenForActiveCallBanner(chatId, currentUserId)
+    }
+
+    /**
+     * calls/{chatId} 문서를 감시해서 "active" 상태이고 내가 아직 참여하지 않은 경우
+     * _activeCallInfo 를 업데이트한다.
+     */
+    private fun listenForActiveCallBanner(chatId: String, currentUserId: String) {
+        activeBannerListener?.remove()
+        activeBannerListener = FirebaseFirestore.getInstance()
+            .collection("calls").document(chatId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) {
+                    _activeCallInfo.value = null
+                    return@addSnapshotListener
+                }
+                val status   = snapshot.getString("status")   ?: ""
+                val callType = snapshot.getString("callType") ?: "voice"
+                @Suppress("UNCHECKED_CAST")
+                val joined   = (snapshot.get("joinedUsers") as? List<String>) ?: emptyList()
+
+                // "active" 또는 "calling" 상태이고, 내가 아직 채널에 없을 때만 배너 표시
+                val isOngoing = status == "active" || status == "calling"
+                if (isOngoing && !joined.contains(currentUserId)) {
+                    _activeCallInfo.value = ActiveCallInfo(callType, joined.size)
+                } else {
+                    _activeCallInfo.value = null
+                }
+            }
     }
 
     fun stopListeningForCalls(chatId: String) {
         callRepository.stopListeningForCalls(chatId)
+        activeBannerListener?.remove()
+        activeBannerListener = null
+        _activeCallInfo.value = null
     }
 
     fun clearIncomingCall() {
@@ -229,13 +377,19 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     // ─── 상태 초기화 (통화 종료 후 재사용) ────────────────────────────────────
     fun resetState() {
         _callUiState.value  = CallUiState.Idle
-        _remoteUid.value    = 0
+        _remoteUids.value   = emptySet()
         _isMuted.value      = false
         _isCameraOff.value  = false
         _isSpeakerOn.value  = true
+        callConnectedAt     = 0L
+        callEndedEmitted    = false
+        isCaller            = false
+        currentChatId       = ""
+        currentUserId       = ""
+        currentCallerId     = ""
     }
 
-    // ─── Firestore 상태 감시 (상대방이 endCall → "ended" → 이쪽도 종료) ─────
+    // ─── Firestore 상태 감시 (모든 사용자가 떠남 → 이쪽도 종료) ────────────
     private fun startCallStatusListener(chatId: String) {
         callStatusListener?.remove()
         var isFirst = true
@@ -247,14 +401,17 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                     return@addSnapshotListener
                 }
                 val status = snapshot?.getString("status") ?: return@addSnapshotListener
-                // 첫 스냅샷은 현재 상태이므로 무시
                 if (isFirst) { isFirst = false; return@addSnapshotListener }
 
                 if (status == "ended" && _callUiState.value !is CallUiState.Ended) {
-                    Log.d("CallVM", "상대방이 통화 종료 → 이쪽도 종료")
+                    Log.d("CallVM", "통화 전체 종료 감지 → 이쪽도 종료")
                     callStatusListener?.remove()
                     callStatusListener = null
+                    val hadRemote = _remoteUids.value.isNotEmpty() || callConnectedAt > 0L
+                    val wasCaller = isCaller
                     viewModelScope.launch {
+                        // 발신자가 아직 수락 전인 상태에서 상대방 거절 → canceled 로 기록
+                        tryWriteCallLog(chatId, currentCallType, hadRemote, wasCaller && !hadRemote)
                         leaveChannel()
                         _callUiState.value = CallUiState.Ended
                     }
@@ -280,29 +437,23 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             publishCameraTrack   = callType == "video"
             publishMicrophoneTrack = true
         }
-        // token: null → Agora 콘솔에서 "테스트 모드(무인증)" 활성화 필요
-        // 프로덕션에서는 서버에서 발급한 token 전달
         engine.joinChannel(null, channelName, 0, options)
     }
 
     private fun leaveChannel() {
         rtcEngine?.leaveChannel()
         rtcEngine?.stopPreview()
-        _remoteUid.value = 0
+        _remoteUids.value = emptySet()
     }
 
     override fun onCleared() {
         super.onCleared()
         callStatusListener?.remove()
         callStatusListener = null
+        activeBannerListener?.remove()
+        activeBannerListener = null
         callRepository.stopListeningForCalls(currentChatId)
-        // ⚠️ RtcEngine.destroy()는 static 전역 호출이라 다른 ViewModel의 엔진까지 파괴됨 → 호출 금지
-        // ChatRoomScreen에서 CallScreen으로 이동 시 ChatRoom의 ViewModel이 cleared되면서
-        // CallScreen에서 새로 만든 엔진까지 함께 파괴되어 통화가 즉시 끊기는 버그의 원인
-        // leaveChannel만 수행하고 엔진 인스턴스는 참조만 끊음 (다음 ViewModel이 재사용)
-        // ★ 이 ViewModel의 핸들러만 제거 (싱글톤 엔진은 유지)
         rtcEngine?.removeHandler(rtcEventHandler)
-        // 활성 통화가 있을 때만 leaveChannel (ChatRoom ViewModel은 채널 join 안 하므로 no-op)
         if (_callUiState.value is CallUiState.Calling || _callUiState.value is CallUiState.InCall) {
             rtcEngine?.leaveChannel()
             rtcEngine?.stopPreview()
