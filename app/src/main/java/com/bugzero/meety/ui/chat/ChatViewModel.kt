@@ -105,13 +105,25 @@ class ChatViewModel(
     private val _placeError = MutableStateFlow<String?>(null)
     val placeError: StateFlow<String?> = _placeError.asStateFlow()
 
-    // 대중교통 소요시간 (placeKey → 평균 분)
+    // 대중교통 소요시간 (placeKey → 평균 분) — 하위 호환용으로 유지, UI에선 미사용
     private val _transitAverages = MutableStateFlow<Map<String, Int>>(emptyMap())
     val transitAverages: StateFlow<Map<String, Int>> = _transitAverages.asStateFlow()
 
-    // 대중교통 소요시간 (placeKey → 사용자별 breakdown)
+    // 대중교통 소요시간 (placeKey → 사용자별 breakdown) — 하위 호환용으로 유지, UI에선 미사용
     private val _transitBreakdowns = MutableStateFlow<Map<String, List<TransitUserInfo>>>(emptyMap())
     val transitBreakdowns: StateFlow<Map<String, List<TransitUserInfo>>> = _transitBreakdowns.asStateFlow()
+
+    // 지역(중간 지점) 기준 대중교통 평균 시간 — 가게별 계산 대신 지역 단위로 한 번만 계산
+    private val _regionTransitAvg = MutableStateFlow<Int?>(null)
+    val regionTransitAvg: StateFlow<Int?> = _regionTransitAvg.asStateFlow()
+
+    // 지역 기준 참여자별 대중교통 breakdown
+    private val _regionTransitBreakdown = MutableStateFlow<List<TransitUserInfo>>(emptyList())
+    val regionTransitBreakdown: StateFlow<List<TransitUserInfo>> = _regionTransitBreakdown.asStateFlow()
+
+    // 추천된 지역명 (예: "서울 강남구") — 헤더에 표시
+    private val _recommendedRegionName = MutableStateFlow("")
+    val recommendedRegionName: StateFlow<String> = _recommendedRegionName.asStateFlow()
 
     // ── 재추천 개선 (이미 본 장소 제외 / 반경 / 찜 / 조건 시트) ─────────────────
     /** "다시 추천" 눌렀을 때 누적되는 본 장소 키 (name|address). */
@@ -149,6 +161,9 @@ class ChatViewModel(
     /** 마지막으로 사용한 키워드(필터). 지역 전환 시에도 유지하기 위해 보관. */
     private var lastKeywords: List<String>? = null
 
+    /** 마지막으로 계산한 참여자 위치 목록. 지역 전환 시 대중교통 재계산에 재사용. */
+    private var lastTransitParticipants: List<TransitParticipant> = emptyList()
+
     /** 현재 반경(UI 슬라이더 초기값 용). */
     val currentRadiusMeters: Int get() = searchRadiusMeters
 
@@ -164,7 +179,7 @@ class ChatViewModel(
         if (userId.isNullOrBlank()) { clearForLoggedOutState(); return }
         likesListener?.remove(); likesListener = null
         _chatList.value = emptyList(); _requestList.value = emptyList(); _errorMessage.value = null
-        loadChatList(); loadRequestList(); saveFcmToken()
+        loadChatList(); loadRequestList(); saveFcmToken(); loadSavedPlaces()
     }
 
     private fun clearForLoggedOutState() {
@@ -182,7 +197,50 @@ class ChatViewModel(
         _roomName.value = roomName
         observeMessages(chatId)
         loadParticipants(chatId)
+        loadSavedPlaces()   // 찜 목록 Firestore에서 복원
     }
+
+    /** 앱 재시작 후에도 유지되도록 Firestore에서 찜 목록 로드 */
+    private fun loadSavedPlaces() {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            try {
+                val snapshot = FirebaseFirestore.getInstance()
+                    .collection("users").document(userId)
+                    .collection("savedMeetingPlaces").get().await()
+                val places = snapshot.documents.mapNotNull { doc ->
+                    runCatching {
+                        PlaceResult(
+                            name        = doc.getString("name") ?: return@mapNotNull null,
+                            address     = doc.getString("address") ?: "",
+                            category    = doc.getString("category") ?: "",
+                            phone       = doc.getString("phone") ?: "",
+                            lat         = doc.getDouble("lat") ?: 0.0,
+                            lng         = doc.getDouble("lng") ?: 0.0,
+                            imageUrl    = doc.getString("imageUrl") ?: "",
+                            imageUrls   = (doc.get("imageUrls") as? List<*>)
+                                              ?.mapNotNull { it?.toString() } ?: emptyList(),
+                            reviewCount = doc.getLong("reviewCount")?.toInt() ?: 0,
+                            placeId     = doc.getString("placeId") ?: ""
+                        )
+                    }.getOrNull()
+                }
+                _savedPlaces.value = places
+                _savedPlaceKeys.value = places.map { placeKey(it) }.toSet()
+                Log.d("ChatVM", "찜 목록 로드 완료: ${places.size}곳")
+            } catch (e: Exception) {
+                Log.e("ChatVM", "찜 목록 로드 실패: ${e.message}")
+            }
+        }
+    }
+
+    /** Firestore 저장용 문서 ID — placeId 우선, 없으면 name+address 해시 */
+    private fun savedPlaceDocId(place: PlaceResult): String =
+        if (place.placeId.isNotBlank()) "id_${place.placeId}"
+        else "${place.name}${place.address}"
+            .filter { it.isLetterOrDigit() }
+            .take(100)
+            .ifBlank { place.name.hashCode().toString() }
 
     fun loadChatList() {
         val userId = currentUserIdOrNull ?: return
@@ -606,12 +664,22 @@ class ChatViewModel(
                 val centroid = placeRepository.calculateCentroid(coords)
                 Log.d("ChatVM", "★ 중간 지점: (${centroid.lat}, ${centroid.lng})")
 
+                // 4-1. 참여자별 대중교통 시간을 중간 지점 기준으로 딱 한 번 계산 (가게별 계산 제거)
+                val transitParticipantsForRegion = participantWithCoord.mapNotNull { p ->
+                    val c = p.coord ?: return@mapNotNull null
+                    TransitParticipant(p.userId, p.name, p.profileImage, p.locationStr, c.lat, c.lng)
+                }
+                // 지역 전환 시 재계산할 수 있도록 저장
+                lastTransitParticipants = transitParticipantsForRegion
+                computeRegionTransit(centroid, transitParticipantsForRegion)
+
                 // 5. 중간 지점이 속한 구(시/군) 를 역지오코딩으로 알아낸 뒤
                 //    구 단위 인기 장소 TOP 100 (카카오맵 스타일) 조회.
                 //    실패하면 반경 기반 폴백으로 내려간다.
                 val searchKeywords = if (!keywords.isNullOrEmpty()) keywords else listOf("카페", "음식점", "맛집")
                 val midpointRegion = placeRepository.resolveRegionName(centroid.lat, centroid.lng)
                 if (!midpointRegion.isNullOrBlank()) {
+                    _recommendedRegionName.value = midpointRegion
                     Log.d("ChatVM", "중간 지점 → 지역 '$midpointRegion' 기준 인기 TOP 100 조회")
                     val placesRaw = placeRepository.searchPlacesInRegion(
                         regionName = midpointRegion,
@@ -637,19 +705,6 @@ class ChatViewModel(
                         _refreshNotice.value =
                             "📍 중간 지점 '${midpointRegion}' 의 인기 ${searchKeywords.joinToString("·")} TOP ${ranked.size}"
 
-                        // 대중교통 시간 계산 (참여자별 × 장소별)
-                        val transitParticipants = participantWithCoord.mapNotNull { p ->
-                            val c = p.coord ?: return@mapNotNull null
-                            TransitParticipant(
-                                userId = p.userId,
-                                name = p.name,
-                                profileImage = p.profileImage,
-                                location = p.locationStr,
-                                lat = c.lat,
-                                lng = c.lng
-                            )
-                        }
-                        computeTransitDurations(places = ranked, participants = transitParticipants)
                         Log.d("ChatVM", "━━━ 장소 추천 완료 (구 단위 TOP ${ranked.size}) ━━━")
                         return@launch
                     }
@@ -723,19 +778,7 @@ class ChatViewModel(
                         Log.d("ChatVM", "  보강[$i]: ${p.name} → 이미지 ${p.imageUrls.size}장, 리뷰 ${p.reviewCount}개, 별점 ${p.rating}")
                     }
 
-                    // 대중교통 평균 시간 계산 (참여자별 × 장소별)
-                    val transitParticipants = participantWithCoord.mapNotNull { p ->
-                        val c = p.coord ?: return@mapNotNull null
-                        TransitParticipant(
-                            userId = p.userId,
-                            name = p.name,
-                            profileImage = p.profileImage,
-                            location = p.locationStr,
-                            lat = c.lat,
-                            lng = c.lng
-                        )
-                    }
-                    computeTransitDurations(places = enriched, participants = transitParticipants)
+                    // 대중교통 계산은 지역(중간 지점) 기준으로 이미 위에서 한 번 수행했으므로 생략
                 }
                 Log.d("ChatVM", "━━━ 장소 추천 완료 ━━━")
             } catch (e: Exception) {
@@ -752,6 +795,9 @@ class ChatViewModel(
         _placeError.value = null
         _transitAverages.value = emptyMap()
         _transitBreakdowns.value = emptyMap()
+        _regionTransitAvg.value = null
+        _regionTransitBreakdown.value = emptyList()
+        _recommendedRegionName.value = ""
         _refreshNotice.value = null
         // 세션 종료 — 다음 오픈 시 새 결과 원하도록 누적 상태 초기화.
         // 찜(savedPlaces) 은 채팅방 단위 선호이므로 유지.
@@ -761,6 +807,7 @@ class ChatViewModel(
         // 지역 모드도 초기화 — 다음 오픈 시 기본(중간 지점)으로 시작
         _searchRegion.value = null
         lastKeywords = null
+        lastTransitParticipants = emptyList()
     }
 
     // ─── 지역 직접 검색 (다른 지역으로 검색 / 중간 지점 복귀) ─────────────────
@@ -807,6 +854,9 @@ class ChatViewModel(
             _placeRecommendations.value = emptyList()
             _transitAverages.value = emptyMap()
             _transitBreakdowns.value = emptyMap()
+            _regionTransitAvg.value = null
+            _regionTransitBreakdown.value = emptyList()
+            _recommendedRegionName.value = regionName
             try {
                 val searchKeywords = if (!keywords.isNullOrEmpty()) keywords else listOf("카페")
                 val places = placeRepository.searchPlacesInRegion(
@@ -833,6 +883,19 @@ class ChatViewModel(
                     // 최종 순위가 확정된 뒤 배너도 실제 개수로 갱신
                     _refreshNotice.value =
                         "📍 ${regionName} 의 인기 ${searchKeywords.joinToString("·")} TOP ${ranked.size}"
+
+                    // 선택한 지역의 중심 좌표를 구해 대중교통 시간 한 번 계산
+                    if (lastTransitParticipants.isNotEmpty()) {
+                        val regionCoord = withContext(Dispatchers.IO) {
+                            placeRepository.geocodeAddress(regionName)
+                        }
+                        if (regionCoord != null) {
+                            computeRegionTransit(regionCoord, lastTransitParticipants)
+                            Log.d("ChatVM", "지역 '$regionName' 좌표: (${regionCoord.lat}, ${regionCoord.lng}) → 대중교통 계산 시작")
+                        } else {
+                            Log.w("ChatVM", "지역 '$regionName' 좌표 변환 실패 — 대중교통 표시 생략")
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("ChatVM", "지역 검색 오류: ${e.message}", e)
@@ -916,17 +979,47 @@ class ChatViewModel(
 
     fun dismissRefreshNotice() { _refreshNotice.value = null }
 
-    /** 장소 찜/해제 토글. 찜한 장소는 재추천 제외 집합에서 빠지지 않음. */
+    /** 장소 찜/해제 토글. UI 즉시 반영 + Firestore 영구 저장. */
     fun toggleSavePlace(place: PlaceResult) {
+        val userId = currentUserIdOrNull ?: return
         val key = placeKey(place)
         val current = _savedPlaces.value
         val already = current.any { placeKey(it) == key }
+        val docRef = FirebaseFirestore.getInstance()
+            .collection("users").document(userId)
+            .collection("savedMeetingPlaces").document(savedPlaceDocId(place))
+
         if (already) {
+            // 찜 해제 — UI 즉시 반영 후 Firestore 삭제
             _savedPlaces.value = current.filterNot { placeKey(it) == key }
             _savedPlaceKeys.value = _savedPlaceKeys.value - key
+            viewModelScope.launch {
+                try { docRef.delete().await() }
+                catch (e: Exception) { Log.e("ChatVM", "찜 해제 저장 실패: ${e.message}") }
+            }
         } else {
+            // 찜 추가 — UI 즉시 반영 후 Firestore 저장
             _savedPlaces.value = current + place
             _savedPlaceKeys.value = _savedPlaceKeys.value + key
+            viewModelScope.launch {
+                try {
+                    docRef.set(mapOf(
+                        "name"        to place.name,
+                        "address"     to place.address,
+                        "category"    to place.category,
+                        "phone"       to place.phone,
+                        "lat"         to place.lat,
+                        "lng"         to place.lng,
+                        "imageUrl"    to place.imageUrl,
+                        "imageUrls"   to place.imageUrls,
+                        "reviewCount" to place.reviewCount,
+                        "placeId"     to place.placeId,
+                        "savedAt"     to FieldValue.serverTimestamp()
+                    )).await()
+                } catch (e: Exception) {
+                    Log.e("ChatVM", "찜 저장 실패: ${e.message}")
+                }
+            }
         }
     }
 
@@ -996,6 +1089,43 @@ class ChatViewModel(
                 _transitBreakdowns.value = breakdowns.toMap()
             }
             Log.d("ChatVM", "대중교통 시간 계산 완료: ${averages.size}/${places.size} 장소")
+        }
+    }
+
+    /**
+     * 중간 지점(centroid) 기준으로 참여자별 대중교통 소요시간을 딱 한 번 계산.
+     * 가게별로 계산하는 computeTransitDurations 대신 이 함수를 사용해 로딩 속도를 개선한다.
+     */
+    private fun computeRegionTransit(
+        centroid: com.bugzero.meety.data.repository.LatLng,
+        participants: List<TransitParticipant>
+    ) {
+        if (participants.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val userRows = participants.map { p ->
+                val min = try {
+                    placeRepository.fetchTransitDurationMinutes(
+                        startLat = p.lat,
+                        startLng = p.lng,
+                        goalLat = centroid.lat,
+                        goalLng = centroid.lng
+                    )
+                } catch (e: Exception) {
+                    Log.w("ChatVM", "region transit ${p.name} 실패: ${e.message}")
+                    null
+                }
+                TransitUserInfo(
+                    userId = p.userId,
+                    userName = p.name,
+                    profileImage = p.profileImage,
+                    location = p.location,
+                    minutes = min ?: -1
+                )
+            }
+            val validMins = userRows.map { it.minutes }.filter { it >= 0 }
+            _regionTransitAvg.value = if (validMins.isNotEmpty()) validMins.average().toInt() else null
+            _regionTransitBreakdown.value = userRows
+            Log.d("ChatVM", "지역 대중교통 계산 완료: 평균 ${_regionTransitAvg.value}분")
         }
     }
 

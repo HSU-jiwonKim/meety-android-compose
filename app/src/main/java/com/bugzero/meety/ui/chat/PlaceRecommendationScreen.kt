@@ -36,7 +36,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.size.Size as CoilSize
+import coil.size.Size
 import com.bugzero.meety.data.repository.PlaceResult
 
 // ─── 대중교통 소요시간 정보 ───────────────────────────────────────────────────
@@ -70,6 +70,7 @@ private object PlaceColors {
 private data class FilterItem(val label: String, val emoji: String)
 
 private val defaultFilters = listOf(
+    FilterItem("찜", "❤️"),
     FilterItem("카페", "☕"),
     FilterItem("음식점", "🍽️"),
     FilterItem("중식", "🥡"),
@@ -125,28 +126,44 @@ fun PlaceRecommendationScreen(
     onOpenConditionSheet: () -> Unit = {},
     onCloseConditionSheet: () -> Unit = {},
     onApplyConditions: (radius: Int, keywords: List<String>, includeShown: Boolean) -> Unit = { _, _, _ -> },
-    // ── 지역 직접 검색 (다른 지역으로 검색) ─────────────────────────────────
-    /** 현재 검색 중인 지역명 — null/빈 문자열이면 중간 지점 기준 */
+    // ── 지역 직접 검색 (다른 지역으로 검색) — 파라미터 유지 (하위 호환용)
     searchRegion: String? = null,
-    /** 사용자가 지역을 선택했을 때 호출 */
     onSelectRegion: (String) -> Unit = {},
-    /** 지역 모드에서 중간 지점으로 돌아갈 때 호출 */
-    onReturnToMidpoint: () -> Unit = {}
+    onReturnToMidpoint: () -> Unit = {},
+    // ── 지역 기준 대중교통 시간 (가게별 X, 지역 단위로 한 번만 계산) ─────────
+    regionAvgTransitMin: Int? = null,
+    regionTransitBreakdown: List<TransitUserInfo> = emptyList()
 ) {
-    // 지역 선택 바텀시트 표시 여부 (로컬 상태)
-    var showRegionPicker by remember { mutableStateOf(false) }
-    val isRegionMode = !searchRegion.isNullOrBlank()
     val activeFilters = remember { mutableStateListOf<String>() }
     val context = LocalContext.current
+    var showRegionPicker by remember { mutableStateOf(false) }
+    val isRegionMode = !searchRegion.isNullOrBlank()
 
-    // 필터 토글
+    // 필터 단일 선택 토글 — 한 번에 하나만 선택
     fun toggleFilter(label: String) {
         if (activeFilters.contains(label)) {
-            activeFilters.remove(label)
+            activeFilters.clear()
         } else {
+            activeFilters.clear()
             activeFilters.add(label)
         }
         onFilterChanged(activeFilters.toList())
+    }
+
+    // 지역 선택 시트
+    if (showRegionPicker) {
+        RegionPickerSheet(
+            isRegionMode = isRegionMode,
+            onDismiss = { showRegionPicker = false },
+            onSelect = { region ->
+                showRegionPicker = false
+                onSelectRegion(region)
+            },
+            onReturnToMidpoint = {
+                showRegionPicker = false
+                onReturnToMidpoint()
+            }
+        )
     }
 
     Box(
@@ -156,12 +173,14 @@ fun PlaceRecommendationScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // ─── 헤더 ──────────────────────────────────────────────────────
-            // 지역 모드면 지역명을, 아니면 기존 areaName(중간 지점) 을 보여준다
             PlaceHeader(
                 areaName = if (isRegionMode) searchRegion.orEmpty() else areaName,
                 participantCount = participantCount,
                 isRegionMode = isRegionMode,
-                onClose = onDismiss
+                onClose = onDismiss,
+                onAreaNameClick = { showRegionPicker = true },
+                regionAvgTransitMin = regionAvgTransitMin,
+                regionTransitBreakdown = regionTransitBreakdown
             )
 
             // ─── 필터 칩 ────────────────────────────────────────────────────
@@ -179,8 +198,72 @@ fun PlaceRecommendationScreen(
             )
 
             // ─── 스크롤 콘텐츠 ──────────────────────────────────────────────
+            val isSavedMode = activeFilters.contains("찜")
             Box(modifier = Modifier.weight(1f)) {
                 when {
+                    // ── 찜 모드 ──────────────────────────────────────────────
+                    isSavedMode -> {
+                        if (savedPlaces.isEmpty()) {
+                            EmptySavedContent()
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(
+                                    start = 20.dp, end = 20.dp,
+                                    top = 16.dp, bottom = 40.dp
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                item {
+                                    Text(
+                                        text = "❤️ 찜한 장소 ${savedPlaces.size}곳",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PlaceColors.text,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                }
+                                itemsIndexed(savedPlaces) { index, place ->
+                                    PlaceCard(
+                                        rank = index + 1,
+                                        place = place,
+                                        isTop = false,
+                                        avgTransitMin = null,
+                                        transitBreakdown = emptyList(),
+                                        isSaved = true,
+                                        onToggleSave = { onToggleSave(place) },
+                                        onShare = { onSharePlace(place) },
+                                        onNavigate = {
+                                            val uri = if (place.lat != 0.0 && place.lng != 0.0)
+                                                Uri.parse("nmap://route/public?dlat=${place.lat}&dlng=${place.lng}&dname=${Uri.encode(place.name)}&appname=com.bugzero.meety")
+                                            else Uri.parse("nmap://search?query=${Uri.encode(place.name)}&appname=com.bugzero.meety")
+                                            val intent = Intent(Intent.ACTION_VIEW, uri).apply { addCategory(Intent.CATEGORY_BROWSABLE) }
+                                            try { context.startActivity(intent) } catch (e: Exception) {
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.naver.com/v5/search/${Uri.encode(place.name)}")))
+                                            }
+                                        },
+                                        onDetail = {
+                                            val nmapUri = if (place.placeId.isNotBlank())
+                                                Uri.parse("nmap://place?id=${place.placeId}&appname=com.bugzero.meety")
+                                            else Uri.parse("nmap://search?query=${Uri.encode(place.name)}&appname=com.bugzero.meety")
+                                            val fallbackUri = if (place.placeId.isNotBlank())
+                                                Uri.parse("https://m.place.naver.com/place/${place.placeId}/home")
+                                            else Uri.parse("https://map.naver.com/v5/search/${Uri.encode(place.name)}")
+                                            try { context.startActivity(Intent(Intent.ACTION_VIEW, nmapUri).apply { addCategory(Intent.CATEGORY_BROWSABLE) }) }
+                                            catch (e: Exception) { context.startActivity(Intent(Intent.ACTION_VIEW, fallbackUri)) }
+                                        },
+                                        onCall = {
+                                            if (place.phone.isNotBlank()) {
+                                                try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${place.phone}"))) } catch (_: Exception) {}
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── 일반 추천 모드 ────────────────────────────────────────
                     isLoading -> LoadingContent()
 
                     error != null && places.isEmpty() -> ErrorContent(
@@ -197,26 +280,6 @@ fun PlaceRecommendationScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            // ── 찜한 장소 섹션 (3단계) — 재추천해도 사라지지 않음 ──
-                            if (savedPlaces.isNotEmpty()) {
-                                item(key = "saved-header") {
-                                    Text(
-                                        text = "💖 찜한 장소 ${savedPlaces.size}곳",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = PlaceColors.text,
-                                        modifier = Modifier.padding(vertical = 2.dp)
-                                    )
-                                }
-                                item(key = "saved-row") {
-                                    SavedPlacesRow(
-                                        savedPlaces = savedPlaces,
-                                        onRemove = onToggleSave,
-                                        onShare = onSharePlace
-                                    )
-                                }
-                            }
-
                             // 섹션 타이틀
                             item {
                                 Row(
@@ -227,13 +290,13 @@ fun PlaceRecommendationScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = if (isRegionMode) "인기 장소 순위" else "추천 장소",
+                                        text = "추천 장소",
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = PlaceColors.text
                                     )
                                     Text(
-                                        text = if (isRegionMode) "${searchRegion} 기준" else "중간 지점 기준",
+                                        text = "중간 지점 기준",
                                         fontSize = 12.sp,
                                         color = PlaceColors.textTertiary
                                     )
@@ -242,14 +305,13 @@ fun PlaceRecommendationScreen(
 
                             // 장소 카드들
                             itemsIndexed(places) { index, place ->
-                                val placeKey = placeTransitKey(place)
                                 val isSaved = savedPlaceKeys.contains("${place.name}|${place.address}")
                                 PlaceCard(
                                     rank = index + 1,
                                     place = place,
                                     isTop = index == 0,
-                                    avgTransitMin = transitAverages[placeKey],
-                                    transitBreakdown = transitBreakdowns[placeKey].orEmpty(),
+                                    avgTransitMin = regionAvgTransitMin,
+                                    transitBreakdown = regionTransitBreakdown,
                                     isSaved = isSaved,
                                     onToggleSave = { onToggleSave(place) },
                                     onShare = { onSharePlace(place) },
@@ -321,133 +383,20 @@ fun PlaceRecommendationScreen(
             }
         }
 
-        // ─── 하단 버튼 (4단계: 다시 추천 + 조건 바꾸기 분기) ──────────────────
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, PlaceColors.bg),
-                        startY = 0f,
-                        endY = 80f
-                    )
-                )
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // 주 버튼: "다른 지역으로 검색" ↔ "중간 지점으로 돌아가기" 토글
-            Button(
-                onClick = {
-                    if (isRegionMode) onReturnToMidpoint()
-                    else showRegionPicker = true
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(54.dp)
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = RoundedCornerShape(16.dp),
-                        ambientColor = PlaceColors.primary.copy(alpha = 0.3f),
-                        spotColor = PlaceColors.primary.copy(alpha = 0.3f)
-                    ),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Transparent
-                ),
-                contentPadding = PaddingValues()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.horizontalGradient(
-                                if (isRegionMode) listOf(PlaceColors.primaryDark, PlaceColors.primary)
-                                else listOf(PlaceColors.primary, PlaceColors.primaryDark)
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            if (isRegionMode) "📍" else "🗺️",
-                            fontSize = 16.sp
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = if (isRegionMode) "중간 지점으로 돌아가기" else "다른 지역으로 검색",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.3.sp
-                        )
-                    }
-                }
-            }
-
-            // 보조 버튼: 조건 바꾸기 (반경/분위기/이미 본 곳 포함)
-            Surface(
-                onClick = onOpenConditionSheet,
-                modifier = Modifier
-                    .size(54.dp)
-                    .shadow(
-                        elevation = 4.dp,
-                        shape = RoundedCornerShape(16.dp)
-                    ),
-                shape = RoundedCornerShape(16.dp),
-                color = PlaceColors.card,
-                border = BorderStroke(1.5.dp, PlaceColors.border)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = "조건 바꾸기",
-                        tint = PlaceColors.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        }
-    }
-
-    // ─── 조건 바꾸기 BottomSheet (4단계 + 5단계에서 자동 노출) ──────────────────
-    if (showConditionSheet) {
-        ConditionSheet(
-            initialRadiusMeters = initialRadiusMeters,
-            initialKeywords = activeFilters.toList(),
-            onDismiss = onCloseConditionSheet,
-            onApply = { radius, keywords, includeShown ->
-                // 선택한 분위기/카테고리 태그는 필터칩에도 반영
-                activeFilters.clear()
-                activeFilters.addAll(keywords)
-                onApplyConditions(radius, keywords, includeShown)
-            }
-        )
-    }
-
-    // ─── 지역 선택 BottomSheet (다른 지역으로 검색) ─────────────────────────
-    if (showRegionPicker) {
-        RegionPickerSheet(
-            onDismiss = { showRegionPicker = false },
-            onSelect = { region ->
-                showRegionPicker = false
-                onSelectRegion(region)
-            }
-        )
     }
 }
 
 // ─── 헤더 ─────────────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlaceHeader(
     areaName: String,
     participantCount: Int,
+    onClose: () -> Unit,
     isRegionMode: Boolean = false,
-    onClose: () -> Unit
+    onAreaNameClick: () -> Unit = {},
+    regionAvgTransitMin: Int? = null,
+    regionTransitBreakdown: List<TransitUserInfo> = emptyList()
 ) {
     Surface(
         color = PlaceColors.card,
@@ -465,31 +414,50 @@ private fun PlaceHeader(
             ) {
                 Column {
                     Text(
-                        text = if (isRegionMode) "이 지역의 인기 장소" else "만나기 좋은 장소",
+                        text = "만나기 좋은 장소",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = PlaceColors.text,
                         letterSpacing = (-0.5).sp
                     )
                     Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = PlaceColors.primary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = buildString {
-                                if (areaName.isNotBlank()) append(areaName)
-                                else append("중간 지점")
-                                if (!isRegionMode && participantCount > 0) append(" · ${participantCount}명")
-                            },
-                            fontSize = 13.sp,
-                            color = PlaceColors.textSecondary,
-                            fontWeight = FontWeight.Medium
-                        )
+                    // 지역명 — 탭하면 지역 변경 시트 오픈
+                    Surface(
+                        onClick = onAreaNameClick,
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isRegionMode)
+                            PlaceColors.primary.copy(alpha = 0.08f)
+                        else
+                            PlaceColors.chipBg
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = PlaceColors.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = buildString {
+                                    if (areaName.isNotBlank()) append(areaName)
+                                    else append("중간 지점")
+                                    if (participantCount > 0) append(" · ${participantCount}명")
+                                },
+                                fontSize = 13.sp,
+                                color = if (isRegionMode) PlaceColors.primary else PlaceColors.textSecondary,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Icon(
+                                Icons.Default.KeyboardArrowRight,
+                                contentDescription = "지역 변경",
+                                tint = if (isRegionMode) PlaceColors.primary else PlaceColors.textTertiary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
 
@@ -688,7 +656,6 @@ private fun PlaceCard(
                                 model = ImageRequest.Builder(context)
                                     .data(place.imageUrl)
                                     .crossfade(true)
-                                    .size(CoilSize.ORIGINAL)
                                     .build(),
                                 contentDescription = place.name,
                                 contentScale = ContentScale.Crop,
@@ -873,7 +840,6 @@ private fun PlaceCard(
                                     model = ImageRequest.Builder(context)
                                         .data(imgUrl)
                                         .crossfade(true)
-                                        .size(CoilSize.ORIGINAL)
                                         .build(),
                                     contentDescription = "${place.name} 사진",
                                     contentScale = ContentScale.Crop,
@@ -1070,7 +1036,7 @@ private fun TransitBubble(
             Text("🚌", fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "해당 장소는 대중교통으로 평균 ${formatMinutes(avgMinutes)} 걸려요",
+                text = "대중교통으로 평균 ${formatMinutes(avgMinutes)} 걸려요",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = PlaceColors.text,
@@ -1326,7 +1292,7 @@ private fun FullscreenPhotoViewer(
                         model = ImageRequest.Builder(context)
                             .data(photos[page])
                             .crossfade(true)
-                            .size(CoilSize.ORIGINAL)
+                            .size(1920, 1920)   // 전체화면도 원본 대신 최대 1920px로 제한
                             .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
@@ -1497,6 +1463,30 @@ private fun EmptyContent() {
             Spacer(Modifier.height(16.dp))
             Text(
                 text = "장소 추천 버튼을 눌러\n주변 만남 장소를 찾아보세요!",
+                fontSize = 14.sp,
+                color = PlaceColors.textSecondary,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
+            )
+        }
+    }
+}
+
+// ─── 찜 빈 상태 ───────────────────────────────────────────────────────────────
+@Composable
+private fun EmptySavedContent() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Text("🤍", fontSize = 48.sp)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "아직 찜한 장소가 없어요\n마음에 드는 곳에 ❤️를 눌러보세요",
                 fontSize = 14.sp,
                 color = PlaceColors.textSecondary,
                 textAlign = TextAlign.Center,
@@ -1729,7 +1719,8 @@ private fun ConditionSheet(
                     val active = selected.contains(label)
                     Surface(
                         onClick = {
-                            if (active) selected.remove(label) else selected.add(label)
+                            if (active) selected.clear()
+                            else { selected.clear(); selected.add(label) }
                         },
                         shape = RoundedCornerShape(50),
                         color = if (active) PlaceColors.primary else PlaceColors.card,
@@ -1888,7 +1879,9 @@ private val AllRegions: List<RegionProvince> = listOf(
 @Composable
 private fun RegionPickerSheet(
     onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    isRegionMode: Boolean = false,
+    onReturnToMidpoint: () -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedProvince by remember { mutableStateOf<RegionProvince?>(null) }
@@ -1981,6 +1974,33 @@ private fun RegionPickerSheet(
                     modifier = lazyListModifier,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // 다른 지역으로 바꾼 상태면 "중간 지점으로 돌아가기" 항목 상단 노출
+                    if (isRegionMode) {
+                        item {
+                            Surface(
+                                onClick = onReturnToMidpoint,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = PlaceColors.primary.copy(alpha = 0.08f),
+                                border = BorderStroke(1.5.dp, PlaceColors.primary.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text("📍", fontSize = 16.sp)
+                                    Text(
+                                        text = "중간 지점으로 돌아가기",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = PlaceColors.primary,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
                     items(AllRegions) { province ->
                         Surface(
                             onClick = { selectedProvince = province },

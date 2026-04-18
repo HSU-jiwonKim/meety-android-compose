@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.bugzero.meety.data.repository.PlaceResult
 import com.bugzero.meety.ui.call.CallViewModel
 import androidx.compose.material3.*
@@ -98,6 +99,9 @@ fun ChatRoomScreen(
     val savedPlaceKeys by viewModel.savedPlaceKeys.collectAsState()
     val showConditionSheet by viewModel.showConditionSheet.collectAsState()
     val searchRegion by viewModel.searchRegion.collectAsState()
+    val regionTransitAvg by viewModel.regionTransitAvg.collectAsState()
+    val regionTransitBreakdown by viewModel.regionTransitBreakdown.collectAsState()
+    val recommendedRegionName by viewModel.recommendedRegionName.collectAsState()
     var showPlaceDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackScope = rememberCoroutineScope()
@@ -292,25 +296,32 @@ fun ChatRoomScreen(
 
     // ── 장소 추천 풀스크린 ────────────────────────────────────────────────
     if (showPlaceDialog) {
-        Dialog(onDismissRequest = { showPlaceDialog = false; viewModel.clearPlaceRecommendations() }) {
+        Dialog(
+            onDismissRequest = { showPlaceDialog = false; viewModel.clearPlaceRecommendations() },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,   // 가로 여백 제거
+                dismissOnClickOutside = true
+            )
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.92f)
-                    .clip(RoundedCornerShape(20.dp))
+                    .fillMaxHeight(0.97f)
+                    .clip(RoundedCornerShape(16.dp))
             ) {
                 PlaceRecommendationScreen(
                     isLoading = isLoadingPlaces,
                     places = placeRecommendations,
                     error = placeError,
-                    areaName = "",
+                    areaName = recommendedRegionName,
                     participantCount = participants.size,
                     transitAverages = transitAverages,
                     transitBreakdowns = transitBreakdowns,
                     onRefresh = { viewModel.onRefreshPlaceRecommendations(chatId) },
                     onDismiss = { showPlaceDialog = false; viewModel.clearPlaceRecommendations() },
                     onFilterChanged = { filters ->
-                        // 필터 변경 시 해당 키워드로 재검색
+                        // "찜" 탭은 UI에서만 처리 — 검색 안 함
+                        if (filters.contains("찜")) return@PlaceRecommendationScreen
                         if (filters.isNotEmpty()) {
                             viewModel.recommendMeetingPlaces(chatId, filters)
                         } else {
@@ -342,7 +353,9 @@ fun ChatRoomScreen(
                     },
                     onReturnToMidpoint = {
                         viewModel.returnToMidpoint(chatId)
-                    }
+                    },
+                    regionAvgTransitMin = regionTransitAvg,
+                    regionTransitBreakdown = regionTransitBreakdown
                 )
             }
         }

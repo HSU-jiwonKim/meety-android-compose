@@ -528,41 +528,41 @@ class MeetingPlaceRepository {
             "카페" -> cat.contains("카페") || cat.contains("디저트") || cat.contains("베이커리")
             "음식점", "맛집" ->
                 cat.contains("음식점") &&
-                    !cat.contains("카페") &&
-                    !cat.contains("디저트") &&
-                    !cat.contains("베이커리") &&
-                    !cat.contains("중식") &&
-                    !cat.contains("한식") &&
-                    !cat.contains("양식") &&
-                    !cat.contains("일식")
+                        !cat.contains("카페") &&
+                        !cat.contains("디저트") &&
+                        !cat.contains("베이커리") &&
+                        !cat.contains("중식") &&
+                        !cat.contains("한식") &&
+                        !cat.contains("양식") &&
+                        !cat.contains("일식")
             "중식" ->
                 cat.contains("중식") ||
-                    cat.contains("중국") ||
-                    cat.contains("딤섬") ||
-                    cat.contains("마라")
+                        cat.contains("중국") ||
+                        cat.contains("딤섬") ||
+                        cat.contains("마라")
             "한식" ->
                 cat.contains("한식") ||
-                    cat.contains("한국") ||
-                    cat.contains("고기") ||
-                    cat.contains("삼겹") ||
-                    cat.contains("갈비") ||
-                    cat.contains("국밥") ||
-                    cat.contains("분식")
+                        cat.contains("한국") ||
+                        cat.contains("고기") ||
+                        cat.contains("삼겹") ||
+                        cat.contains("갈비") ||
+                        cat.contains("국밥") ||
+                        cat.contains("분식")
             "양식" ->
                 cat.contains("양식") ||
-                    cat.contains("이탈리아") ||
-                    cat.contains("피자") ||
-                    cat.contains("파스타") ||
-                    cat.contains("스테이크") ||
-                    cat.contains("버거") ||
-                    cat.contains("샌드위치")
+                        cat.contains("이탈리아") ||
+                        cat.contains("피자") ||
+                        cat.contains("파스타") ||
+                        cat.contains("스테이크") ||
+                        cat.contains("버거") ||
+                        cat.contains("샌드위치")
             "일식" ->
                 cat.contains("일식") ||
-                    cat.contains("초밥") ||
-                    cat.contains("스시") ||
-                    cat.contains("라멘") ||
-                    cat.contains("우동") ||
-                    cat.contains("일본")
+                        cat.contains("초밥") ||
+                        cat.contains("스시") ||
+                        cat.contains("라멘") ||
+                        cat.contains("우동") ||
+                        cat.contains("일본")
             else -> cat.contains(keyword.trim())
         }
     }
@@ -573,9 +573,9 @@ class MeetingPlaceRepository {
         val dLat = Math.toRadians(lat2 - lat1)
         val dLng = Math.toRadians(lng2 - lng1)
         val a = kotlin.math.sin(dLat / 2).let { it * it } +
-            kotlin.math.cos(Math.toRadians(lat1)) *
-            kotlin.math.cos(Math.toRadians(lat2)) *
-            kotlin.math.sin(dLng / 2).let { it * it }
+                kotlin.math.cos(Math.toRadians(lat1)) *
+                kotlin.math.cos(Math.toRadians(lat2)) *
+                kotlin.math.sin(dLng / 2).let { it * it }
         val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
         return R * c
     }
@@ -1132,7 +1132,7 @@ class MeetingPlaceRepository {
                 setRequestProperty(
                     "User-Agent",
                     "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"
+                            "(KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"
                 )
                 setRequestProperty("Accept", "application/json, text/plain, */*")
                 setRequestProperty("Referer", "https://map.naver.com/")
@@ -1213,8 +1213,8 @@ class MeetingPlaceRepository {
         val dLat = Math.toRadians(lat2 - lat1)
         val dLng = Math.toRadians(lng2 - lng1)
         val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2)
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2)
         val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
         return r * c
     }
