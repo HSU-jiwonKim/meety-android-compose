@@ -46,12 +46,12 @@ class FirebaseChatRepository : ChatRepository {
                                 var displayTeamName = dbTeamName
                                 val participants = doc.get("participants") as? List<String> ?: emptyList()
 
-                                // ✨ 핵심 수정: 저장된 이름이 비어있거나,
-                                // 이름 자체가 쉼표로 연결된 형태(기본 생성 형태)이거나,
-                                // 알 수 없는 팀인 경우에만 동적 이름 생성 로직을 탑니다!
-                                val isDefaultOrEmptyName = dbTeamName.isBlank() || dbTeamName == "알 수 없는 팀" || dbTeamName.contains(",")
+                                // ✨ 핵심 수정: 1:1 채팅(direct)은 항상 상대방 이름으로 표시,
+                                // 그룹 채팅은 저장된 이름이 기본값/비어있을 때만 동적 이름 생성
+                                val isDirectChat = type == "direct"
+                                val isDefaultGroupChat = type == "group" && (dbTeamName.isBlank() || dbTeamName == "알 수 없는 팀" || dbTeamName.contains(","))
 
-                                if ((type == "direct" || type == "group") && isDefaultOrEmptyName) {
+                                if (isDirectChat || isDefaultGroupChat) {
                                     val otherUserIds = participants.filter { it != userId }
 
                                     if (otherUserIds.isNotEmpty()) {
