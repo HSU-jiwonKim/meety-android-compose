@@ -47,7 +47,7 @@ fun SwipeCard(
     team: Team,
     onLike: () -> Unit,
     onPass: () -> Unit,
-    onInfo: () -> Unit
+    onInfo: () -> Unit,
 ) {
     val offsetXAnim    = remember(team.teamId) { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()

@@ -4,6 +4,10 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,7 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -226,53 +231,124 @@ private fun RecommendContent(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            if (currentTeam != null) {
-                // key(teamId): currentTeam이 바뀌면 그라데이션 + SwipeCard를 동시에 교체한다.
-                // → 이전 카드의 그라데이션이 새 카드 화면에 남아있는 타이밍 버그 해소
-                key(currentTeam.teamId) {
-                    // 다음 카드 스택 효과
+            when {
+                // ── 카드 있음: 다음 카드 프리렌더 + 현재 카드 ──
+                currentTeam != null -> {
+                    // 다음 카드를 미리 렌더링 (non-interactive, 약간 축소해 뒤에 깔림)
                     nextTeam?.let { next ->
-                        val nextColorIndex = (next.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
-                        val nextColors = FeedConstants.CardColorPalette[nextColorIndex].map { it.copy(alpha = 0.55f) }
+                        val colorIndex = (next.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
+                        val bgColors   = FeedConstants.CardColorPalette[colorIndex]
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                                .shadow(3.dp, RoundedCornerShape(24.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .offset(y = 8.dp)
+                                .shadow(4.dp, RoundedCornerShape(24.dp))
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(Brush.verticalGradient(nextColors))
-                        )
+                        ) {
+                            // 배경: 실제 이미지 또는 그라데이션
+                            if (next.teamProfileImage.isNotBlank()) {
+                                AsyncImage(
+                                    model              = next.teamProfileImage,
+                                    contentDescription = null,
+                                    modifier           = Modifier.fillMaxSize(),
+                                    contentScale       = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Brush.verticalGradient(bgColors))
+                                )
+                            }
+                            // 하단 어둠 오버레이
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            0.4f to Color.Transparent,
+                                            1.0f to Color.Black.copy(alpha = 0.65f)
+                                        )
+                                    )
+                            )
+                            // 팀 이름 (하단)
+                            Text(
+                                text       = next.teamName,
+                                fontSize   = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                color      = Color.White,
+                                modifier   = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 24.dp, bottom = 28.dp)
+                            )
+                        }
                     }
 
-                    SwipeCard(
-                        team   = currentTeam,
-                        onLike = onLike,
-                        onPass = onPass,
-                        onInfo = onInfo
-                    )
-
-                    // 추가 페이지 로딩 중 표시
-                    if (isLoadingMore) {
-                        CircularProgressIndicator(
-                            modifier    = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                            color       = Purple.copy(alpha = 0.6f),
-                            strokeWidth = 2.dp
+                    // key(teamId): currentTeam이 바뀌면 SwipeCard를 완전히 교체한다
+                    key(currentTeam.teamId) {
+                        SwipeCard(
+                            team   = currentTeam,
+                            onLike = onLike,
+                            onPass = onPass,
+                            onInfo = onInfo
                         )
                     }
                 }
-            } else {
-                Column(
-                    modifier            = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("모든 팀을 확인했습니다!", color = Gray500)
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = onReset,
-                        colors  = ButtonDefaults.buttonColors(containerColor = Purple)
+
+                // ── 카드 없음 + 추가 로딩 중 ──
+                isLoadingMore -> {
+                    Box(
+                        modifier         = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("다시 불러오기")
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(
+                                color       = Purple,
+                                strokeWidth = 3.dp,
+                                modifier    = Modifier.size(40.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text     = "새 팀을 불러오는 중이에요...",
+                                fontSize = 14.sp,
+                                color    = Gray500
+                            )
+                        }
+                    }
+                }
+
+                // ── 카드 없음 + 로딩 아님 → 빈 화면 ──
+                else -> {
+                    Column(
+                        modifier            = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🎉", fontSize = 48.sp)
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text       = "모든 팀을 확인했어요!",
+                            fontSize   = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = Gray700
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text      = "새 팀이 생기면 자동으로 추가돼요",
+                            fontSize  = 14.sp,
+                            color     = Gray500,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(28.dp))
+                        Button(
+                            onClick        = onReset,
+                            shape          = RoundedCornerShape(14.dp),
+                            colors         = ButtonDefaults.buttonColors(containerColor = Purple),
+                            contentPadding = PaddingValues(horizontal = 32.dp, vertical = 14.dp)
+                        ) {
+                            Text("다시 불러오기", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
                     }
                 }
             }

@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,20 +65,35 @@ fun TeamListItem(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 이니셜 아바타 (팀마다 고유 색상)
+            // 아바타: 실제 프로필 이미지 우선, 없으면 이니셜 그라데이션
             Box(
                 modifier = Modifier
                     .size(50.dp)
-                    .clip(CircleShape)
-                    .background(Brush.verticalGradient(avatarColors)),
+                    .clip(CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = initial,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                if (team.teamProfileImage.isNotBlank()) {
+                    AsyncImage(
+                        model              = team.teamProfileImage,
+                        contentDescription = "${team.teamName} 프로필 사진",
+                        modifier           = Modifier.fillMaxSize(),
+                        contentScale       = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Brush.verticalGradient(avatarColors)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text       = initial,
+                            fontSize   = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = Color.White
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
