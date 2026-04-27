@@ -55,6 +55,16 @@ import androidx.compose.ui.layout.ContentScale
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.heightIn
 
 data class UserProfileUiState(
     val name: String,
@@ -121,6 +131,7 @@ fun MyPageScreen(
     ) { innerPadding ->
         MyPageBody(
             uiState = uiState,
+            viewModel = viewModel,
             onEditProfileClick = onEditProfileClick,
             onScheduleClick = onScheduleClick,
             onAddPhotoClick = {
@@ -135,28 +146,89 @@ fun MyPageScreen(
 @Composable
 fun MyPageBody(
     uiState: UserProfileUiState,
+    viewModel: MyPageViewModel,
     onEditProfileClick: () -> Unit,
     onScheduleClick: () -> Unit = {},
     onAddPhotoClick: () -> Unit,
     onLogoutClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var selectedImageUrl by remember { mutableStateOf<String?>(null) }
+    var showMainImageDialog by remember { mutableStateOf(false) }
+
+    selectedImageUrl?.let { imageUrl ->
+        LargeImageDialog(
+            imageUrl = imageUrl,
+            onDismiss = { selectedImageUrl = null }
+        )
+    }
+
+    if (showMainImageDialog) {
+        SelectMainProfileImageDialog(
+            imageUrls = uiState.profileImages,
+            onDismiss = { showMainImageDialog = false },
+            onSelect = { imageUrl ->
+                showMainImageDialog = false
+                viewModel.changeMainProfileImage(imageUrl)
+            }
+        )
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item { ProfileHeaderSection(uiState = uiState) }
+        item {
+            ProfileHeaderSection(
+                uiState = uiState,
+                onImageClick = {
+                    val imageUrl = uiState.profileImages.firstOrNull().orEmpty()
+                    if (imageUrl.isNotBlank()) {
+                        selectedImageUrl = imageUrl
+                    }
+                },
+                onChangeMainImageClick = {
+                    showMainImageDialog = true
+                }
+            )
+        }
+
         item {
             SectionCard(title = "관심사") {
-                TagWrapSection(tags = uiState.interests, chipColor = Color(0xFFF3E7FF), textColor = Color(0xFF8E24AA))
+                TagWrapSection(
+                    tags = uiState.interests,
+                    chipColor = Color(0xFFF3E7FF),
+                    textColor = Color(0xFF8E24AA)
+                )
             }
         }
+
         item {
             SectionCard(title = "자기소개") {
-                Text(text = uiState.bio, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF444444))
+                Text(
+                    text = uiState.bio,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF444444)
+                )
             }
         }
-        item { PhotoSection(imageUrls = uiState.profileImages, onAddPhotoClick = onAddPhotoClick) }
+
+        item {
+            PhotoSection(
+                imageUrls = uiState.profileImages,
+                onAddPhotoClick = onAddPhotoClick,
+                onPhotoClick = { imageUrl ->
+                    selectedImageUrl = imageUrl
+                },
+                onDeletePhotoClick = { imageUrl ->
+                    viewModel.deleteProfileImage(imageUrl)
+                },
+                onSetMainPhotoClick = { imageUrl ->
+                    viewModel.changeMainProfileImage(imageUrl)
+                }
+            )
+        }
+
         item { ScheduleSection(schedule = uiState.schedule, onScheduleClick = onScheduleClick) }
         item { FoodPreferenceSection(likes = uiState.foodLikes, dislikes = uiState.foodDislikes) }
         item { EditProfileButton(onClick = onEditProfileClick) }
@@ -164,23 +236,75 @@ fun MyPageBody(
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ProfileHeaderSection(uiState: UserProfileUiState) {
+private fun ProfileHeaderSection(
+    uiState: UserProfileUiState,
+    onImageClick: () -> Unit,
+    onChangeMainImageClick: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    if (showMenu) {
+        AlertDialog(
+            onDismissRequest = { showMenu = false },
+            containerColor = Color(0xFF2D2D2D),
+            title = {
+                Text(
+                    text = "프로필 사진",
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = "프로필 사진을 변경할까요?",
+
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMenu = false
+                        onChangeMainImageClick()
+                    }
+                ) {
+                    Text(text = "프로필 사진 변경")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMenu = false }) {
+                    Text(text = "취소")
+                }
+            }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
         Column {
             Box(
-                modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(24.dp))
-                    .background(brush = Brush.horizontalGradient(colors = listOf(Color(0xFFB842F5), Color(0xFFFF4FA3))))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFFB842F5), Color(0xFFFF4FA3))
+                        )
+                    )
             )
+
             Spacer(modifier = Modifier.height(54.dp))
+
             Card(
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Spacer(modifier = Modifier.height(42.dp))
@@ -196,16 +320,46 @@ private fun ProfileHeaderSection(uiState: UserProfileUiState) {
                 }
             }
         }
+
         Box(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 92.dp).size(116.dp).clip(CircleShape).background(Color.White).border(4.dp, Color.White, CircleShape),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 92.dp)
+                .size(116.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(4.dp, Color.White, CircleShape)
+                .combinedClickable(
+                    onClick = onImageClick,
+                    onLongClick = { showMenu = true }
+                ),
             contentAlignment = Alignment.Center
         ) {
             val profileImageUrl = uiState.profileImages.firstOrNull().orEmpty()
+
             if (profileImageUrl.isNotBlank()) {
-                AsyncImage(model = profileImageUrl, contentDescription = "프로필 이미지", modifier = Modifier.size(108.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                AsyncImage(
+                    model = profileImageUrl,
+                    contentDescription = "프로필 이미지",
+                    modifier = Modifier
+                        .size(108.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
             } else {
-                Box(modifier = Modifier.size(108.dp).clip(CircleShape).background(Color(0xFFE8D6F7)), contentAlignment = Alignment.Center) {
-                    Icon(imageVector = Icons.Default.Person, contentDescription = "프로필 이미지 없음", tint = Color(0xFF8E24AA), modifier = Modifier.size(44.dp))
+                Box(
+                    modifier = Modifier
+                        .size(108.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE8D6F7)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "프로필 이미지 없음",
+                        tint = Color(0xFF8E24AA),
+                        modifier = Modifier.size(44.dp)
+                    )
                 }
             }
         }
@@ -262,24 +416,7 @@ private fun TagChip(text: String, chipColor: Color, textColor: Color) {
     }
 }
 
-@Composable
-private fun PhotoSection(imageUrls: List<String>, onAddPhotoClick: () -> Unit) {
-    val photos = imageUrls.filter { it.isNotBlank() }
-    val items = mutableListOf<String>().apply { addAll(photos); if (photos.size < 9) add("ADD_BUTTON") }
-    SectionCard(title = "사진") {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items.chunked(3).forEach { rowItems ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    rowItems.forEach { item ->
-                        if (item == "ADD_BUTTON") AddPhotoItem(onClick = onAddPhotoClick, modifier = Modifier.weight(1f))
-                        else PhotoItem(imageUrl = item, modifier = Modifier.weight(1f))
-                    }
-                    repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
-                }
-            }
-        }
-    }
-}
+
 
 @Composable
 private fun ScheduleSection(
@@ -431,11 +568,118 @@ private fun EditProfileButton(onClick: () -> Unit) {
         Text(text = "프로필 수정하기", color = Color.White, fontWeight = FontWeight.Bold)
     }
 }
-
 @Composable
-private fun PhotoItem(imageUrl: String, modifier: Modifier = Modifier) {
-    AsyncImage(model = imageUrl, contentDescription = "프로필 사진", modifier = modifier.aspectRatio(1f).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+private fun PhotoSection(
+    imageUrls: List<String>,
+    onAddPhotoClick: () -> Unit,
+    onPhotoClick: (String) -> Unit,
+    onDeletePhotoClick: (String) -> Unit,
+    onSetMainPhotoClick: (String) -> Unit
+) {
+    val photos = imageUrls.filter { it.isNotBlank() }
+    val items = mutableListOf<String>().apply {
+        addAll(photos)
+        if (photos.size < 9) add("ADD_BUTTON")
+    }
+
+    SectionCard(title = "사진") {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items.chunked(3).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    rowItems.forEach { item ->
+                        if (item == "ADD_BUTTON") {
+                            AddPhotoItem(
+                                onClick = onAddPhotoClick,
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            PhotoItem(
+                                imageUrl = item,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onPhotoClick(item) },
+                                onDeleteClick = { onDeletePhotoClick(item) },
+                                onSetMainClick = { onSetMainPhotoClick(item) }
+                            )
+                        }
+                    }
+
+                    repeat(3 - rowItems.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotoItem(
+    imageUrl: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onSetMainClick: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    if (showMenu) {
+        AlertDialog(
+            onDismissRequest = { showMenu = false },
+            containerColor = Color(0xFF2D2D2D),
+            title = {
+                Text(
+                    text = "사진 관리",
+                    color = Color.White
+                )
+            },
+            text = { Text(text = "이 사진으로 할 작업을 선택하세요.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMenu = false
+                        onSetMainClick()
+                    }
+                ) {
+                    Text(text = "대표 사진으로 설정")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            showMenu = false
+                            onDeleteClick()
+                        }
+                    ) {
+                        Text(text = "삭제", color = Color(0xFFE53935))
+                    }
+
+                    TextButton(onClick = { showMenu = false }) {
+                        Text(text = "취소")
+                    }
+                }
+            }
+        )
+    }
+
+    AsyncImage(
+        model = imageUrl,
+        contentDescription = "프로필 사진",
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { showMenu = true }
+            ),
+        contentScale = ContentScale.Crop
+    )
+}
+
 
 @Composable
 private fun AddPhotoItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -476,4 +720,73 @@ private fun LogoutButton(onClick: () -> Unit) {
             fontWeight = FontWeight.Medium
         )
     }
+}
+@Composable
+private fun LargeImageDialog(
+    imageUrl: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "큰 사진",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .clip(RoundedCornerShape(24.dp)),
+                contentScale = ContentScale.Fit
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectMainProfileImageDialog(
+    imageUrls: List<String>,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val photos = imageUrls.filter { it.isNotBlank() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "프로필 사진 변경") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                photos.chunked(3).forEach { rowItems ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        rowItems.forEach { imageUrl ->
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = "선택할 사진",
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { onSelect(imageUrl) },
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                    }
+                }
+
+                if (photos.isEmpty()) {
+                    Text(text = "선택할 사진이 없습니다.")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
 }

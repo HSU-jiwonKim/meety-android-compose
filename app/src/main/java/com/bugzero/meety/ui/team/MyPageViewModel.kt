@@ -170,7 +170,45 @@ class MyPageViewModel : ViewModel() {
                 )
             }
     }
+    fun deleteProfileImage(imageUrl: String) {
+        val userId = auth.currentUser?.uid ?: return
 
+        firestore.collection("users")
+            .document(userId)
+            .update("profileImages", FieldValue.arrayRemove(imageUrl))
+            .addOnFailureListener { e ->
+                _screenState.value = _screenState.value.copy(
+                    isLoading = false,
+                    errorMessage = e.message ?: "사진 삭제에 실패했습니다."
+                )
+            }
+    }
+
+    fun changeMainProfileImage(imageUrl: String) {
+        val userId = auth.currentUser?.uid ?: return
+        val currentImages = _screenState.value.uiState?.profileImages ?: return
+
+        if (imageUrl.isBlank()) return
+
+        val newImages = mutableListOf<String>()
+        newImages.add(imageUrl)
+
+        currentImages.forEach { url ->
+            if (url.isNotBlank() && url != imageUrl) {
+                newImages.add(url)
+            }
+        }
+
+        firestore.collection("users")
+            .document(userId)
+            .update("profileImages", newImages)
+            .addOnFailureListener { e ->
+                _screenState.value = _screenState.value.copy(
+                    isLoading = false,
+                    errorMessage = e.message ?: "프로필 사진 변경에 실패했습니다."
+                )
+            }
+    }
     fun clearListener() {
         listenerRegistration?.remove()
         listenerRegistration = null

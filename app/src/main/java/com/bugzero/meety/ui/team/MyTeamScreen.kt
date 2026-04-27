@@ -60,6 +60,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.style.TextAlign
 import com.bugzero.meety.ui.feed.FeedConstants
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
 
 private enum class MyTeamTab {
     FRIENDS, ADD_FRIEND
@@ -387,14 +394,58 @@ private fun SectionTitle(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FriendListItem(
     friend: FriendUiState,
     onProfileClick: () -> Unit,
     onRemoveClick: () -> Unit
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Text(
+                    text = "친구 삭제",
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = "${friend.name}님을 친구 목록에서 삭제할까요?",
+
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onRemoveClick()
+                    }
+                ) {
+                    Text(text = "삭제", color = Color(0xFFE53935))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text(
+                        text = "취소",
+
+                    )
+                }
+            }
+        )
+    }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { showDeleteDialog = true }
+            ),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -434,33 +485,27 @@ private fun FriendListItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            Text(
-                text = friend.name,
-                modifier = Modifier.weight(1f),
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = Color(0xFF111111)
-            )
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Button(
-                onClick = onRemoveClick,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFEDE9FE),
-                    contentColor = Color(0xFFA020F0)
-                )
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "삭제",
-                    fontWeight = FontWeight.Bold
+                    text = friend.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color(0xFF111111)
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (friend.bio.isNotBlank()) friend.bio else "아직 자기소개가 없습니다.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF777777),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
     }
 }
-
 @Composable
 private fun AddFriendGuideCard() {
     Card(
@@ -800,7 +845,44 @@ private fun ProfilePreviewDialog(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(14.dp))
 
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFF3E7FF))
+                            .clickable { },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Call,
+                            contentDescription = "통화",
+                            tint = Purple,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFF3E7FF))
+                            .clickable { },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = "영상통화",
+                            tint = Purple,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = Gray200)
                 Spacer(modifier = Modifier.height(16.dp))
