@@ -408,6 +408,7 @@ private fun MessageInputBar(text: String, isSending: Boolean, onTextChange: (Str
 
 @Composable
 private fun MessageItem(message: ChatMessage, timeText: String) {
+    // 1. 시스템 메시지 (예: "OOO님이 나갔습니다")
     if (message.senderId == "system") {
         Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
             Box(modifier = Modifier.background(Color(0xFFE5E7EB), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
@@ -416,16 +417,102 @@ private fun MessageItem(message: ChatMessage, timeText: String) {
         }
         return
     }
+
     val isMe = message.isMe
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
-        if (isMe) { Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(end = 4.dp)) }
-        Box(modifier = Modifier.widthIn(max = 260.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)).background(if (isMe) Color(0xFFA78BFA) else Color.White).padding(10.dp)) {
-            Text(text = message.content, color = if (isMe) Color.White else Color(0xFF1F2937), fontSize = 15.sp)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top // 프로필을 위쪽으로 맞춤
+    ) {
+        // ✨ 상대방(isMe == false)일 때만 프로필 사진(아이콘) 표시
+        if (!isMe) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE5E7EB)),
+                contentAlignment = Alignment.Center
+            ) {
+                // TODO: 나중에 실제 profileImage URL이 있으면 AsyncImage로 교체하세요!
+                // 지금은 이름의 첫 글자나 임시 이모지로 띄워줍니다.
+                Text(
+                    text = message.senderName.take(1).ifEmpty { "👤" },
+                    fontSize = 16.sp,
+                    color = Color.DarkGray,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
         }
-        if (!isMe) { Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(start = 4.dp)) }
+
+        // 말풍선과 이름, 시간을 담는 영역
+        Column(
+            horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+        ) {
+            // ✨ 상대방일 때만 이름 표시
+            if (!isMe) {
+                Text(
+                    text = message.senderName.ifEmpty { "알 수 없음" },
+                    fontSize = 13.sp,
+                    color = Color(0xFF4B5563),
+                    modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
+                )
+            }
+
+            // 말풍선 + 시간 가로 정렬
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+            ) {
+                // 내 말풍선일 때 시간 (왼쪽)
+                if (isMe) {
+                    Text(
+                        text = timeText,
+                        fontSize = 10.sp,
+                        color = Color.LightGray,
+                        modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
+                    )
+                }
+
+                // 말풍선 박스
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 240.dp)
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = if (isMe) 16.dp else 4.dp, // 상대방은 왼쪽 위가 뾰족하게!
+                                topEnd = if (isMe) 4.dp else 16.dp,   // 나는 오른쪽 위가 뾰족하게!
+                                bottomStart = 16.dp,
+                                bottomEnd = 16.dp
+                            )
+                        )
+                        .background(if (isMe) Color(0xFFA78BFA) else Color.White)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = message.content,
+                        color = if (isMe) Color.White else Color(0xFF1F2937),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+
+                // 상대방 말풍선일 때 시간 (오른쪽)
+                if (!isMe) {
+                    Text(
+                        text = timeText,
+                        fontSize = 10.sp,
+                        color = Color.LightGray,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                    )
+                }
+            }
+        }
     }
 }
-
 @Composable
 private fun ParticipantProfileDialog(participant: ParticipantItem, userProfile: UserProfileData?, isLoading: Boolean, isDirectChat: Boolean, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
