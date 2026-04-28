@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -148,7 +149,7 @@ fun ChatListScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) Color(0xFF1F2937) else Color(0xFFF3F4F6))
+                            .background(if (isSelected) Color(0xFF7C3AED) else Color(0xFFF3F4F6))
                             .clickable { selectedFilter = filter }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -346,15 +347,17 @@ private fun ChatListItem(chat: ChatPreview, timeText: String, onClick: () -> Uni
         Spacer(modifier = Modifier.width(8.dp))
 
         Column(horizontalAlignment = Alignment.End) {
-            Text(text = timeText, fontSize = 12.sp, color = Color.LightGray)
+            Text(text = timeText, fontSize = 12.sp, color = Color(0xFF9CA3AF))
             if (chat.unreadCount > 0) {
                 Box(
                     modifier = Modifier
                         .padding(top = 4.dp)
+                        .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
                         .background(Color(0xFFA78BFA), CircleShape)
-                        .padding(horizontal = 6.dp)
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "${chat.unreadCount}", color = Color.White, fontSize = 11.sp)
+                    Text(text = "${chat.unreadCount}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

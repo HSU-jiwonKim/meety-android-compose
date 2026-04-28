@@ -46,6 +46,7 @@ import com.google.firebase.auth.FirebaseAuth
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -180,7 +181,16 @@ fun ChatRoomScreen(
     }
 
     selectedParticipant?.let { participant ->
-        ParticipantProfileDialog(participant, selectedUserProfile, isLoadingProfile, isDirectChat, onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() })
+        ParticipantProfileDialog(
+            participant = participant,
+            userProfile = selectedUserProfile,
+            isLoading = isLoadingProfile,
+            isDirectChat = isDirectChat,
+            onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() },
+            onAddFriend = if (!participant.isFriend && participant.userId != currentUserId) {
+                { viewModel.addFriend(chatId, participant) }
+            } else null
+        )
     }
 
     ModalNavigationDrawer(
@@ -249,11 +259,13 @@ fun ChatRoomScreen(
                     },
                     navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기") } },
                     actions = {
-                        IconButton(onClick = onVoiceCallClick) {
-                            Icon(Icons.Default.Call, contentDescription = "음성통화", tint = Color(0xFF7C3AED))
-                        }
-                        IconButton(onClick = onVideoCallClick) {
-                            Icon(Icons.Default.Videocam, contentDescription = "화상통화", tint = Color(0xFF7C3AED))
+                        if (isDirectChat) {
+                            IconButton(onClick = onVoiceCallClick) {
+                                Icon(Icons.Default.Call, contentDescription = "음성통화", tint = Color(0xFF7C3AED))
+                            }
+                            IconButton(onClick = onVideoCallClick) {
+                                Icon(Icons.Default.Videocam, contentDescription = "화상통화", tint = Color(0xFF7C3AED))
+                            }
                         }
                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "더보기")
@@ -275,7 +287,12 @@ fun ChatRoomScreen(
                     ) {
                         val reversedMessages = messages.reversed()
                         itemsIndexed(items = reversedMessages, key = { _, it -> it.id }) { index, message ->
-                            MessageItem(message, viewModel.formatTime(message.createdAt))
+                            val showAvatar = if (index == reversedMessages.lastIndex) {
+                                true
+                            } else {
+                                reversedMessages[index + 1].senderId != message.senderId
+                            }
+                            MessageItem(message, viewModel.formatTime(message.createdAt), showAvatar = showAvatar)
                             val showDateSeparator = if (index == reversedMessages.lastIndex) {
                                 true
                             } else {
@@ -417,12 +434,22 @@ private fun ChatRoomDrawer(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            Row(modifier = Modifier.fillMaxWidth().clickable { onInviteClick() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFF3F4F6)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Add, contentDescription = "초대", tint = Color(0xFF6B7280), modifier = Modifier.size(24.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF5F3FF))
+                    .clickable { onInviteClick() }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFEDE9FE)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Add, contentDescription = "초대", tint = Color(0xFF7C3AED), modifier = Modifier.size(22.dp))
                 }
-                Spacer(Modifier.width(12.dp)); Text("초대하기", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Color(0xFF6366F1))
+                Spacer(Modifier.width(12.dp))
+                Text("초대하기", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF7C3AED))
             }
+            Spacer(modifier = Modifier.height(8.dp))
 
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 participants.forEach { participant ->
@@ -485,63 +512,99 @@ private fun ReceivedLikeSheet(requestList: List<ReceivedLikeItem>, onAccept: (St
 
 @Composable
 private fun MessageInputBar(text: String, isSending: Boolean, onTextChange: (String) -> Unit, onSendClick: () -> Unit) {
+    val isActive = text.isNotBlank() && !isSending
     Surface(color = Color.White, modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextField(value = text, onValueChange = onTextChange, modifier = Modifier.weight(1f), placeholder = { Text("메시지를 입력하세요") }, colors = TextFieldDefaults.colors(focusedContainerColor = Color(0xFFF3F4F6), unfocusedContainerColor = Color(0xFFF3F4F6), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), shape = RoundedCornerShape(24.dp))
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextField(
+                value = text,
+                onValueChange = onTextChange,
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("메시지를 입력하세요", color = Color(0xFF9CA3AF)) },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color(0xFFF3F4F6),
+                    unfocusedContainerColor = Color(0xFFF3F4F6),
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onSendClick, enabled = text.isNotBlank() && !isSending) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "전송") }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (isActive) Color(0xFFA78BFA) else Color(0xFFE5E7EB))
+                    .clickable(enabled = isActive, onClick = onSendClick),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isSending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "전송",
+                        tint = if (isActive) Color.White else Color(0xFF9CA3AF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun MessageItem(message: ChatMessage, timeText: String) {
-    // 1. 시스템 메시지 (예: "OOO님이 나갔습니다")
+private fun MessageItem(message: ChatMessage, timeText: String, showAvatar: Boolean = true) {
+    // 1. 시스템 메시지
     if (message.senderId == "system") {
-        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
-            Box(modifier = Modifier.background(Color(0xFFE5E7EB), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                Text(text = message.content, fontSize = 12.sp, color = Color(0xFF6B7280))
-            }
+        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
+            Text(text = message.content, fontSize = 12.sp, color = Color(0xFFB0B7C3))
         }
         return
     }
 
     val isMe = message.isMe
+    val maxBubbleWidth = (LocalConfiguration.current.screenWidthDp * 0.72f).dp
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Top // 프로필을 위쪽으로 맞춤
+        verticalAlignment = Alignment.Top
     ) {
-        // ✨ 상대방(isMe == false)일 때만 프로필 사진(아이콘) 표시
+        // 상대방 아바타 영역 (showAvatar 여부에 따라 표시 또는 공간 유지)
         if (!isMe) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFE5E7EB)),
-                contentAlignment = Alignment.Center
-            ) {
-                // TODO: 나중에 실제 profileImage URL이 있으면 AsyncImage로 교체하세요!
-                // 지금은 이름의 첫 글자나 임시 이모지로 띄워줍니다.
-                Text(
-                    text = message.senderName.take(1).ifEmpty { "👤" },
-                    fontSize = 16.sp,
-                    color = Color.DarkGray,
-                    fontWeight = FontWeight.Bold
-                )
+            if (showAvatar) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEDE9FE)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = message.senderName.take(1).ifEmpty { "👤" },
+                        fontSize = 16.sp,
+                        color = Color(0xFF7C3AED),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                // 아바타 자리 확보 (정렬 유지)
+                Spacer(modifier = Modifier.size(40.dp))
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
 
-        // 말풍선과 이름, 시간을 담는 영역
+        // 말풍선 + 이름 영역
         Column(
+            modifier = Modifier.widthIn(max = maxBubbleWidth),
             horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
         ) {
-            // ✨ 상대방일 때만 이름 표시
-            if (!isMe) {
+            // 첫 메시지일 때만 이름 표시
+            if (!isMe && showAvatar) {
                 Text(
                     text = message.senderName.ifEmpty { "알 수 없음" },
                     fontSize = 13.sp,
@@ -555,26 +618,24 @@ private fun MessageItem(message: ChatMessage, timeText: String) {
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
             ) {
-                // 내 말풍선일 때 시간 (왼쪽)
                 if (isMe) {
                     Text(
                         text = timeText,
                         fontSize = 10.sp,
-                        color = Color.LightGray,
+                        color = Color(0xFF9CA3AF),
                         modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
                     )
                 }
 
-                // 말풍선 박스
+                // 말풍선
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 240.dp)
                         .clip(
                             RoundedCornerShape(
-                                topStart = if (isMe) 16.dp else 4.dp, // 상대방은 왼쪽 위가 뾰족하게!
-                                topEnd = if (isMe) 4.dp else 16.dp,   // 나는 오른쪽 위가 뾰족하게!
+                                topStart    = if (isMe) 16.dp else if (showAvatar) 4.dp else 16.dp,
+                                topEnd      = if (isMe) if (showAvatar) 4.dp else 16.dp else 16.dp,
                                 bottomStart = 16.dp,
-                                bottomEnd = 16.dp
+                                bottomEnd   = 16.dp
                             )
                         )
                         .background(if (isMe) Color(0xFFA78BFA) else Color.White)
@@ -588,12 +649,11 @@ private fun MessageItem(message: ChatMessage, timeText: String) {
                     )
                 }
 
-                // 상대방 말풍선일 때 시간 (오른쪽)
                 if (!isMe) {
                     Text(
                         text = timeText,
                         fontSize = 10.sp,
-                        color = Color.LightGray,
+                        color = Color(0xFF9CA3AF),
                         modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
                     )
                 }
@@ -607,7 +667,8 @@ private fun ParticipantProfileDialog(
     userProfile: UserProfileData?,
     isLoading: Boolean,
     isDirectChat: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAddFriend: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
@@ -673,10 +734,25 @@ private fun ParticipantProfileDialog(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(44.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA78BFA))) {
-                    Text("닫기", color = Color.White, fontWeight = FontWeight.Bold)
+                if (onAddFriend != null) {
+                    Button(
+                        onClick = { onAddFriend(); onDismiss() },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("친구 추가", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("닫기", color = Color(0xFF6B7280))
                 }
             }
         }
