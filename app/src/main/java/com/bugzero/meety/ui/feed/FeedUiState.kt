@@ -19,7 +19,8 @@ enum class TeamActionStatus {
     NONE,     // 아무 액션 없음 (추천 대상)
     LIKED,    // 좋아요를 보낸 팀
     PASSED,   // 패스한 팀
-    MY_TEAM   // 내가 소속된 팀
+    MY_TEAM,  // 내가 소속된 팀
+    INVITED   // 팀원 초대를 받은 상태
 }
 
 /**

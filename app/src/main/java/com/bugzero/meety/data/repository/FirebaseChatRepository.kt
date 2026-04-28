@@ -2,8 +2,11 @@ package com.bugzero.meety.data.repository
 
 import com.bugzero.meety.ui.chat.ChatMessage
 import com.bugzero.meety.ui.chat.ChatPreview
+import com.bugzero.meety.ui.chat.MatchCandidate
+import com.bugzero.meety.ui.chat.TeamInvitation
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
@@ -276,5 +279,188 @@ class FirebaseChatRepository : ChatRepository {
                 "teamName" to "" // 1:1이 아닌 팀 채팅이라면 필요에 따라 처리
             ))
         }.await()
+    }
+
+    // ── 팀원 자동 매칭 / 초대 ──────────────────────────────
+
+    override fun observePendingInvitations(userId: String): Flow<List<TeamInvitation>> = callbackFlow {
+        // 복합 인덱스 불필요: toUserId 단일 필드만 쿼리하고 status 필터는 클라이언트에서 처리
+        val listener = db.collection("teamInvitations")
+            .whereEqualTo("toUserId", userId)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    android.util.Log.e("ChatRepo", "observePendingInvitations 에러: ${err.message}")
+                    trySend(emptyList()) // 에러 시 빈 목록 전송 (flow 종료 X)
+                    return@addSnapshotListener
+                }
+                val invitations = snap?.documents?.mapNotNull { doc ->
+                    try {
+                        val status = doc.getString("status") ?: "pending"
+                        if (status != "pending") return@mapNotNull null  // 클라이언트 필터
+                        TeamInvitation(
+                            id         = doc.id,
+                            teamId     = doc.getString("teamId") ?: "",
+                            chatId     = doc.getString("chatId") ?: "",
+                            teamName   = doc.getString("teamName") ?: "",
+                            teamEmoji  = doc.getString("teamEmoji") ?: "👥",
+                            fromUserId = doc.getString("fromUserId") ?: "",
+                            toUserId   = doc.getString("toUserId") ?: "",
+                            status     = status,
+                            createdAt  = try { doc.getTimestamp("createdAt") } catch (e: Exception) { null }
+                        )
+                    } catch (e: Exception) { null }
+                } ?: emptyList()
+                trySend(invitations)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    override suspend fun sendTeamInvitation(
+        teamId: String,
+        chatId: String,
+        teamName: String,
+        teamEmoji: String,
+        fromUserId: String,
+        toUserId: String
+    ) {
+        val data = mapOf(
+            "teamId"     to teamId,
+            "chatId"     to chatId,
+            "teamName"   to teamName,
+            "teamEmoji"  to teamEmoji,
+            "fromUserId" to fromUserId,
+            "toUserId"   to toUserId,
+            "status"     to "pending",
+            "createdAt"  to Timestamp.now()
+        )
+        db.collection("teamInvitations").add(data).await()
+    }
+
+    override suspend fun acceptInvitation(invitationId: String, userId: String, teamId: String, chatId: String) {
+        val now = Timestamp.now()
+
+        // 1. 초대 상태 업데이트
+        db.collection("teamInvitations").document(invitationId)
+            .update("status", "accepted")
+            .await()
+
+        // 2. 팀 채팅방 참여자에 추가
+        db.collection("chats").document(chatId)
+            .update("participants", FieldValue.arrayUnion(userId))
+            .await()
+
+        // 3. 팀 memberIds에 추가
+        try {
+            db.collection("teams").document(teamId)
+                .update("memberIds", FieldValue.arrayUnion(userId))
+                .await()
+        } catch (e: Exception) {
+            android.util.Log.e("ChatRepo", "팀 memberIds 업데이트 실패: ${e.message}")
+        }
+
+        // 4. 사용자 teamIds에 추가
+        try {
+            db.collection("users").document(userId)
+                .update("teamIds", FieldValue.arrayUnion(teamId))
+                .await()
+        } catch (e: Exception) {
+            android.util.Log.e("ChatRepo", "users.teamIds 업데이트 실패: ${e.message}")
+        }
+
+        // 5. 시스템 메시지 전송
+        val userDoc = db.collection("users").document(userId).get().await()
+        val userName = userDoc.getString("name") ?: "새 멤버"
+        val systemMsg = mapOf(
+            "senderId"  to "system",
+            "content"   to "${userName}님이 팀에 합류했습니다! 🎉",
+            "type"      to "system",
+            "createdAt" to now
+        )
+        db.collection("chats").document(chatId).collection("messages").add(systemMsg).await()
+        db.collection("chats").document(chatId).update(
+            mapOf("lastMessage" to "${userName}님이 팀에 합류했습니다! 🎉", "lastMessageAt" to now)
+        ).await()
+    }
+
+    override suspend fun rejectInvitation(invitationId: String) {
+        db.collection("teamInvitations").document(invitationId)
+            .update("status", "rejected")
+            .await()
+    }
+
+    /**
+     * 팀원 자동 매칭 후보자 로드
+     *
+     * 알고리즘:
+     * 1. 팀 문서에서 tags + mbtiTags 추출
+     * 2. userPreferences 컬렉션 전체 조회 (최대 200명)
+     * 3. 각 사용자의 tagScores + mbtiScores 중 팀 태그와 겹치는 점수 합산
+     * 4. 점수 높은 순으로 정렬, 기존 팀원 제외, 상위 15명 추출
+     * 5. users 컬렉션에서 프로필 정보 fetch
+     */
+    override suspend fun loadMatchCandidates(teamId: String): List<MatchCandidate> {
+        return try {
+            // 1. 팀 정보 가져오기
+            val teamDoc = db.collection("teams").document(teamId).get().await()
+            @Suppress("UNCHECKED_CAST")
+            val teamTags     = (teamDoc.get("tags")     as? List<String>) ?: emptyList()
+            val teamMbtiTags = (teamDoc.get("mbtiTags") as? List<String>) ?: emptyList()
+            val existingMemberIds = ((teamDoc.get("memberIds") as? List<String>) ?: emptyList()).toSet()
+
+            if (teamTags.isEmpty() && teamMbtiTags.isEmpty()) {
+                android.util.Log.w("ChatRepo", "팀에 tags/mbtiTags가 없어 매칭 불가")
+                return emptyList()
+            }
+
+            // 2. userPreferences 전체 조회 (최대 200명)
+            val prefSnap = db.collection("userPreferences")
+                .limit(200)
+                .get()
+                .await()
+
+            // 3. 각 사용자 점수 계산 — 기존 팀원 제외
+            data class ScoredUser(val userId: String, val score: Int)
+
+            val scoredUsers = prefSnap.documents
+                .filter { it.id !in existingMemberIds }
+                .mapNotNull { doc ->
+                    @Suppress("UNCHECKED_CAST")
+                    val tagScores  = (doc.get("tagScores")  as? Map<String, Long>) ?: emptyMap()
+                    @Suppress("UNCHECKED_CAST")
+                    val mbtiScores = (doc.get("mbtiScores") as? Map<String, Long>) ?: emptyMap()
+
+                    val tagScore  = teamTags.sumOf     { tag  -> (tagScores[tag]   ?: 0L).toInt() }
+                    val mbtiScore = teamMbtiTags.sumOf { mbti -> (mbtiScores[mbti] ?: 0L).toInt() }
+                    val total = tagScore + mbtiScore
+
+                    if (total > 0) ScoredUser(doc.id, total) else null
+                }
+                .sortedByDescending { it.score }
+                .take(15)
+
+            if (scoredUsers.isEmpty()) return emptyList()
+
+            // 4. users 컬렉션에서 프로필 정보 병렬 fetch
+            scoredUsers.mapNotNull { scored ->
+                try {
+                    val userDoc = db.collection("users").document(scored.userId).get().await()
+                    if (!userDoc.exists()) return@mapNotNull null
+                    MatchCandidate(
+                        userId          = scored.userId,
+                        name            = userDoc.getString("name") ?: "이름 없음",
+                        profileImageUrl = (userDoc.get("profileImages") as? List<*>)
+                                            ?.firstOrNull()?.toString() ?: "",
+                        mbti            = userDoc.getString("mbti") ?: "",
+                        department      = userDoc.getString("department") ?: "",
+                        matchScore      = scored.score
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ChatRepo", "자동 매칭 후보자 로드 실패: ${e.message}")
+            emptyList()
+        }
     }
 }

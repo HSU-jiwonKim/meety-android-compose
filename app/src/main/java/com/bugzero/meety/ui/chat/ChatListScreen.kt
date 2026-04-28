@@ -3,6 +3,8 @@ package com.bugzero.meety.ui.chat
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -27,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
@@ -41,8 +44,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -66,11 +73,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bugzero.meety.ui.feed.FeedConstants
+import com.bugzero.meety.ui.feed.MeetingDetailScreen
+import com.bugzero.meety.ui.feed.TeamActionStatus
 import com.google.firebase.auth.FirebaseAuth
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 
 @Composable
 fun ChatListScreen(
@@ -94,6 +99,9 @@ fun ChatListScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val friendList by viewModel.friendList.collectAsState()
     val isLoadingFriends by viewModel.isLoadingFriends.collectAsState()
+    val pendingInvitations by viewModel.pendingInvitations.collectAsState()
+    val selectedInvitationTeam by viewModel.selectedInvitationTeam.collectAsState()
+    val selectedInvitation by viewModel.selectedInvitation.collectAsState()
 
     var showFriendScreen by remember { mutableStateOf(false) }
 
@@ -169,16 +177,27 @@ fun ChatListScreen(
                     errorMessage != null -> {
                         ChatErrorView(message = errorMessage!!, modifier = Modifier.align(Alignment.Center))
                     }
-                    filteredChatList.isEmpty() -> {
-                        // 필터링된 결과가 없을 때
+                    // 초대도 없고 채팅도 없을 때만 빈 화면
+                    filteredChatList.isEmpty() && pendingInvitations.isEmpty() -> {
                         ChatEmptyView(modifier = Modifier.align(Alignment.Center))
                     }
                     else -> {
-                        // ✨ 3. 전체 목록(chatList) 대신 필터링된 목록(filteredChatList) 사용
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(vertical = 8.dp)
                         ) {
+                            // ── 대기 중인 초대 섹션 (전체 필터일 때만, 초대가 있을 때만) ──
+                            if (selectedFilter == "전체" && pendingInvitations.isNotEmpty()) {
+                                item {
+                                    PendingInvitationsSection(
+                                        invitations = pendingInvitations,
+                                        onAccept    = { inv -> viewModel.acceptInvitation(inv.id, inv.teamId, inv.chatId) {} },
+                                        onReject    = { inv -> viewModel.rejectInvitation(inv.id) },
+                                        onTapDetail = { inv -> viewModel.selectInvitation(inv) }
+                                    )
+                                }
+                            }
+
                             items(items = filteredChatList, key = { it.id }) { chat ->
                                 ChatListItem(
                                     chat = chat,
@@ -226,6 +245,32 @@ fun ChatListScreen(
                     }
                 }
             )
+        }
+
+        // ── 초대 상세보기 오버레이 (MeetingDetailScreen, INVITED 상태) ──
+        AnimatedVisibility(
+            visible = selectedInvitation != null,
+            enter   = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit    = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            val inv = selectedInvitation
+            if (inv != null) {
+                MeetingDetailScreen(
+                    team             = selectedInvitationTeam,
+                    status           = TeamActionStatus.INVITED,
+                    onBackClick      = { viewModel.clearSelectedInvitation() },
+                    onAcceptInvite   = {
+                        viewModel.acceptInvitation(inv.id, inv.teamId, inv.chatId) {
+                            viewModel.clearSelectedInvitation()
+                            onChatClick(inv.chatId, inv.teamName)
+                        }
+                    },
+                    onRejectInvite   = {
+                        viewModel.rejectInvitation(inv.id)
+                        viewModel.clearSelectedInvitation()
+                    }
+                )
+            }
         }
     }
 }
@@ -508,6 +553,100 @@ private fun FriendSelectionFullScreen(
                 }
             }
         }
+    }
+}
+
+// ── 대기 중인 팀 초대 섹션 ──────────────────────────────────────────
+
+@Composable
+private fun PendingInvitationsSection(
+    invitations: List<TeamInvitation>,
+    onAccept: (TeamInvitation) -> Unit,
+    onReject: (TeamInvitation) -> Unit,
+    onTapDetail: (TeamInvitation) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        // 섹션 헤더
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("💌 받은 초대", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937))
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFFA78BFA), CircleShape)
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            ) {
+                Text("${invitations.size}", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // 초대 카드 목록
+        invitations.forEach { inv ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF5F3FF))
+                    .clickable { onTapDetail(inv) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 팀 아이콘
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(FeedConstants.GradientPurplePink),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(inv.teamEmoji, fontSize = 20.sp)
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                // 팀 이름 + 안내 문구
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(inv.teamName, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color(0xFF1F2937))
+                    Text("팀원 초대장이 도착했어요", fontSize = 12.sp, color = Color(0xFF7C3AED))
+                }
+
+                // 거절 / 수락 버튼
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick        = { onReject(inv) },
+                        shape          = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier       = Modifier.height(36.dp)
+                    ) {
+                        Text("거절", fontSize = 13.sp, color = Color(0xFF6B7280))
+                    }
+                    Button(
+                        onClick        = { onAccept(inv) },
+                        shape          = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier       = Modifier.height(36.dp),
+                        colors         = ButtonDefaults.buttonColors(containerColor = Color(0xFFA78BFA))
+                    ) {
+                        Text("수락", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        HorizontalDivider(
+            modifier  = Modifier.padding(top = 4.dp),
+            color     = Color(0xFFF3F4F6),
+            thickness = 1.dp
+        )
     }
 }
 

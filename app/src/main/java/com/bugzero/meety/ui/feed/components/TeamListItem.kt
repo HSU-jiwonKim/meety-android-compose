@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -193,6 +194,29 @@ private fun TeamStatusBadge(status: TeamActionStatus) {
                     text = "내 팀",
                     fontSize = 11.sp,
                     color = SkyBlue,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        TeamActionStatus.INVITED -> {
+            Row(
+                modifier = Modifier
+                    .background(Color(0xFFFEF3C7), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mail,
+                    contentDescription = "초대 받음",
+                    tint = Color(0xFFD97706),
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = "초대 받음",
+                    fontSize = 11.sp,
+                    color = Color(0xFFD97706),
                     fontWeight = FontWeight.SemiBold
                 )
             }

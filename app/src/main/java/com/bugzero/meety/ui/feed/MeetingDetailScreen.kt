@@ -49,7 +49,9 @@ fun MeetingDetailScreen(
     onLikeClick: () -> Unit = {},           // NONE: 좋아요
     onPassClick: () -> Unit = {},           // NONE: 패스
     onCancelLike: () -> Unit = {},          // LIKED: 좋아요 취소
-    onSendLikeFromPassed: () -> Unit = {}   // PASSED: 좋아요 전환
+    onSendLikeFromPassed: () -> Unit = {},  // PASSED: 좋아요 전환
+    onAcceptInvite: () -> Unit = {},        // INVITED: 수락
+    onRejectInvite: () -> Unit = {}         // INVITED: 거절
 ) {
     if (team == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -93,11 +95,13 @@ fun MeetingDetailScreen(
         },
         bottomBar = {
             DetailBottomBar(
-                status             = status,
-                onLikeClick        = onLikeClick,
-                onPassClick        = onPassClick,
-                onCancelLike       = onCancelLike,
-                onSendLikeFromPassed = onSendLikeFromPassed
+                status               = status,
+                onLikeClick          = onLikeClick,
+                onPassClick          = onPassClick,
+                onCancelLike         = onCancelLike,
+                onSendLikeFromPassed = onSendLikeFromPassed,
+                onAcceptInvite       = onAcceptInvite,
+                onRejectInvite       = onRejectInvite
             )
         }
     ) { padding ->
@@ -147,7 +151,9 @@ private fun DetailBottomBar(
     onLikeClick: () -> Unit,
     onPassClick: () -> Unit,
     onCancelLike: () -> Unit,
-    onSendLikeFromPassed: () -> Unit
+    onSendLikeFromPassed: () -> Unit,
+    onAcceptInvite: () -> Unit = {},
+    onRejectInvite: () -> Unit = {}
 ) {
     Surface(
         modifier  = Modifier.fillMaxWidth(),
@@ -253,6 +259,29 @@ private fun DetailBottomBar(
                         fontWeight = FontWeight.SemiBold)
                 }
             }
+
+            TeamActionStatus.INVITED -> {
+                // 팀 초대 받음 → 거절 / 수락하기
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick  = onRejectInvite,
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape    = RoundedCornerShape(14.dp)
+                    ) { Text("거절", color = Gray500, fontWeight = FontWeight.Bold) }
+
+                    Button(
+                        onClick  = onAcceptInvite,
+                        modifier = Modifier.weight(2f).height(52.dp),
+                        shape    = RoundedCornerShape(14.dp),
+                        colors   = ButtonDefaults.buttonColors(containerColor = Purple)
+                    ) { Text("🎉 수락하기", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                }
+            }
         }
     }
 }
@@ -265,11 +294,13 @@ private fun DetailBottomBar(
 private fun StatusBanner(status: TeamActionStatus) {
     val (icon, text, tint, bg) = when (status) {
         TeamActionStatus.LIKED   ->
-            BannerStyle(Icons.Default.Favorite,  "이미 좋아요를 보낸 팀이에요",  Purple,  Purple.copy(alpha = 0.08f))
+            BannerStyle(Icons.Default.Favorite,      "이미 좋아요를 보낸 팀이에요",  Purple,             Purple.copy(alpha = 0.08f))
         TeamActionStatus.PASSED  ->
-            BannerStyle(Icons.Default.Close,     "패스했던 팀이에요",            Gray500, Gray200)
+            BannerStyle(Icons.Default.Close,         "패스했던 팀이에요",            Gray500,            Gray200)
         TeamActionStatus.MY_TEAM ->
-            BannerStyle(Icons.Default.Groups,    "내가 소속된 팀이에요",         SkyBlue, SkyBlue.copy(alpha = 0.08f))
+            BannerStyle(Icons.Default.Groups,        "내가 소속된 팀이에요",         SkyBlue,            SkyBlue.copy(alpha = 0.08f))
+        TeamActionStatus.INVITED ->
+            BannerStyle(Icons.Default.Mail,          "이 팀에서 초대장을 보냈어요!", Color(0xFFD97706),   Color(0xFFFEF3C7))
         TeamActionStatus.NONE    -> return
     }
     Row(
