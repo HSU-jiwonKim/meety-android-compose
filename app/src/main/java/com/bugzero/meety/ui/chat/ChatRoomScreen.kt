@@ -46,6 +46,7 @@ import com.google.firebase.auth.FirebaseAuth
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +73,7 @@ fun ChatRoomScreen(
     val matchCandidates by viewModel.matchCandidates.collectAsState()
     val isLoadingCandidates by viewModel.isLoadingCandidates.collectAsState()
     val currentTeamId by viewModel.currentTeamId.collectAsState()
+    val currentChatType by viewModel.currentChatType.collectAsState()
 
     // 시트 제어 상태
     var showManagementSheet by remember { mutableStateOf(false) }
@@ -92,9 +94,16 @@ fun ChatRoomScreen(
         onDispose { callViewModel.stopListeningForCalls(chatId) }
     }
 
-    val chatType = if (chatId.startsWith("direct")) "direct" else if (chatId.contains("group")) "group" else "team"
-    val isTeamChat = chatType == "team"
-    val isDirectChat = chatType == "direct"
+    // Firestore에서 읽어온 실제 type 우선, 로드 전에는 chatId 패턴으로 fallback
+    val resolvedChatType = currentChatType.ifBlank {
+        when {
+            chatId.startsWith("direct") -> "direct"
+            chatId.contains("group")    -> "group"
+            else                        -> "team"
+        }
+    }
+    val isTeamChat   = resolvedChatType == "team"
+    val isDirectChat = resolvedChatType == "direct"
 
     val isLeader = isTeamChat && participants.firstOrNull { it.isLeader }?.userId == currentUserId
 
@@ -247,7 +256,14 @@ fun ChatRoomScreen(
                     val showScrollToBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
                     ScrollToBottomButton(isVisible = showScrollToBottom, onClick = { coroutineScope.launch { listState.animateScrollToItem(0) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 8.dp))
                 }
-                MessageInputBar(text = inputText, isSending = isSending, onTextChange = { inputText = it }, onSendClick = { if (inputText.isNotBlank()) { viewModel.sendMessage(chatId, inputText); inputText = "" } })
+                val keyboardController = LocalSoftwareKeyboardController.current
+                MessageInputBar(text = inputText, isSending = isSending, onTextChange = { inputText = it }, onSendClick = {
+                    if (inputText.isNotBlank()) {
+                        viewModel.sendMessage(chatId, inputText)
+                        inputText = ""
+                        keyboardController?.hide()
+                    }
+                })
             }
         }
     }
@@ -551,13 +567,82 @@ private fun MessageItem(message: ChatMessage, timeText: String) {
     }
 }
 @Composable
-private fun ParticipantProfileDialog(participant: ParticipantItem, userProfile: UserProfileData?, isLoading: Boolean, isDirectChat: Boolean, onDismiss: () -> Unit) {
+private fun ParticipantProfileDialog(
+    participant: ParticipantItem,
+    userProfile: UserProfileData?,
+    isLoading: Boolean,
+    isDirectChat: Boolean,
+    onDismiss: () -> Unit
+) {
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = participant.name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("닫기") }
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // 아바타
+                Box(
+                    modifier = Modifier.size(72.dp).clip(CircleShape).background(Color(0xFFEDE9FE)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = participant.name.take(1).ifEmpty { "?" },
+                        fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED)
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // 이름 + 팀장 뱃지
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(participant.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937))
+                    if (participant.isLeader) {
+                        Box(
+                            modifier = Modifier.background(Color(0xFFFEF3C7), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) { Text("팀장", fontSize = 11.sp, color = Color(0xFFD97706), fontWeight = FontWeight.Bold) }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color(0xFFA78BFA), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(16.dp))
+                } else if (userProfile != null) {
+                    // 프로필 정보 행
+                    @Composable
+                    fun InfoRow(label: String, value: String) {
+                        if (value.isBlank()) return
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(label, fontSize = 13.sp, color = Color(0xFF9CA3AF))
+                            Text(value, fontSize = 13.sp, color = Color(0xFF1F2937), fontWeight = FontWeight.Medium)
+                        }
+                    }
+
+                    InfoRow("학과", userProfile.department)
+                    InfoRow("MBTI", userProfile.mbti)
+                    InfoRow("나이", if (userProfile.age > 0) "${userProfile.age}세" else "")
+                    InfoRow("키", if (userProfile.height > 0) "${userProfile.height}cm" else "")
+                    InfoRow("지역", userProfile.location)
+
+                    if (userProfile.bio.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier.fillMaxWidth().background(Color(0xFFF9FAFB), RoundedCornerShape(10.dp)).padding(12.dp)
+                        ) {
+                            Text(userProfile.bio, fontSize = 13.sp, color = Color(0xFF6B7280), lineHeight = 20.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA78BFA))) {
+                    Text("닫기", color = Color.White, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

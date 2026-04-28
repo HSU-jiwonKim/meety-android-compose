@@ -9,10 +9,13 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import java.util.concurrent.ConcurrentHashMap
 
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
@@ -22,6 +25,9 @@ class FirebaseChatRepository : ChatRepository {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+
+    // 유저 이름/프로필 캐시 — observeMessages, observeChatList, sendMessage 공통 사용
+    private val userProfileCache = ConcurrentHashMap<String, Pair<String, String>>() // userId → (name, profileImageUrl)
 
     override fun observeChatList(userId: String): Flow<List<ChatPreview>> = callbackFlow {
         val listener = db.collection("chats")
@@ -56,22 +62,25 @@ class FirebaseChatRepository : ChatRepository {
 
                                     if (otherUserIds.isNotEmpty()) {
                                         try {
-                                            val otherNames = mutableListOf<String>()
-
-                                            for (pid in otherUserIds) {
-                                                val userDoc = db.collection("users").document(pid).get().await()
-                                                val name = userDoc.getString("name")
-                                                if (!name.isNullOrBlank()) {
-                                                    otherNames.add(name)
-                                                }
+                                            // 병렬 fetch + 캐시 활용
+                                            val otherNames = coroutineScope {
+                                                otherUserIds.map { pid ->
+                                                    async {
+                                                        userProfileCache.getOrPut(pid) {
+                                                            val userDoc = db.collection("users").document(pid).get().await()
+                                                            val name = userDoc.getString("name") ?: ""
+                                                            val img = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString() ?: ""
+                                                            Pair(name, img)
+                                                        }.first
+                                                    }
+                                                }.awaitAll().filter { it.isNotBlank() }
                                             }
-
 
                                             if (otherNames.isNotEmpty()) {
                                                 displayTeamName = if (otherNames.size <= 3) {
-                                                    otherNames.joinToString(", ") // 3명 이하면 전부 나열
+                                                    otherNames.joinToString(", ")
                                                 } else {
-                                                    "${otherNames.take(3).joinToString(", ")} 외 ${otherNames.size - 3}명" // 4명 이상이면 줄임
+                                                    "${otherNames.take(3).joinToString(", ")} 외 ${otherNames.size - 3}명"
                                                 }
                                             }
                                         } catch (e: Exception) {
@@ -110,112 +119,59 @@ class FirebaseChatRepository : ChatRepository {
 
     override fun observeMessages(chatId: String): Flow<List<ChatMessage>> = callbackFlow {
         val currentUserId = auth.currentUser?.uid ?: ""
-        val profileCache = mutableMapOf<String, Pair<String, String>>()
+        var processingJob: Job? = null  // 스냅샷마다 이전 작업 취소 후 재시작
 
         val listener = db.collection("chats")
             .document(chatId)
             .collection("messages")
             .orderBy("createdAt", Query.Direction.ASCENDING)
             .addSnapshotListener { snap, err ->
-                if (err != null) {
-                    close(err)
-                    return@addSnapshotListener
-                }
+                if (err != null) { close(err); return@addSnapshotListener }
 
                 val docs = snap?.documents ?: emptyList()
+                if (docs.isEmpty()) { trySend(emptyList()); return@addSnapshotListener }
 
-                if (docs.isEmpty()) {
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
+                // 이전 처리 중인 코루틴 취소 → 최신 스냅샷만 처리
+                processingJob?.cancel()
+                processingJob = launch {
+                    try {
+                        val messages = coroutineScope {
+                            docs.map { doc ->
+                                async {
+                                    val senderId   = doc.getString("senderId") ?: ""
+                                    val content    = doc.getString("content") ?: ""
+                                    val type       = doc.getString("type") ?: "text"
+                                    val createdAt  = try { doc.getTimestamp("createdAt") } catch (e: Exception) { null }
+                                    val isMe       = senderId == currentUserId
 
-                val messages = mutableListOf<ChatMessage>()
-                var completed = 0
+                                    if (senderId == "system") {
+                                        return@async ChatMessage(
+                                            id = doc.id, senderId = "system", senderName = "system",
+                                            content = content, type = type, createdAt = createdAt, isMe = false
+                                        )
+                                    }
 
-                for (doc in docs) {
-                    val senderId = doc.getString("senderId") ?: ""
-                    val content = doc.getString("content") ?: ""
-                    val type = doc.getString("type") ?: "text"
-                    val createdAt = try { doc.getTimestamp("createdAt") } catch (e: Exception) { null }
-                    val isMe = senderId == currentUserId
+                                    // 클래스 레벨 캐시 공유 — 중복 Firestore 읽기 방지
+                                    val (name, profileImage) = userProfileCache.getOrPut(senderId) {
+                                        try {
+                                            val userDoc = db.collection("users").document(senderId).get().await()
+                                            val n   = userDoc.getString("name") ?: ""
+                                            val img = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString() ?: ""
+                                            Pair(n, img)
+                                        } catch (e: Exception) { Pair("", "") }
+                                    }
 
-                    if (senderId == "system") {
-                        messages.add(
-                            ChatMessage(
-                                id = doc.id,
-                                senderId = senderId,
-                                senderName = "system",
-                                senderProfileImage = "",
-                                content = content,
-                                type = type,
-                                createdAt = createdAt,
-                                isMe = false
-                            )
-                        )
-                        completed++
-                        if (completed == docs.size) {
-                            trySend(messages.sortedBy { it.createdAt?.seconds ?: 0L })
-                        }
-                    } else if (isMe || profileCache.containsKey(senderId)) {
-                        val cached = profileCache[senderId]
-                        messages.add(
-                            ChatMessage(
-                                id = doc.id,
-                                senderId = senderId,
-                                senderName = cached?.first ?: "",
-                                senderProfileImage = cached?.second ?: "",
-                                content = content,
-                                type = type,
-                                createdAt = createdAt,
-                                isMe = isMe
-                            )
-                        )
-                        completed++
-                        if (completed == docs.size) {
-                            trySend(messages.sortedBy { it.createdAt?.seconds ?: 0L })
-                        }
-                    } else {
-                        db.collection("users").document(senderId).get()
-                            .addOnSuccessListener { userDoc ->
-                                val name = userDoc.getString("name") ?: ""
-                                val profileImages = userDoc.get("profileImages") as? List<*>
-                                val profileImage = profileImages?.firstOrNull()?.toString() ?: ""
-
-                                profileCache[senderId] = Pair(name, profileImage)
-
-                                messages.add(
                                     ChatMessage(
-                                        id = doc.id,
-                                        senderId = senderId,
-                                        senderName = name,
-                                        senderProfileImage = profileImage,
-                                        content = content,
-                                        type = type,
-                                        createdAt = createdAt,
-                                        isMe = false
+                                        id = doc.id, senderId = senderId, senderName = name,
+                                        senderProfileImage = profileImage, content = content,
+                                        type = type, createdAt = createdAt, isMe = isMe
                                     )
-                                )
-                                completed++
-                                if (completed == docs.size) {
-                                    trySend(messages.sortedBy { it.createdAt?.seconds ?: 0L })
                                 }
-                            }
-                            .addOnFailureListener {
-                                messages.add(
-                                    ChatMessage(
-                                        id = doc.id,
-                                        senderId = senderId,
-                                        content = content,
-                                        type = type,
-                                        createdAt = createdAt,
-                                        isMe = false
-                                    )
-                                )
-                                completed++
-                                if (completed == docs.size) {
-                                    trySend(messages.sortedBy { it.createdAt?.seconds ?: 0L })
-                                }
-                            }
+                            }.awaitAll()
+                        }
+                        trySend(messages.sortedBy { it.createdAt?.seconds ?: 0L })
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatRepo", "메시지 처리 에러: ${e.message}")
                     }
                 }
             }
@@ -229,12 +185,15 @@ class FirebaseChatRepository : ChatRepository {
         val senderName = if (senderId == "system") {
             "system"
         } else {
-            try {
-                val userDoc = db.collection("users").document(senderId).get().await()
-                userDoc.getString("name") ?: "알 수 없음"
-            } catch (e: Exception) {
-                "알 수 없음"
-            }
+            // 캐시 우선 조회 — 없을 때만 Firestore fetch 후 캐시 저장
+            userProfileCache.getOrPut(senderId) {
+                try {
+                    val userDoc = db.collection("users").document(senderId).get().await()
+                    val name = userDoc.getString("name") ?: "알 수 없음"
+                    val img  = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString() ?: ""
+                    Pair(name, img)
+                } catch (e: Exception) { Pair("알 수 없음", "") }
+            }.first
         }
 
         val messageData = mapOf(
@@ -261,26 +220,6 @@ class FirebaseChatRepository : ChatRepository {
             )
             .await()
     }
-    override suspend fun transferLeadershipAndLeave(chatId: String, currentUserId: String, newLeaderId: String) {
-        val chatRef = db.collection("chats").document(chatId)
-
-        // runTransaction을 쓰면 여러 수정을 '하나의 묶음'으로 안전하게 처리합니다.
-        db.runTransaction { transaction ->
-            val snapshot = transaction.get(chatRef)
-            val participants = snapshot.get("participants") as? MutableList<String> ?: mutableListOf()
-
-            // 1. 참여자 명단에서 나(기존 팀장)를 제거
-            participants.remove(currentUserId)
-
-            // 2. 새로운 팀장 ID로 교체하고 참여자 명단 업데이트
-            transaction.update(chatRef, mapOf(
-                "leaderId" to newLeaderId,
-                "participants" to participants,
-                "teamName" to "" // 1:1이 아닌 팀 채팅이라면 필요에 따라 처리
-            ))
-        }.await()
-    }
-
     // ── 팀원 자동 매칭 / 초대 ──────────────────────────────
 
     override fun observePendingInvitations(userId: String): Flow<List<TeamInvitation>> = callbackFlow {

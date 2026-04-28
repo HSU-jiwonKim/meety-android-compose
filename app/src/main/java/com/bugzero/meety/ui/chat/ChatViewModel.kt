@@ -12,6 +12,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -93,9 +96,12 @@ class ChatViewModel(
     private val _isLoadingFriends = MutableStateFlow(false)
     val isLoadingFriends: StateFlow<Boolean> = _isLoadingFriends.asStateFlow()
 
-    // ── 현재 채팅방의 실제 teamId (chat 문서의 teamId 필드) ──
+    // ── 현재 채팅방 메타 (chat 문서에서 읽어온 실제 값) ──
     private val _currentTeamId = MutableStateFlow("")
     val currentTeamId: StateFlow<String> = _currentTeamId.asStateFlow()
+
+    private val _currentChatType = MutableStateFlow("")   // "team" | "direct" | "group"
+    val currentChatType: StateFlow<String> = _currentChatType.asStateFlow()
 
     // ── 팀원 자동 매칭 / 초대 ──
     private val _pendingInvitations = MutableStateFlow<List<TeamInvitation>>(emptyList())
@@ -128,7 +134,7 @@ class ChatViewModel(
         _chatList.value = emptyList(); _requestList.value = emptyList(); _messages.value = emptyList()
         _participants.value = emptyList(); _friendList.value = emptyList(); _selectedUserProfile.value = null
         _isLoading.value = false; _isSending.value = false; _isLoadingFriends.value = false; _isLoadingProfile.value = false
-        _errorMessage.value = null; _roomName.value = ""; _currentTeamId.value = ""
+        _errorMessage.value = null; _roomName.value = ""; _currentTeamId.value = ""; _currentChatType.value = ""
         _pendingInvitations.value = emptyList(); _matchCandidates.value = emptyList()
         _selectedInvitation.value = null; _selectedInvitationTeam.value = null
     }
@@ -158,7 +164,8 @@ class ChatViewModel(
     }
 
     fun acceptRequest(likeId: String) {
-        teamRepository.acceptReceivedLike(likeId, onSuccess = { loadRequestList(); loadChatList() }, onFailure = { _errorMessage.value = it })
+        // loadChatList() 불필요 — observeChatList 실시간 리스너가 자동 갱신
+        teamRepository.acceptReceivedLike(likeId, onSuccess = { loadRequestList() }, onFailure = { _errorMessage.value = it })
     }
 
     fun rejectRequest(likeId: String) {
@@ -211,28 +218,30 @@ class ChatViewModel(
                 val isDirect = chatType == "direct" || chatId.startsWith("direct")
                 val isTeam = chatType == "team" // ✨ 팀 채팅인지 체크!
 
-                // 채팅 문서에서 실제 teamId 추출 (없으면 chatId를 fallback으로 사용)
+                // 채팅 문서에서 실제 teamId, chatType 저장
                 val resolvedTeamId = chatDoc.getString("teamId")?.takeIf { it.isNotBlank() } ?: chatId
                 _currentTeamId.value = resolvedTeamId
+                _currentChatType.value = chatType
 
                 @Suppress("UNCHECKED_CAST")
                 val participantIds = chatDoc.get("participants") as? List<String> ?: return@launch
 
-                val rawItems = participantIds.mapIndexed { index, pUserId ->
-                    val userDoc = db.collection("users").document(pUserId).get().await()
-
-                    // ✨ [핵심 로직] 팀 채팅(team)이면서 첫 번째 참여자(0번)일 때만 리더UI 적용!
-                    val shouldShowLeader = isTeam && index == 0
-
-                    ParticipantItem(
-                        userId = pUserId,
-                        name = userDoc.getString("name") ?: "알 수 없음",
-                        // 팀 채팅일 때만 왕관(👑), 아니면 기본 아이콘(👤)
-                        emoji = if (shouldShowLeader) "👑" else "👤",
-                        isLeader = shouldShowLeader,
-                        profileImage = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString() ?: "",
-                        isFriend = friendIds.contains(pUserId) || pUserId == myId
-                    )
+                // 병렬 fetch — 순차 N번 → async/awaitAll
+                val rawItems = kotlinx.coroutines.coroutineScope {
+                    participantIds.mapIndexed { index, pUserId ->
+                        async {
+                            val userDoc = db.collection("users").document(pUserId).get().await()
+                            val shouldShowLeader = isTeam && index == 0
+                            ParticipantItem(
+                                userId = pUserId,
+                                name = userDoc.getString("name") ?: "알 수 없음",
+                                emoji = if (shouldShowLeader) "👑" else "👤",
+                                isLeader = shouldShowLeader,
+                                profileImage = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString() ?: "",
+                                isFriend = friendIds.contains(pUserId) || pUserId == myId
+                            )
+                        }
+                    }.awaitAll()
                 }
 
                 // 3. 정렬 로직 (팀장 -> 나 -> 나머지)
@@ -385,23 +394,34 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 val db = FirebaseFirestore.getInstance()
-                val userDoc = db.collection("users").document(userId).get().await()
-                val myName = userDoc.getString("name") ?: "알 수 없음"
-                val now = com.google.firebase.Timestamp.now()
-
                 val chatRef = db.collection("chats").document(chatId)
 
-                // 1) 채팅방에서 나가기
-                val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
-                chatRef.collection("messages").add(systemMsg).await()
-                chatRef.update(mapOf("lastMessage" to "${myName}님이 나갔습니다.", "lastMessageAt" to now, "participants" to FieldValue.arrayRemove(userId))).await()
-
-                // ✨ 2) 팀(teams) 컬렉션에서도 나를 삭제 (필드명 memberIds 로 수정!)
                 val chatDoc = chatRef.get().await()
+                @Suppress("UNCHECKED_CAST")
+                val currentParticipants = (chatDoc.get("participants") as? List<String>) ?: emptyList()
                 val teamId = chatDoc.getString("teamId") ?: chatId
-                try {
-                    db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await()
-                } catch (e: Exception) { }
+                val now = com.google.firebase.Timestamp.now()
+
+                if (currentParticipants.size <= 1) {
+                    // 마지막 멤버가 나가면 채팅방 문서 삭제
+                    chatRef.delete().await()
+                    try { db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await() } catch (e: Exception) { }
+                } else {
+                    val userDoc = db.collection("users").document(userId).get().await()
+                    val myName = userDoc.getString("name") ?: "알 수 없음"
+
+                    // 시스템 메시지 + participants 업데이트
+                    val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
+                    chatRef.collection("messages").add(systemMsg).await()
+                    chatRef.update(mapOf(
+                        "lastMessage"   to "${myName}님이 나갔습니다.",
+                        "lastMessageAt" to now,
+                        "participants"  to FieldValue.arrayRemove(userId)
+                    )).await()
+
+                    // teams.memberIds에서도 제거
+                    try { db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await() } catch (e: Exception) { }
+                }
 
                 withContext(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {

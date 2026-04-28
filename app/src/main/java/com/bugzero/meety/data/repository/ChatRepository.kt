@@ -21,7 +21,6 @@ interface ChatRepository {
         content: String,
         type: String = "text"
     )
-    suspend fun transferLeadershipAndLeave(chatId: String, currentUserId: String, newLeaderId: String)
 
     // ── 팀원 자동 매칭 / 초대 ──────────────────────────────
 
