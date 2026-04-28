@@ -58,6 +58,7 @@ class ChatViewModel(
 ) : ViewModel() {
 
     private var likesListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private var messagesJob: kotlinx.coroutines.Job? = null  // 채팅방 전환 시 이전 구독 취소용
     private val currentUserIdOrNull: String? get() = FirebaseAuth.getInstance().currentUser?.uid
 
     private val _chatList = MutableStateFlow<List<ChatPreview>>(emptyList())
@@ -142,8 +143,11 @@ class ChatViewModel(
     fun clearError() { _errorMessage.value = null }
 
     fun enterChatRoom(chatId: String, roomName: String) {
-        val userId = currentUserIdOrNull ?: return
         _roomName.value = roomName
+        _messages.value = emptyList()      // 이전 채팅방 메시지 즉시 초기화
+        _participants.value = emptyList()  // 이전 채팅방 참여자 즉시 초기화
+        _currentTeamId.value = ""
+        _currentChatType.value = ""
         observeMessages(chatId)
         loadParticipants(chatId)
     }
@@ -173,8 +177,11 @@ class ChatViewModel(
     }
 
     fun observeMessages(chatId: String) {
-        viewModelScope.launch {
-            repository.observeMessages(chatId).catch { _errorMessage.value = "메시지 로드 실패" }.collect { _messages.value = it }
+        messagesJob?.cancel()  // 이전 채팅방 구독 취소
+        messagesJob = viewModelScope.launch {
+            repository.observeMessages(chatId)
+                .catch { _errorMessage.value = "메시지 로드 실패" }
+                .collect { _messages.value = it }
         }
     }
 
@@ -389,6 +396,15 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * 팀장 여부를 반환. UI에서 나가기 다이얼로그 분기에 활용.
+     * (participants[0] == currentUser 이면 팀장)
+     */
+    fun isCurrentUserLeader(): Boolean {
+        val myId = currentUserIdOrNull ?: return false
+        return _participants.value.firstOrNull { it.isLeader }?.userId == myId
+    }
+
     fun leaveChatRoom(chatId: String, onSuccess: () -> Unit = {}, onFailure: (String) -> Unit = {}) {
         val userId = currentUserIdOrNull ?: return
         viewModelScope.launch {
@@ -399,19 +415,33 @@ class ChatViewModel(
                 val chatDoc = chatRef.get().await()
                 @Suppress("UNCHECKED_CAST")
                 val currentParticipants = (chatDoc.get("participants") as? List<String>) ?: emptyList()
+                // teamId == chatId (팀 채팅은 생성 시 동일하게 설정됨)
                 val teamId = chatDoc.getString("teamId") ?: chatId
                 val now = com.google.firebase.Timestamp.now()
 
                 if (currentParticipants.size <= 1) {
-                    // 마지막 멤버가 나가면 채팅방 문서 삭제
+                    // ── 마지막 멤버 나가기: chats + teams 문서 모두 삭제 ──
                     chatRef.delete().await()
-                    try { db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await() } catch (e: Exception) { }
+
+                    // teams 문서 삭제 (좀비 레코드 방지)
+                    try { db.collection("teams").document(teamId).delete().await() } catch (e: Exception) {
+                        android.util.Log.e("ChatVM", "teams 문서 삭제 실패: ${e.message}")
+                    }
+                    // 내 teamIds에서도 제거
+                    try {
+                        db.collection("users").document(userId)
+                            .update("teamIds", FieldValue.arrayRemove(teamId)).await()
+                    } catch (e: Exception) { }
+
                 } else {
+                    // ── 일반 나가기 ──
                     val userDoc = db.collection("users").document(userId).get().await()
                     val myName = userDoc.getString("name") ?: "알 수 없음"
 
-                    // 시스템 메시지 + participants 업데이트
-                    val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
+                    val systemMsg = mapOf(
+                        "senderId" to "system", "content" to "${myName}님이 나갔습니다.",
+                        "type" to "system", "createdAt" to now
+                    )
                     chatRef.collection("messages").add(systemMsg).await()
                     chatRef.update(mapOf(
                         "lastMessage"   to "${myName}님이 나갔습니다.",
@@ -419,8 +449,17 @@ class ChatViewModel(
                         "participants"  to FieldValue.arrayRemove(userId)
                     )).await()
 
-                    // teams.memberIds에서도 제거
-                    try { db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await() } catch (e: Exception) { }
+                    // teams.memberIds에서 제거
+                    try {
+                        db.collection("teams").document(teamId)
+                            .update("memberIds", FieldValue.arrayRemove(userId)).await()
+                    } catch (e: Exception) { }
+
+                    // 내 teamIds에서도 제거
+                    try {
+                        db.collection("users").document(userId)
+                            .update("teamIds", FieldValue.arrayRemove(teamId)).await()
+                    } catch (e: Exception) { }
                 }
 
                 withContext(Dispatchers.Main) { onSuccess() }

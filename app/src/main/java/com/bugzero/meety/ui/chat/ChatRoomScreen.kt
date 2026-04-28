@@ -122,14 +122,49 @@ fun ChatRoomScreen(
     }
 
     if (showLeaveDialog) {
-        AlertDialog(
-            onDismissRequest = { showLeaveDialog = false },
-            containerColor = Color.White,
-            title = { Text("채팅방 나가기", fontWeight = FontWeight.Bold) },
-            text = { Text("정말 나가시겠습니까?") },
-            confirmButton = { TextButton(onClick = { viewModel.leaveChatRoom(chatId, onSuccess = { showLeaveDialog = false; onBackClick() }) }) { Text("나가기", color = Color.Red) } },
-            dismissButton = { TextButton(onClick = { showLeaveDialog = false }) { Text("취소") } }
-        )
+        // 팀장이고, 팀 채팅이고, 다른 팀원이 남아있으면 → 이양 강제 다이얼로그
+        val hasOtherMembers = participants.size > 1
+        if (isLeader && isTeamChat && hasOtherMembers) {
+            AlertDialog(
+                onDismissRequest = { showLeaveDialog = false },
+                containerColor = Color.White,
+                title = { Text("팀장은 바로 나갈 수 없어요", fontWeight = FontWeight.Bold) },
+                text  = { Text("팀원에게 팀장을 양도한 후 나가세요.\n'팀 채팅 관리 → 팀장 양도'에서 진행할 수 있어요.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showLeaveDialog = false
+                        showManagementSheet = true  // 팀 채팅 관리 시트로 바로 이동
+                    }) { Text("팀장 양도하러 가기", color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLeaveDialog = false }) { Text("취소") }
+                }
+            )
+        } else {
+            // 일반 나가기 또는 마지막 멤버 나가기
+            val isLastMember = participants.size <= 1
+            AlertDialog(
+                onDismissRequest = { showLeaveDialog = false },
+                containerColor = Color.White,
+                title = { Text("채팅방 나가기", fontWeight = FontWeight.Bold) },
+                text  = {
+                    Text(
+                        if (isLastMember && isTeamChat)
+                            "마지막 멤버가 나가면 팀과 채팅방이 삭제됩니다.\n정말 나가시겠습니까?"
+                        else
+                            "정말 나가시겠습니까?"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.leaveChatRoom(chatId, onSuccess = { showLeaveDialog = false; onBackClick() })
+                    }) { Text("나가기", color = Color.Red) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLeaveDialog = false }) { Text("취소") }
+                }
+            )
+        }
     }
 
     // 수신 통화 다이얼로그
