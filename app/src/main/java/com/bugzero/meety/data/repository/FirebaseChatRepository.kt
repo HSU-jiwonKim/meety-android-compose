@@ -323,6 +323,18 @@ class FirebaseChatRepository : ChatRepository {
         fromUserId: String,
         toUserId: String
     ) {
+        // 이미 pending 초대가 존재하면 중복 발송 방지
+        val existing = db.collection("teamInvitations")
+            .whereEqualTo("teamId", teamId)
+            .whereEqualTo("toUserId", toUserId)
+            .whereEqualTo("status", "pending")
+            .get()
+            .await()
+        if (!existing.isEmpty) {
+            android.util.Log.d("ChatRepo", "이미 초대 중인 유저: $toUserId → 스킵")
+            return
+        }
+
         val data = mapOf(
             "teamId"     to teamId,
             "chatId"     to chatId,
@@ -440,23 +452,27 @@ class FirebaseChatRepository : ChatRepository {
 
             if (scoredUsers.isEmpty()) return emptyList()
 
-            // 4. users 컬렉션에서 프로필 정보 병렬 fetch
-            scoredUsers.mapNotNull { scored ->
-                try {
-                    val userDoc = db.collection("users").document(scored.userId).get().await()
-                    if (!userDoc.exists()) return@mapNotNull null
-                    MatchCandidate(
-                        userId          = scored.userId,
-                        name            = userDoc.getString("name") ?: "이름 없음",
-                        profileImageUrl = (userDoc.get("profileImages") as? List<*>)
-                                            ?.firstOrNull()?.toString() ?: "",
-                        mbti            = userDoc.getString("mbti") ?: "",
-                        department      = userDoc.getString("department") ?: "",
-                        matchScore      = scored.score
-                    )
-                } catch (e: Exception) {
-                    null
-                }
+            // 4. users 컬렉션에서 프로필 정보 병렬 fetch (순차 → coroutineScope + async)
+            kotlinx.coroutines.coroutineScope {
+                scoredUsers.map { scored ->
+                    async {
+                        try {
+                            val userDoc = db.collection("users").document(scored.userId).get().await()
+                            if (!userDoc.exists()) return@async null
+                            MatchCandidate(
+                                userId          = scored.userId,
+                                name            = userDoc.getString("name") ?: "이름 없음",
+                                profileImageUrl = (userDoc.get("profileImages") as? List<*>)
+                                                    ?.firstOrNull()?.toString() ?: "",
+                                mbti            = userDoc.getString("mbti") ?: "",
+                                department      = userDoc.getString("department") ?: "",
+                                matchScore      = scored.score
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                }.awaitAll().filterNotNull()
             }
         } catch (e: Exception) {
             android.util.Log.e("ChatRepo", "자동 매칭 후보자 로드 실패: ${e.message}")

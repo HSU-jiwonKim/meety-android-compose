@@ -255,21 +255,37 @@ fun ChatListScreen(
         ) {
             val inv = selectedInvitation
             if (inv != null) {
-                MeetingDetailScreen(
-                    team             = selectedInvitationTeam,
-                    status           = TeamActionStatus.INVITED,
-                    onBackClick      = { viewModel.clearSelectedInvitation() },
-                    onAcceptInvite   = {
-                        viewModel.acceptInvitation(inv.id, inv.teamId, inv.chatId) {
-                            viewModel.clearSelectedInvitation()
-                            onChatClick(inv.chatId, inv.teamName)
+                if (selectedInvitationTeam == null) {
+                    // 팀 정보 로딩 중 — 전체 화면 스피너로 대기
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFFA78BFA))
+                            Spacer(Modifier.height(12.dp))
+                            Text("팀 정보를 불러오는 중...", fontSize = 14.sp, color = Color(0xFF6B7280))
                         }
-                    },
-                    onRejectInvite   = {
-                        viewModel.rejectInvitation(inv.id)
-                        viewModel.clearSelectedInvitation()
                     }
-                )
+                } else {
+                    MeetingDetailScreen(
+                        team             = selectedInvitationTeam,
+                        status           = TeamActionStatus.INVITED,
+                        onBackClick      = { viewModel.clearSelectedInvitation() },
+                        onAcceptInvite   = {
+                            viewModel.acceptInvitation(inv.id, inv.teamId, inv.chatId) {
+                                viewModel.clearSelectedInvitation()
+                                onChatClick(inv.chatId, inv.teamName)
+                            }
+                        },
+                        onRejectInvite   = {
+                            viewModel.rejectInvitation(inv.id)
+                            viewModel.clearSelectedInvitation()
+                        }
+                    )
+                }
             }
         }
     }
