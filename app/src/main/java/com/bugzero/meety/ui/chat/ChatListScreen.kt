@@ -3,6 +3,8 @@ package com.bugzero.meety.ui.chat
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
@@ -41,8 +45,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -60,17 +68,17 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.bugzero.meety.ui.feed.FeedConstants
+import com.bugzero.meety.ui.feed.MeetingDetailScreen
+import com.bugzero.meety.ui.feed.TeamActionStatus
 import com.google.firebase.auth.FirebaseAuth
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 
 @Composable
 fun ChatListScreen(
@@ -94,6 +102,9 @@ fun ChatListScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val friendList by viewModel.friendList.collectAsState()
     val isLoadingFriends by viewModel.isLoadingFriends.collectAsState()
+    val pendingInvitations by viewModel.pendingInvitations.collectAsState()
+    val selectedInvitationTeam by viewModel.selectedInvitationTeam.collectAsState()
+    val selectedInvitation by viewModel.selectedInvitation.collectAsState()
 
     var showFriendScreen by remember { mutableStateOf(false) }
 
@@ -140,7 +151,7 @@ fun ChatListScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) Color(0xFF1F2937) else Color(0xFFF3F4F6))
+                            .background(if (isSelected) Color(0xFF7C3AED) else Color(0xFFF3F4F6))
                             .clickable { selectedFilter = filter }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -169,16 +180,27 @@ fun ChatListScreen(
                     errorMessage != null -> {
                         ChatErrorView(message = errorMessage!!, modifier = Modifier.align(Alignment.Center))
                     }
-                    filteredChatList.isEmpty() -> {
-                        // 필터링된 결과가 없을 때
+                    // 초대도 없고 채팅도 없을 때만 빈 화면
+                    filteredChatList.isEmpty() && pendingInvitations.isEmpty() -> {
                         ChatEmptyView(modifier = Modifier.align(Alignment.Center))
                     }
                     else -> {
-                        // ✨ 3. 전체 목록(chatList) 대신 필터링된 목록(filteredChatList) 사용
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(vertical = 8.dp)
                         ) {
+                            // ── 대기 중인 초대 섹션 (전체 필터일 때만, 초대가 있을 때만) ──
+                            if (selectedFilter == "전체" && pendingInvitations.isNotEmpty()) {
+                                item {
+                                    PendingInvitationsSection(
+                                        invitations = pendingInvitations,
+                                        onAccept    = { inv -> viewModel.acceptInvitation(inv.id, inv.teamId, inv.chatId) {} },
+                                        onReject    = { inv -> viewModel.rejectInvitation(inv.id) },
+                                        onTapDetail = { inv -> viewModel.selectInvitation(inv) }
+                                    )
+                                }
+                            }
+
                             items(items = filteredChatList, key = { it.id }) { chat ->
                                 ChatListItem(
                                     chat = chat,
@@ -227,6 +249,48 @@ fun ChatListScreen(
                 }
             )
         }
+
+        // ── 초대 상세보기 오버레이 (MeetingDetailScreen, INVITED 상태) ──
+        AnimatedVisibility(
+            visible = selectedInvitation != null,
+            enter   = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit    = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            val inv = selectedInvitation
+            if (inv != null) {
+                if (selectedInvitationTeam == null) {
+                    // 팀 정보 로딩 중 — 전체 화면 스피너로 대기
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFFA78BFA))
+                            Spacer(Modifier.height(12.dp))
+                            Text("팀 정보를 불러오는 중...", fontSize = 14.sp, color = Color(0xFF6B7280))
+                        }
+                    }
+                } else {
+                    MeetingDetailScreen(
+                        team             = selectedInvitationTeam,
+                        status           = TeamActionStatus.INVITED,
+                        onBackClick      = { viewModel.clearSelectedInvitation() },
+                        onAcceptInvite   = {
+                            viewModel.acceptInvitation(inv.id, inv.teamId, inv.chatId) {
+                                viewModel.clearSelectedInvitation()
+                                onChatClick(inv.chatId, inv.teamName)
+                            }
+                        },
+                        onRejectInvite   = {
+                            viewModel.rejectInvitation(inv.id)
+                            viewModel.clearSelectedInvitation()
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -239,14 +303,29 @@ private fun ChatListItem(chat: ChatPreview, timeText: String, onClick: () -> Uni
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(FeedConstants.GradientPurplePink),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = chat.emoji, fontSize = 24.sp)
+        val imageUrl = chat.imageUrl
+
+        if (imageUrl.isNotEmpty()) {
+            // DB에 등록된 팀 사진이 있을 때 (동그라미에 꽉 차게!)
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "채팅방 프로필 이미지",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+            )
+        } else {
+            // 등록된 사진이 없어서 기본값일 때 (기존 핑크색 배경 + 이모지)
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(FeedConstants.GradientPurplePink),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = chat.emoji, fontSize = 24.sp)
+            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -285,15 +364,17 @@ private fun ChatListItem(chat: ChatPreview, timeText: String, onClick: () -> Uni
         Spacer(modifier = Modifier.width(8.dp))
 
         Column(horizontalAlignment = Alignment.End) {
-            Text(text = timeText, fontSize = 12.sp, color = Color.LightGray)
+            Text(text = timeText, fontSize = 12.sp, color = Color(0xFF9CA3AF))
             if (chat.unreadCount > 0) {
                 Box(
                     modifier = Modifier
                         .padding(top = 4.dp)
+                        .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
                         .background(Color(0xFFA78BFA), CircleShape)
-                        .padding(horizontal = 6.dp)
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "${chat.unreadCount}", color = Color.White, fontSize = 11.sp)
+                    Text(text = "${chat.unreadCount}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -508,6 +589,100 @@ private fun FriendSelectionFullScreen(
                 }
             }
         }
+    }
+}
+
+// ── 대기 중인 팀 초대 섹션 ──────────────────────────────────────────
+
+@Composable
+private fun PendingInvitationsSection(
+    invitations: List<TeamInvitation>,
+    onAccept: (TeamInvitation) -> Unit,
+    onReject: (TeamInvitation) -> Unit,
+    onTapDetail: (TeamInvitation) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        // 섹션 헤더
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("💌 받은 초대", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937))
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFFA78BFA), CircleShape)
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            ) {
+                Text("${invitations.size}", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // 초대 카드 목록
+        invitations.forEach { inv ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF5F3FF))
+                    .clickable { onTapDetail(inv) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 팀 아이콘
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(FeedConstants.GradientPurplePink),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(inv.teamEmoji, fontSize = 20.sp)
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                // 팀 이름 + 안내 문구
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(inv.teamName, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color(0xFF1F2937))
+                    Text("팀원 초대장이 도착했어요", fontSize = 12.sp, color = Color(0xFF7C3AED))
+                }
+
+                // 거절 / 수락 버튼
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick        = { onReject(inv) },
+                        shape          = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier       = Modifier.height(36.dp)
+                    ) {
+                        Text("거절", fontSize = 13.sp, color = Color(0xFF6B7280))
+                    }
+                    Button(
+                        onClick        = { onAccept(inv) },
+                        shape          = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier       = Modifier.height(36.dp),
+                        colors         = ButtonDefaults.buttonColors(containerColor = Color(0xFFA78BFA))
+                    ) {
+                        Text("수락", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        HorizontalDivider(
+            modifier  = Modifier.padding(top = 4.dp),
+            color     = Color(0xFFF3F4F6),
+            thickness = 1.dp
+        )
     }
 }
 

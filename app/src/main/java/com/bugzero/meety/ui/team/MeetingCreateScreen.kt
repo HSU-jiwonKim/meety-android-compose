@@ -166,10 +166,9 @@ fun MeetingCreateScreen(
                             teamName = teamName.trim(),
                             description = teamDescription.trim(),
                             tags = selectedTags.toList(),
+                            imageUri = selectedPhotoUri, // ✨ 1. 아까 빼먹었던 사진 데이터를 여기서 딱 넘겨줍니다!
                             onSuccess = { teamId ->
-                                selectedPhotoUri?.let { uri ->
-                                    teamViewModel.updateTeamProfileImage(teamId, uri)
-                                }
+                                // ✨ 2. 뷰모델이 알아서 팀 만들고 사진까지 다 올려주니까, 여기선 깔끔하게 다음 화면으로 넘어가기만 하면 끝!
                                 onCreateTeamClick()
                             },
                             onFailure = { errorMessage ->

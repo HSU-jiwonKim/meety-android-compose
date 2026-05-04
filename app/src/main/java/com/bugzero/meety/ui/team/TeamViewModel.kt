@@ -97,6 +97,7 @@ class TeamViewModel(
         teamName: String,
         description: String,
         tags: List<String>,
+        imageUri: Uri?, // ✨ 1. 사진(Uri)을 받을 수 있는 바구니(파라미터)를 추가했어요!
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -107,9 +108,29 @@ class TeamViewModel(
             description = description,
             tags = tags,
             onSuccess = { teamId ->
-                _message.value = "팀이 생성되었습니다."
-                _isLoading.value = false
-                onSuccess(teamId)
+                // ✨ 2. 방이 성공적으로 만들어졌다면, 선택한 사진이 있는지 확인합니다!
+                if (imageUri != null) {
+                    // 사진이 있다면, 만들어진 팀(teamId)에 바로 사진 업로드 콤보 공격!
+                    repository.updateTeamProfileImage(
+                        teamId = teamId,
+                        imageUri = imageUri,
+                        onSuccess = {
+                            _message.value = "팀과 사진이 성공적으로 생성되었습니다!"
+                            _isLoading.value = false
+                            onSuccess(teamId)
+                        },
+                        onFailure = { errorMsg ->
+                            _message.value = "팀은 만들어졌으나 사진 업로드에 실패했습니다: $errorMsg"
+                            _isLoading.value = false
+                            onSuccess(teamId) // 그래도 팀은 만들어졌으니 다음 화면으로 넘겨줍니다.
+                        }
+                    )
+                } else {
+                    // 사진을 선택하지 않고 그냥 만들었을 때
+                    _message.value = "팀이 생성되었습니다."
+                    _isLoading.value = false
+                    onSuccess(teamId)
+                }
             },
             onFailure = {
                 _message.value = it

@@ -36,6 +36,7 @@ import com.bugzero.meety.ui.call.CallViewModel
 import com.bugzero.meety.ui.chat.ChatListScreen
 import com.bugzero.meety.ui.chat.ChatRoomScreen
 import com.bugzero.meety.ui.chat.ScheduleSyncScreen
+import com.bugzero.meety.ui.chat.TeamScheduleScreen // ✨ 새로 추가한 화면 임포트!
 import com.bugzero.meety.ui.feed.FeedScreen
 import com.bugzero.meety.ui.feed.MeetingDetailScreen
 import com.bugzero.meety.ui.feed.ProfileEditScreen
@@ -60,6 +61,7 @@ object Routes {
     const val CHAT_LIST = "chat_list"
     const val CHAT_ROOM = "chat_room"
     const val SCHEDULE_SYNC = "schedule_sync"
+    const val TEAM_SCHEDULE = "team_schedule" // ✨ 팀 공강 추천 화면 경로 추가!
     const val CALL = "call"   // call/{chatId}/{callType}/{isIncoming}
 }
 
@@ -479,6 +481,13 @@ fun NavGraph(
                                 navController.navigate("${Routes.CALL}/$chatId/voice/false")
                             }
                         },
+
+                        // ✨ 팀 공강 추천 버튼 클릭 시 경로 추가 완료!
+                        onScheduleSyncClick = { memberIds ->
+                            val uidsString = memberIds.joinToString(",")
+                            navController.navigate("${Routes.TEAM_SCHEDULE}/$uidsString")
+                        },
+
                         onAcceptCall = { cId, callType ->
                             if (isCallClickAllowed()) {
                                 navController.navigate("${Routes.CALL}/$cId/$callType/true")
@@ -493,6 +502,21 @@ fun NavGraph(
                     )
                 }
             }
+
+            // ✨ 공강 추천(팀 스케줄) 화면 목적지 추가 완료!
+            composable(
+                route = "${Routes.TEAM_SCHEDULE}/{uids}",
+                arguments = listOf(navArgument("uids") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val uidsString = backStackEntry.arguments?.getString("uids") ?: ""
+                val participantIds = uidsString.split(",").filter { it.isNotBlank() }
+
+                TeamScheduleScreen(
+                    participantIds = participantIds,
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
             composable(Routes.SCHEDULE_SYNC) {
                 ScheduleSyncScreen(
                     onBackClick = { navController.popBackStack() }

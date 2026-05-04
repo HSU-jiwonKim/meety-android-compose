@@ -61,6 +61,7 @@ fun ChatRoomScreen(
     onBackClick: () -> Unit = {},
     onVideoCallClick: () -> Unit = {},
     onVoiceCallClick: () -> Unit = {},
+    onScheduleSyncClick: (List<String>) -> Unit = {},
     onAcceptCall: (chatId: String, callType: String) -> Unit = { _, _ -> },
     onJoinCall: (chatId: String, callType: String) -> Unit = { _, _ -> },
     viewModel: ChatViewModel = viewModel(),
@@ -77,10 +78,16 @@ fun ChatRoomScreen(
     // ✨ 친구 목록 상태 가져오기
     val friendList by viewModel.friendList.collectAsState()
 
+    // 팀원 자동 매칭
+    val matchCandidates by viewModel.matchCandidates.collectAsState()
+    val isLoadingCandidates by viewModel.isLoadingCandidates.collectAsState()
+    val currentTeamId by viewModel.currentTeamId.collectAsState()
+
     // 시트 제어 상태
     var showManagementSheet by remember { mutableStateOf(false) }
     var showMemberSelectionSheet by remember { mutableStateOf(false) }
     var showInviteSheet by remember { mutableStateOf(false) } // ✨ 초대 시트 상태 추가
+    var showAutoMatchingSheet by remember { mutableStateOf(false) } // 팀원 자동 매칭 시트
     var selectionMode by remember { mutableStateOf("kick") }
 
     // 수신 통화 감지
@@ -183,11 +190,22 @@ fun ChatRoomScreen(
                     coroutineScope.launch { drawerState.close() }
                     showInviteSheet = true
                 },
+                onAutoMatchingClick = {
+                    val teamIdToUse = currentTeamId.ifBlank { chatId }
+                    viewModel.loadMatchCandidates(teamIdToUse)
+                    coroutineScope.launch { drawerState.close() }
+                    showAutoMatchingSheet = true
+                },
                 onAcceptRequest = { viewModel.acceptRequest(it) },
                 onRejectRequest = { viewModel.rejectRequest(it) },
                 onTransferClick = {
                     coroutineScope.launch { drawerState.close() }
                     showManagementSheet = true
+                },
+                onScheduleSyncClick = {
+                    coroutineScope.launch { drawerState.close() } // 1. 서랍 닫기
+                    val memberIds = participants.map { it.userId } // 2. 현재 방에 있는 사람들의 UID만 뽑아내기
+                    onScheduleSyncClick(memberIds) // 3. 그 UID 목록을 들고 화면 이동!
                 },
                 onLeaveClick = {
                     coroutineScope.launch { drawerState.close() }
@@ -259,7 +277,17 @@ fun ChatRoomScreen(
                     ) {
                         val reversedMessages = messages.reversed()
                         itemsIndexed(items = reversedMessages, key = { _, it -> it.id }) { index, message ->
-                            MessageItem(message, viewModel.formatTime(message.createdAt))
+                            MessageItem(
+                                message = message,
+                                timeText = viewModel.formatTime(message.createdAt),
+                                onProfileClick = {
+                                    val participant = participants.find { it.userId == message.senderId }
+                                    if (participant != null) {
+                                        selectedParticipant = participant
+                                        viewModel.loadUserProfile(message.senderId)
+                                    }
+                                }
+                            )
                             val showDateSeparator = if (index == reversedMessages.lastIndex) {
                                 true
                             } else {
@@ -405,17 +433,50 @@ fun ChatRoomScreen(
             onDismiss = { showInviteSheet = false }
         )
     }
+
+    // ── 팀원 자동 매칭 시트 ─────────────────────────────────────
+    if (showAutoMatchingSheet) {
+        val alreadyInChat = participants.map { it.userId }.toSet()
+        val teamIdToUse = currentTeamId.ifBlank { chatId }
+        AutoMatchingSheet(
+            teamName        = currentRoomName.ifEmpty { roomName },
+            candidates      = matchCandidates,
+            isLoading       = isLoadingCandidates,
+            alreadyInChat   = alreadyInChat,
+            onSendInvites   = { toUserIds ->
+                viewModel.sendTeamInvitations(
+                    teamId     = teamIdToUse,
+                    chatId     = chatId,
+                    teamName   = currentRoomName.ifEmpty { roomName },
+                    teamEmoji  = "👥",
+                    toUserIds  = toUserIds,
+                    onSuccess  = { showAutoMatchingSheet = false }
+                )
+            },
+            onDismiss = { showAutoMatchingSheet = false }
+        )
+    }
 }
 
 // ... 아래의 서랍, ParticipantRow, ReceivedLikeSheet, MessageInputBar, MessageItem, Dialog, ScrollToBottomButton 등은 기존과 동일
 
 @Composable
 private fun ChatRoomDrawer(
-    chatId: String, roomName: String, participants: List<ParticipantItem>,
-    requestList: List<ReceivedLikeItem>, isLeader: Boolean, isDirectChat: Boolean,
-    viewModel: ChatViewModel, onParticipantClick: (ParticipantItem) -> Unit,
-    onInviteClick: () -> Unit, onAcceptRequest: (String) -> Unit,
-    onRejectRequest: (String) -> Unit, onTransferClick: () -> Unit, onLeaveClick: () -> Unit
+    chatId: String,
+    roomName: String,
+    participants: List<ParticipantItem>,
+    requestList: List<ReceivedLikeItem>,
+    isLeader: Boolean,
+    isDirectChat: Boolean,
+    viewModel: ChatViewModel,
+    onParticipantClick: (ParticipantItem) -> Unit,
+    onInviteClick: () -> Unit,
+    onAutoMatchingClick: () -> Unit = {},
+    onAcceptRequest: (String) -> Unit,
+    onRejectRequest: (String) -> Unit,
+    onTransferClick: () -> Unit,
+    onScheduleSyncClick: () -> Unit,
+    onLeaveClick: () -> Unit
 ) {
     var showRequestSheet by remember { mutableStateOf(false) }
 
@@ -445,7 +506,26 @@ private fun ChatRoomDrawer(
                     Text("팀 채팅 관리", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF4B5563))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // ✨ 팀원 자동 매칭 (팀장 + 팀 채팅 전용)
+                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFEDE9FE)).clickable { onAutoMatchingClick() }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🤝", fontSize = 18.sp); Spacer(Modifier.width(10.dp))
+                    Text("팀원 자동 매칭", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF7C3AED))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
+
+            // ✨ 공강 추천 버튼 (팀장 구역 밖으로 꺼내서 누구나, 어떤 채팅방에서든 보이게 함!)
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFE0F2FE)).clickable { onScheduleSyncClick() }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("📅", fontSize = 18.sp); Spacer(Modifier.width(10.dp))
+                Text(text = "공강 추천", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth().clickable { onInviteClick() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFF3F4F6)), contentAlignment = Alignment.Center) {
@@ -525,7 +605,7 @@ private fun MessageInputBar(text: String, isSending: Boolean, onTextChange: (Str
 }
 
 @Composable
-private fun MessageItem(message: ChatMessage, timeText: String) {
+private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: () -> Unit = {}) {
     // 통화 로그 메시지 — 카카오톡 스타일 카드
     if (message.type == "call_log") {
         CallLogMessage(message = message, timeText = timeText)
@@ -559,10 +639,10 @@ private fun MessageItem(message: ChatMessage, timeText: String) {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFE5E7EB)),
+                    .background(Color(0xFFE5E7EB))
+                    .clickable { onProfileClick() }, // ✨ 프로필 클릭으로 다이얼로그 열기
                 contentAlignment = Alignment.Center
             ) {
-                // TODO: 나중에 실제 profileImage URL이 있으면 AsyncImage로 교체하세요!
                 Text(
                     text = message.senderName.take(1).ifEmpty { "👤" },
                     fontSize = 16.sp,
@@ -640,15 +720,125 @@ private fun MessageItem(message: ChatMessage, timeText: String) {
 }
 
 @Composable
-private fun ParticipantProfileDialog(participant: ParticipantItem, userProfile: UserProfileData?, isLoading: Boolean, isDirectChat: Boolean, onDismiss: () -> Unit) {
+private fun ParticipantProfileDialog(
+    participant: ParticipantItem,
+    userProfile: UserProfileData?,
+    isLoading: Boolean,
+    isDirectChat: Boolean,
+    onDismiss: () -> Unit
+) {
     Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = participant.name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("닫기") }
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // 정보 로딩 중일 때 빙글빙글 도는 UI
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF8B5CF6)) // 보라색
+                }
+            } else {
+                // DB에서 가져온 데이터 꺼내기 (null일 경우 기본값 세팅)
+                val name = userProfile?.name ?: participant.name
+                val initial = name.take(1).ifEmpty { "👤" }
+                val age = userProfile?.age?.toString() ?: "알 수 없음"
+                val department = userProfile?.department ?: "알 수 없음"
+                val mbti = userProfile?.mbti ?: "알 수 없음"
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // 1. 큰 보라색 프로필 동그라미
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF8B5CF6)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = initial, fontSize = 32.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 2. 이름과 나이
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFF3F4F6), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(text = "${age}세", fontSize = 12.sp, color = Color.DarkGray)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // 3. 통화 / 화상통화 버튼 아이콘
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEDE9FE)) // 연한 보라색 배경
+                                .clickable { /* TODO: 음성통화 연결 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Call, contentDescription = "음성통화", tint = Color(0xFF8B5CF6))
+                        }
+                        Spacer(modifier = Modifier.width(24.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEDE9FE))
+                                .clickable { /* TODO: 화상통화 연결 */ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Videocam, contentDescription = "화상통화", tint = Color(0xFF8B5CF6))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    HorizontalDivider(color = Color(0xFFF3F4F6))
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // 4. 학과 및 MBTI 정보
+                    ProfileDetailRow("학과", department)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ProfileDetailRow("MBTI", mbti)
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 5. 닫기 버튼
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("닫기", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                }
             }
         }
+    }
+}
+
+// 정보(학과, MBTI)를 양쪽 정렬로 예쁘게 그려주는 미니 부품!
+@Composable
+private fun ProfileDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 14.sp, color = Color.Gray)
+        Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937))
     }
 }
 
@@ -1369,6 +1559,184 @@ fun DateDivider(dateText: String) {
     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
         Box(modifier = Modifier.background(Color(0xFF9CA3AF).copy(alpha = 0.4f), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp)) {
             Text(text = dateText, fontSize = 12.sp, color = Color.White)
+        }
+    }
+}
+
+// ─── 팀원 자동 매칭 시트 ─────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AutoMatchingSheet(
+    teamName: String,
+    candidates: List<MatchCandidate>,
+    isLoading: Boolean,
+    alreadyInChat: Set<String>,
+    onSendInvites: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text("🤝 팀원 자동 매칭", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "\"$teamName\" 팀 태그·MBTI 기반으로 취향이 맞는 유저를 찾았어요",
+                fontSize = 13.sp, color = Color(0xFF6B7280)
+            )
+            Spacer(Modifier.height(16.dp))
+
+            when {
+                isLoading -> {
+                    Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFFA78BFA))
+                            Spacer(Modifier.height(12.dp))
+                            Text("취향 데이터 분석 중...", fontSize = 13.sp, color = Color(0xFF6B7280))
+                        }
+                    }
+                }
+                candidates.isEmpty() -> {
+                    Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("🔍", fontSize = 40.sp)
+                            Spacer(Modifier.height(12.dp))
+                            Text("조건에 맞는 후보자가 없어요", fontSize = 14.sp, color = Color(0xFF6B7280))
+                            Spacer(Modifier.height(4.dp))
+                            Text("팀 태그를 더 추가하면 더 많은 후보자를 찾을 수 있어요", fontSize = 12.sp, color = Color(0xFF9CA3AF))
+                        }
+                    }
+                }
+                else -> {
+                    // 최고 점수 기준으로 매칭률 계산
+                    val maxScore = candidates.maxOf { it.matchScore }.coerceAtLeast(1)
+
+                    LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                        items(items = candidates, key = { it.userId }) { candidate ->
+                            val alreadyMember = alreadyInChat.contains(candidate.userId)
+                            val matchPct = (candidate.matchScore * 100 / maxScore).coerceIn(0, 100)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (!alreadyMember) Modifier.clickable {
+                                            selectedIds = if (selectedIds.contains(candidate.userId))
+                                                selectedIds - candidate.userId
+                                            else selectedIds + candidate.userId
+                                        } else Modifier
+                                    )
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (!alreadyMember) {
+                                    Checkbox(
+                                        checked = selectedIds.contains(candidate.userId),
+                                        onCheckedChange = { checked ->
+                                            selectedIds = if (checked) selectedIds + candidate.userId
+                                            else selectedIds - candidate.userId
+                                        },
+                                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFFA78BFA))
+                                    )
+                                } else {
+                                    Spacer(Modifier.width(48.dp))
+                                }
+
+                                // 아바타
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFEDE9FE)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        candidate.name.take(1).ifEmpty { "?" },
+                                        fontSize = 18.sp,
+                                        color = Color(0xFF7C3AED),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        candidate.name,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF1F2937)
+                                    )
+                                    val detail = listOfNotNull(
+                                        candidate.department.takeIf { it.isNotBlank() },
+                                        candidate.mbti.takeIf { it.isNotBlank() }
+                                    ).joinToString(" · ")
+                                    if (detail.isNotBlank()) {
+                                        Text(detail, fontSize = 12.sp, color = Color(0xFF6B7280))
+                                    }
+                                    // 매칭률 바
+                                    if (!alreadyMember) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(4.dp)
+                                                    .clip(RoundedCornerShape(2.dp))
+                                                    .background(Color(0xFFE9D5FF))
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxHeight()
+                                                        .fillMaxWidth(matchPct / 100f)
+                                                        .background(Color(0xFFA78BFA))
+                                                )
+                                            }
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                "${matchPct}%",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF7C3AED),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (alreadyMember) {
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color(0xFFD1FAE5), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("이미 멤버", fontSize = 11.sp, color = Color(0xFF059669))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!isLoading && candidates.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick  = { onSendInvites(selectedIds.toList()) },
+                    enabled  = selectedIds.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape    = RoundedCornerShape(14.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFFA78BFA), disabledContainerColor = Color(0xFFD1D5DB))
+                ) {
+                    Text(
+                        text = if (selectedIds.isEmpty()) "초대할 후보자를 선택하세요" else "${selectedIds.size}명에게 초대 보내기",
+                        color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp
+                    )
+                }
+            }
         }
     }
 }

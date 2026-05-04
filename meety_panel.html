@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Meety 졸업작품 판넬</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: #e5e7eb;
+    color: #1f2937;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* A4 세로 (210 x 297 mm) */
+  .panel {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 16px auto;
+    background:
+      radial-gradient(circle at 0% 0%, #f3e8ff 0%, transparent 40%),
+      radial-gradient(circle at 100% 100%, #fce7f3 0%, transparent 45%),
+      linear-gradient(180deg, #faf5ff 0%, #fdf2f8 100%);
+    padding: 14mm 12mm 10mm 12mm;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle, rgba(124,58,237,0.06) 2px, transparent 2px),
+      radial-gradient(circle, rgba(236,72,153,0.05) 1.5px, transparent 1.5px);
+    background-size: 60px 60px, 90px 90px;
+    background-position: 0 0, 30px 30px;
+    pointer-events: none;
+  }
+
+  /* ─── 헤더 ─────────────────────────── */
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: start;
+    margin-bottom: 8mm;
+    position: relative;
+  }
+  .num-badge {
+    width: 38px; height: 38px;
+    border: 2px solid #7c3aed;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 22px;
+    color: #7c3aed;
+    background: white;
+  }
+  .title-block { padding-top: 2px; }
+  .title-row { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(168,85,247,0.35);
+  }
+  .logo-icon svg { width: 24px; height: 24px; fill: white; }
+  .title {
+    font-size: 44px; font-weight: 900;
+    background: linear-gradient(90deg, #7c3aed, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+  .subtitle {
+    font-size: 14px; font-weight: 600;
+    color: #4b5563;
+    margin-top: 6px;
+  }
+  .team-tag {
+    font-size: 11px; color: #7c3aed;
+    margin-top: 4px; letter-spacing: 1px;
+    font-weight: 600;
+  }
+
+  .header-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  }
+  .team-name {
+    font-size: 12px; font-weight: 700;
+    color: #1f2937;
+  }
+  .qr {
+    width: 60px; height: 60px;
+    background:
+      conic-gradient(#1f2937 0 25%, white 0 50%, #1f2937 0 75%, white 0),
+      repeating-linear-gradient(45deg, #1f2937 0 4px, white 4px 8px);
+    background-blend-mode: multiply;
+    border: 2px solid #1f2937;
+    border-radius: 4px;
+    position: relative;
+  }
+  .qr::after {
+    content: ""; position: absolute; inset: 8px;
+    background:
+      linear-gradient(#fff 50%, transparent 0) 0 0/10px 10px,
+      linear-gradient(90deg, #fff 50%, transparent 0) 0 0/10px 10px,
+      #1f2937;
+  }
+
+  /* ─── 섹션 공통 ───────────────────── */
+  .section-title {
+    font-size: 17px; font-weight: 800;
+    color: #7c3aed;
+    margin: 0 0 4mm 0;
+    padding-left: 8px;
+    border-left: 4px solid #ec4899;
+    line-height: 1;
+  }
+
+  /* ─── 작품 개요 ────────────────────── */
+  .overview {
+    margin-bottom: 7mm;
+    position: relative;
+  }
+  .overview-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 6mm;
+    align-items: start;
+  }
+  .overview-text {
+    font-size: 11px; line-height: 1.75;
+    color: #374151;
+  }
+  .overview-text b { color: #7c3aed; font-weight: 700; }
+  .overview-screens {
+    display: flex; gap: 6px; justify-content: flex-end;
+  }
+
+  /* ─── 작품 설명 (6-grid) ──────────── */
+  .features {
+    margin-bottom: 7mm;
+  }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5mm 4mm;
+  }
+  .feature {
+    text-align: center;
+  }
+  .feature-frame {
+    background: white;
+    border-radius: 10px;
+    padding: 6px;
+    box-shadow: 0 2px 8px rgba(124,58,237,0.08);
+    height: 165px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 6px;
+  }
+  .feature h3 {
+    font-size: 13px; font-weight: 800;
+    color: #1f2937;
+    margin-bottom: 3px;
+  }
+  .feature p {
+    font-size: 9.5px; line-height: 1.45;
+    color: #4b5563;
+  }
+
+  /* ─── 폰 목업 ─────────────────────── */
+  .phone {
+    width: 75px; height: 150px;
+    border: 2px solid #1f2937;
+    border-radius: 11px;
+    background: white;
+    overflow: hidden;
+    position: relative;
+    display: flex; flex-direction: column;
+  }
+  .phone .status {
+    height: 8px;
+    background: #f3f4f6;
+    flex-shrink: 0;
+  }
+  .phone .top-bar {
+    height: 14px;
+    background: white;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 5px;
+    flex-shrink: 0;
+  }
+  .phone .logo-mini {
+    width: 9px; height: 9px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    border-radius: 2px;
+  }
+  .phone .logo-text {
+    font-size: 7px; font-weight: 800;
+    background: linear-gradient(90deg, #7c3aed, #ec4899);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .phone .body {
+    flex: 1;
+    background: #fdf4ff;
+    padding: 4px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .phone .nav {
+    height: 14px;
+    background: white;
+    border-top: 1px solid #f3f4f6;
+    display: flex; align-items: center; justify-content: space-around;
+    flex-shrink: 0;
+  }
+  .phone .nav-dot {
+    width: 5px; height: 5px;
+    background: #d1d5db;
+    border-radius: 50%;
+  }
+  .phone .nav-dot.active {
+    background: #7c3aed;
+  }
+
+  /* phone variants */
+  .phone-splash .body {
+    background: linear-gradient(160deg, #a855f7 0%, #ec4899 100%);
+    align-items: center; justify-content: center;
+    padding: 0;
+  }
+  .phone-splash .splash-icon {
+    width: 22px; height: 22px;
+    background: rgba(255,255,255,0.25);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 4px;
+  }
+  .phone-splash .splash-icon::after {
+    content: ""; width: 11px; height: 11px;
+    background: white;
+    clip-path: path('M5.5 2C3.5 2 2 3.5 2 5.5c0 3 5.5 5.5 5.5 5.5S13 8.5 13 5.5C13 3.5 11.5 2 9.5 2 8.5 2 8 2.5 7.5 3 7 2.5 6.5 2 5.5 2z');
+  }
+  .phone-splash .splash-title {
+    color: white; font-size: 9px; font-weight: 800;
+  }
+  .phone-splash .splash-sub {
+    color: rgba(255,255,255,0.85);
+    font-size: 5px; margin-top: 1px;
+  }
+
+  .feed-tabs {
+    display: flex; gap: 2px; margin-bottom: 3px;
+  }
+  .feed-tab {
+    flex: 1; height: 9px; border-radius: 999px;
+    background: white;
+    font-size: 4px; color: #6b7280;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .feed-tab.active {
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    color: white;
+  }
+  .feed-card {
+    flex: 1;
+    background: linear-gradient(180deg, #6b7280, #1f2937);
+    border-radius: 6px;
+    padding: 4px;
+    color: white;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    margin-bottom: 3px;
+    position: relative;
+    overflow: hidden;
+  }
+  .feed-card::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 30% 30%, #fbbf24 0 6px, transparent 7px),
+      radial-gradient(circle at 50% 35%, #f472b6 0 5px, transparent 6px),
+      radial-gradient(circle at 70% 30%, #60a5fa 0 6px, transparent 7px);
+  }
+  .feed-card-title {
+    font-size: 6px; font-weight: 800;
+    position: relative; z-index: 1;
+  }
+  .feed-card-sub {
+    font-size: 4px;
+    position: relative; z-index: 1;
+  }
+  .feed-tags { display: flex; gap: 2px; margin-top: 2px; position: relative; z-index: 1; }
+  .feed-tag {
+    background: rgba(255,255,255,0.2);
+    border-radius: 999px;
+    padding: 0 3px;
+    font-size: 3.5px;
+  }
+  .feed-actions {
+    display: flex; gap: 4px; justify-content: center;
+  }
+  .feed-btn {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: white;
+    border: 1px solid #ec4899;
+  }
+  .feed-btn.heart {
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+  }
+
+  .friend-search {
+    height: 10px; background: white;
+    border: 1px solid #e9d5ff;
+    border-radius: 999px;
+    margin-bottom: 3px;
+  }
+  .friend-item {
+    display: flex; align-items: center; gap: 3px;
+    background: white; border-radius: 5px;
+    padding: 3px; margin-bottom: 2px;
+  }
+  .friend-avatar {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    flex-shrink: 0;
+  }
+  .friend-info { flex: 1; }
+  .friend-name {
+    font-size: 5px; font-weight: 700; color: #1f2937;
+    line-height: 1;
+  }
+  .friend-bio {
+    font-size: 3.5px; color: #9ca3af;
+    margin-top: 1px; line-height: 1;
+  }
+
+  .form-card {
+    background: white;
+    border-radius: 5px;
+    padding: 4px;
+    margin-bottom: 3px;
+  }
+  .form-label {
+    font-size: 5px; font-weight: 700; color: #1f2937;
+    margin-bottom: 2px;
+  }
+  .form-input {
+    height: 7px; background: #f3f4f6;
+    border-radius: 3px;
+  }
+  .form-photo {
+    height: 25px; background: #f9fafb;
+    border: 1px dashed #d1d5db;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: #9ca3af; font-size: 5px;
+  }
+
+  .chat-tabs {
+    display: flex; gap: 2px; margin-bottom: 3px;
+  }
+  .chat-tab {
+    height: 8px; border-radius: 999px;
+    padding: 0 4px;
+    font-size: 4px; color: #6b7280;
+    background: #f3f4f6;
+    display: flex; align-items: center;
+  }
+  .chat-tab.active { background: #1f2937; color: white; }
+  .chat-item {
+    display: flex; align-items: center; gap: 3px;
+    padding: 2px 0;
+    border-bottom: 0.5px solid #f3f4f6;
+  }
+  .chat-avatar {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 6px; font-weight: 800;
+  }
+  .chat-info { flex: 1; }
+  .chat-name {
+    font-size: 5px; font-weight: 700; color: #1f2937;
+    line-height: 1;
+  }
+  .chat-msg {
+    font-size: 3.5px; color: #9ca3af;
+    margin-top: 1px;
+  }
+  .chat-time {
+    font-size: 3px; color: #d1d5db;
+  }
+
+  .chat-header {
+    display: flex; align-items: center; gap: 3px;
+    padding-bottom: 3px;
+    border-bottom: 0.5px solid #f3f4f6;
+    margin-bottom: 3px;
+  }
+  .chat-header-name {
+    flex: 1; font-size: 6px; font-weight: 700;
+  }
+  .chat-icon {
+    width: 8px; height: 8px;
+    background: #a855f7;
+    border-radius: 2px;
+  }
+  .place-card {
+    background: white;
+    border-radius: 4px;
+    padding: 3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 3px;
+  }
+  .place-pin {
+    display: inline-block;
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    color: white;
+    font-size: 4px; font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 999px;
+    margin-bottom: 2px;
+  }
+  .place-row { display: flex; gap: 3px; }
+  .place-thumb {
+    width: 14px; height: 14px;
+    background: linear-gradient(135deg, #fbbf24, #ef4444);
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .place-info { flex: 1; }
+  .place-cat { font-size: 3.5px; color: #9ca3af; }
+  .place-name { font-size: 5px; font-weight: 700; color: #1f2937; line-height: 1; }
+  .place-addr { font-size: 3.5px; color: #6b7280; margin-top: 1px; }
+  .place-link {
+    margin-top: 2px;
+    background: #f3e8ff;
+    color: #7c3aed;
+    font-size: 3.5px;
+    padding: 1px 3px;
+    border-radius: 3px;
+    text-align: center;
+  }
+
+  .profile-banner {
+    height: 28px;
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    border-radius: 6px 6px 0 0;
+    position: relative;
+    margin-bottom: 12px;
+  }
+  .profile-avatar {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid white;
+    position: absolute;
+    bottom: -9px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .profile-avatar::after {
+    content: "";
+    width: 8px; height: 8px;
+    background: #d1d5db;
+    border-radius: 50%;
+  }
+  .profile-card {
+    background: white; border-radius: 5px;
+    padding: 4px; margin-bottom: 3px;
+    text-align: center;
+  }
+  .profile-name {
+    font-size: 6px; font-weight: 800; color: #1f2937;
+  }
+  .profile-age {
+    font-size: 4px; color: #6b7280; margin: 1px 0 2px;
+  }
+  .profile-row {
+    display: flex; align-items: center; justify-content: center; gap: 2px;
+    font-size: 4px; color: #4b5563;
+    margin: 1px 0;
+  }
+  .profile-icon {
+    width: 5px; height: 5px;
+    background: #a855f7;
+    border-radius: 1px;
+  }
+  .profile-tags { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
+  .profile-tag {
+    background: #f3e8ff; color: #7c3aed;
+    font-size: 4px; padding: 1px 4px;
+    border-radius: 999px;
+  }
+
+  /* ─── 기대효과 ──────────────────── */
+  .effects {
+    margin-bottom: 7mm;
+  }
+  .effects-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+  }
+  .effect {
+    background: white;
+    border-radius: 8px;
+    padding: 4mm;
+    box-shadow: 0 2px 8px rgba(124,58,237,0.06);
+    text-align: center;
+  }
+  .effect-badge {
+    display: inline-block;
+    background: linear-gradient(90deg, #a855f7, #ec4899);
+    color: white;
+    font-size: 11px; font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 999px;
+    margin-bottom: 5px;
+  }
+  .effect p {
+    font-size: 10px; line-height: 1.5;
+    color: #374151;
+  }
+
+  /* ─── 적용 기술 + 작품 구조 ─────── */
+  .tech-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6mm;
+    margin-bottom: 5mm;
+  }
+  .tech-table {
+    background: white;
+    border-radius: 8px;
+    padding: 4mm;
+    box-shadow: 0 2px 8px rgba(124,58,237,0.06);
+  }
+  .tech-row {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    padding: 3px 0;
+    font-size: 10px;
+    border-bottom: 1px dashed #e5e7eb;
+  }
+  .tech-row:last-child { border-bottom: none; }
+  .tech-row .k {
+    color: #7c3aed;
+    font-weight: 700;
+  }
+  .tech-row .v {
+    color: #374151;
+  }
+
+  .arch {
+    background: white;
+    border-radius: 8px;
+    padding: 4mm;
+    box-shadow: 0 2px 8px rgba(124,58,237,0.06);
+    position: relative;
+  }
+  .arch-svg { width: 100%; height: 100%; }
+
+  /* ─── 푸터 ───────────────────────── */
+  .footer {
+    margin-top: 5mm;
+    padding-top: 3mm;
+    border-top: 2px solid #d8b4fe;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+  }
+  .footer .label {
+    font-weight: 800;
+    color: #7c3aed;
+  }
+  .footer .members {
+    color: #374151;
+  }
+
+  /* 인쇄 */
+  @media print {
+    body { background: white; }
+    .panel { margin: 0; box-shadow: none; }
+    @page { size: A4 portrait; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="panel">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <div class="num-badge">3</div>
+    <div class="title-block">
+      <div class="title-row">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9.5C1 8 3 4 7 4c2 0 3.5 1 5 2.5C13.5 5 15 4 17 4c4 0 6 4 4.5 7.5C19 16.5 12 21 12 21z"/></svg>
+        </div>
+        <div class="title">Meety</div>
+      </div>
+      <div class="subtitle">AI 기반 대학생 팀 모임 매칭 서비스</div>
+      <div class="team-tag">모두를 위한 한 번의 만남, AI가 연결하다</div>
+    </div>
+    <div class="header-right">
+      <div class="team-name">Team. BugZero</div>
+      <div class="qr"></div>
+    </div>
+  </div>
+
+  <!-- 작품 개요 -->
+  <div class="overview">
+    <h2 class="section-title">작품 개요</h2>
+    <div class="overview-grid">
+      <div class="overview-text">
+        대학생들은 같은 관심사·목표를 가진 팀을 찾기 어렵고, 기존 SNS나 단톡방은 신뢰성과 매칭의 정확성이 떨어집니다.
+        Meety는 이러한 한계를 해결하고자 시작된 프로젝트로, <b>학생증 인증으로 검증된 사용자 풀</b>을 기반으로
+        <b>Gemini AI가 사용자의 MBTI·관심태그·스와이프 이력</b>을 학습해 개인별 맞춤 팀을 추천합니다.
+        매칭 후에는 <b>실시간 채팅·화상통화·중간지점 장소 추천</b>까지 단일 앱에서 제공해, 만남을 결심한 순간부터
+        실제 모임이 성사되기까지의 모든 단계를 끊김 없이 연결합니다.
+      </div>
+      <div class="overview-screens">
+        <!-- 미니 스플래시 -->
+        <div class="phone phone-splash">
+          <div class="status"></div>
+          <div class="body">
+            <div class="splash-icon"></div>
+            <div class="splash-title">Meety</div>
+            <div class="splash-sub">새로운 만남의 시작</div>
+          </div>
+          <div class="nav"></div>
+        </div>
+        <!-- 미니 프로필 -->
+        <div class="phone">
+          <div class="status"></div>
+          <div class="top-bar">
+            <div style="display:flex;gap:2px;align-items:center;">
+              <div class="logo-mini"></div>
+              <div class="logo-text">Meety</div>
+            </div>
+          </div>
+          <div class="body">
+            <div class="profile-banner">
+              <div class="profile-avatar"></div>
+            </div>
+            <div class="profile-card">
+              <div class="profile-name">김지원</div>
+              <div class="profile-age">26세</div>
+              <div class="profile-row"><div class="profile-icon"></div>한성대 · 컴공</div>
+              <div class="profile-row"><div class="profile-icon"></div>하남시</div>
+            </div>
+            <div class="profile-card">
+              <div class="profile-tags">
+                <div class="profile-tag">카페투어</div>
+                <div class="profile-tag">캠핑</div>
+              </div>
+            </div>
+          </div>
+          <div class="nav">
+            <div class="nav-dot"></div>
+            <div class="nav-dot"></div>
+            <div class="nav-dot"></div>
+            <div class="nav-dot"></div>
+            <div class="nav-dot active"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 작품 설명 -->
+  <div class="features">
+    <h2 class="section-title">작품 설명</h2>
+    <div class="features-grid">
+
+      <!-- 1. AI 팀 추천 (피드) -->
+      <div class="feature">
+        <div class="feature-frame">
+          <div class="phone">
+            <div class="status"></div>
+            <div class="top-bar">
+              <div style="display:flex;gap:2px;align-items:center;">
+                <div class="logo-mini"></div>
+                <div class="logo-text">Meety</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="feed-tabs">
+                <div class="feed-tab active">✦ 추천</div>
+                <div class="feed-tab">전체</div>
+              </div>
+              <div class="feed-card">
+                <div class="feed-card-title">코딩마스터즈 4명</div>
+                <div class="feed-card-sub">알고리즘·백엔드 스터디</div>
+                <div class="feed-tags">
+                  <div class="feed-tag">#코딩</div>
+                  <div class="feed-tag">#알고리즘</div>
+                </div>
+              </div>
+              <div class="feed-actions">
+                <div class="feed-btn"></div>
+                <div class="feed-btn"></div>
+                <div class="feed-btn heart"></div>
+              </div>
+            </div>
+            <div class="nav">
+              <div class="nav-dot active"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+            </div>
+          </div>
+        </div>
+        <h3>AI 팀 추천 (피드)</h3>
+        <p>Gemini AI가 좋아요·패스 이력을 학습해<br>사용자별 선호 점수를 누적, 매칭 확률<br>높은 팀을 우선 추천</p>
+      </div>
+
+      <!-- 2. 친구·스와이프 매칭 -->
+      <div class="feature">
+        <div class="feature-frame">
+          <div class="phone">
+            <div class="status"></div>
+            <div class="top-bar">
+              <div style="display:flex;gap:2px;align-items:center;">
+                <div class="logo-mini"></div>
+                <div class="logo-text">Meety</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="feed-tabs">
+                <div class="feed-tab active">친구 5</div>
+                <div class="feed-tab">친구 추가</div>
+              </div>
+              <div class="friend-search"></div>
+              <div class="friend-item">
+                <div class="friend-avatar"></div>
+                <div class="friend-info">
+                  <div class="friend-name">테스터3</div>
+                  <div class="friend-bio">테스터3 계정입니다.</div>
+                </div>
+              </div>
+              <div class="friend-item">
+                <div class="friend-avatar"></div>
+                <div class="friend-info">
+                  <div class="friend-name">정우진</div>
+                  <div class="friend-bio">123456789...</div>
+                </div>
+              </div>
+              <div class="friend-item">
+                <div class="friend-avatar"></div>
+                <div class="friend-info">
+                  <div class="friend-name">유예원</div>
+                  <div class="friend-bio">자기소개 없음</div>
+                </div>
+              </div>
+            </div>
+            <div class="nav">
+              <div class="nav-dot"></div>
+              <div class="nav-dot active"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+            </div>
+          </div>
+        </div>
+        <h3>친구 · 스와이프 매칭</h3>
+        <p>좋아요·패스 카드 스와이프로 간편 매칭,<br>실수해도 즉시 Undo 가능,<br>친구 목록·검색까지 한번에</p>
+      </div>
+
+      <!-- 3. 학생증 인증 -->
+      <div class="feature">
+        <div class="feature-frame">
+          <div class="phone">
+            <div class="status"></div>
+            <div class="top-bar">
+              <div style="display:flex;gap:2px;align-items:center;">
+                <div class="logo-mini"></div>
+                <div class="logo-text">Meety</div>
+              </div>
+            </div>
+            <div class="body">
+              <div style="font-size:6px;font-weight:800;color:#7c3aed;margin-bottom:3px;">팀 만들기</div>
+              <div class="form-card">
+                <div class="form-label">팀 이름</div>
+                <div class="form-input"></div>
+              </div>
+              <div class="form-card">
+                <div class="form-label">팀 소개</div>
+                <div class="form-input"></div>
+              </div>
+              <div class="form-card">
+                <div class="form-label">대표 사진</div>
+                <div class="form-photo">📷 업로드</div>
+              </div>
+            </div>
+            <div class="nav">
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot active"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+            </div>
+          </div>
+        </div>
+        <h3>팀 만들기 · 학생증 인증</h3>
+        <p>학생증 업로드 + 관리자 승인 플로우로<br>실제 학생만 가입,<br>팀 생성 시 사진·태그·소개 입력</p>
+      </div>
+
+      <!-- 4. 실시간 채팅 -->
+      <div class="feature">
+        <div class="feature-frame">
+          <div class="phone">
+            <div class="status"></div>
+            <div class="top-bar">
+              <div style="display:flex;gap:2px;align-items:center;">
+                <div class="logo-mini"></div>
+                <div class="logo-text">Meety</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="chat-tabs">
+                <div class="chat-tab active">전체</div>
+                <div class="chat-tab">팀</div>
+                <div class="chat-tab">개인</div>
+              </div>
+              <div class="chat-item">
+                <div class="chat-avatar">💬</div>
+                <div class="chat-info">
+                  <div class="chat-name">테스터</div>
+                  <div class="chat-msg">📍 차백도 노량진점</div>
+                </div>
+                <div class="chat-time">22:29</div>
+              </div>
+              <div class="chat-item">
+                <div class="chat-avatar">💬</div>
+                <div class="chat-info">
+                  <div class="chat-name">정우진</div>
+                  <div class="chat-msg">안녕하세요</div>
+                </div>
+                <div class="chat-time">15:47</div>
+              </div>
+              <div class="chat-item">
+                <div class="chat-avatar">👥</div>
+                <div class="chat-info">
+                  <div class="chat-name">테스터3 · 3명</div>
+                  <div class="chat-msg">ㅎㅇ</div>
+                </div>
+                <div class="chat-time">17:51</div>
+              </div>
+              <div class="chat-item">
+                <div class="chat-avatar">💬</div>
+                <div class="chat-info">
+                  <div class="chat-name">김지원</div>
+                  <div class="chat-msg">ㅇ</div>
+                </div>
+                <div class="chat-time">09:09</div>
+              </div>
+            </div>
+            <div class="nav">
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot active"></div>
+              <div class="nav-dot"></div>
+            </div>
+          </div>
+        </div>
+        <h3>실시간 채팅 + 통화</h3>
+        <p>Firestore 실시간 1:1·단체채팅,<br>Agora SDK 기반 음성·화상 통화,<br>FCM 푸시로 즉시 알림</p>
+      </div>
+
+      <!-- 5. 장소 추천 -->
+      <div class="feature">
+        <div class="feature-frame">
+          <div class="phone">
+            <div class="status"></div>
+            <div class="top-bar">
+              <div class="chat-header" style="margin:0;border:none;width:100%;">
+                <span style="font-size:6px;">←</span>
+                <div class="chat-header-name">테스터3</div>
+                <div class="chat-icon" style="background:#a855f7;"></div>
+              </div>
+            </div>
+            <div class="body" style="background:#f9fafb;">
+              <div class="place-card">
+                <div class="place-pin">📍 장소 추천</div>
+                <div class="place-row">
+                  <div class="place-thumb"></div>
+                  <div class="place-info">
+                    <div class="place-cat">카페</div>
+                    <div class="place-name">브릭샌드 서울역점</div>
+                    <div class="place-addr">용산구 한강대로 405</div>
+                  </div>
+                </div>
+                <div class="place-link">📍 네이버 지도</div>
+              </div>
+              <div class="place-card">
+                <div class="place-pin">📍 공유된 장소</div>
+                <div class="place-row">
+                  <div class="place-thumb" style="background:linear-gradient(135deg,#10b981,#84cc16);"></div>
+                  <div class="place-info">
+                    <div class="place-cat">한식</div>
+                    <div class="place-name">미미옥 신용산점</div>
+                    <div class="place-addr">용산구 한강대로15길</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="nav">
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot active"></div>
+              <div class="nav-dot"></div>
+            </div>
+          </div>
+        </div>
+        <h3>중간지점 장소 추천</h3>
+        <p>팀원 위치 중간 좌표 계산 +<br>네이버 지도 API로 카페·식당 추천,<br>각자 대중교통 소요시간 자동 산출</p>
+      </div>
+
+      <!-- 6. 프로필 / 시간표 -->
+      <div class="feature">
+        <div class="feature-frame">
+          <div class="phone">
+            <div class="status"></div>
+            <div class="top-bar">
+              <div style="display:flex;gap:2px;align-items:center;">
+                <div class="logo-mini"></div>
+                <div class="logo-text">Meety</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="profile-banner">
+                <div class="profile-avatar"></div>
+              </div>
+              <div class="profile-card">
+                <div class="profile-name">김지원</div>
+                <div class="profile-age">26세 · ENFP</div>
+                <div class="profile-row"><div class="profile-icon"></div>한성대 · 컴공</div>
+                <div class="profile-row"><div class="profile-icon"></div>170cm · 하남시</div>
+              </div>
+              <div class="profile-card">
+                <div style="font-size:5px;font-weight:700;color:#1f2937;text-align:left;margin-bottom:2px;">관심사</div>
+                <div class="profile-tags">
+                  <div class="profile-tag">카페투어</div>
+                  <div class="profile-tag">캠핑</div>
+                </div>
+              </div>
+            </div>
+            <div class="nav">
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot"></div>
+              <div class="nav-dot active"></div>
+            </div>
+          </div>
+        </div>
+        <h3>프로필 · 시간표 공유</h3>
+        <p>MBTI·키·지역·관심사 기반 프로필,<br>공강 시간 매칭으로 일정 조율,<br>사진 업로드는 Firebase Storage</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 기대효과 -->
+  <div class="effects">
+    <h2 class="section-title">기대효과</h2>
+    <div class="effects-grid">
+      <div class="effect">
+        <div class="effect-badge">신뢰 매칭</div>
+        <p>학생증 인증 기반<br>검증된 팀원 풀 형성</p>
+      </div>
+      <div class="effect">
+        <div class="effect-badge">AI 개인화</div>
+        <p>스와이프 데이터 학습으로<br>갈수록 정교해지는 추천</p>
+      </div>
+      <div class="effect">
+        <div class="effect-badge">원스톱 모임</div>
+        <p>매칭 → 채팅 → 통화 → 장소까지<br>단일 앱으로 모임 완성</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 적용 기술 + 작품 구조 -->
+  <div class="tech-section">
+    <div>
+      <h2 class="section-title">주요 적용 기술</h2>
+      <div class="tech-table">
+        <div class="tech-row"><div class="k">개발 도구</div><div class="v">Android Studio, Figma</div></div>
+        <div class="tech-row"><div class="k">언어</div><div class="v">Kotlin</div></div>
+        <div class="tech-row"><div class="k">UI</div><div class="v">Jetpack Compose, Material 3</div></div>
+        <div class="tech-row"><div class="k">비동기</div><div class="v">Coroutines + Flow</div></div>
+        <div class="tech-row"><div class="k">백엔드</div><div class="v">Firebase Auth · Firestore · Storage · FCM</div></div>
+        <div class="tech-row"><div class="k">AI</div><div class="v">Google Gemini API</div></div>
+        <div class="tech-row"><div class="k">실시간 통화</div><div class="v">Agora RTC SDK 4.3.2</div></div>
+        <div class="tech-row"><div class="k">지도/장소</div><div class="v">네이버 클라우드 + Local Search API</div></div>
+      </div>
+    </div>
+    <div>
+      <h2 class="section-title">작품 구조</h2>
+      <div class="arch">
+        <svg class="arch-svg" viewBox="0 0 320 220" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="grad" x1="0" x2="1">
+              <stop offset="0" stop-color="#a855f7"/>
+              <stop offset="1" stop-color="#ec4899"/>
+            </linearGradient>
+            <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 z" fill="#7c3aed"/>
+            </marker>
+          </defs>
+
+          <!-- Center: Android App -->
+          <rect x="120" y="90" width="80" height="40" rx="8" fill="url(#grad)"/>
+          <text x="160" y="108" text-anchor="middle" fill="white" font-size="11" font-weight="700" font-family="Noto Sans KR">Meety App</text>
+          <text x="160" y="121" text-anchor="middle" fill="white" font-size="8" font-family="Noto Sans KR">Compose · Kotlin</text>
+
+          <!-- Top: Firebase -->
+          <rect x="115" y="20" width="90" height="36" rx="6" fill="white" stroke="#fbbf24" stroke-width="2"/>
+          <text x="160" y="35" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="700" font-family="Noto Sans KR">🔥 Firebase</text>
+          <text x="160" y="48" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Noto Sans KR">Auth · Firestore · Storage · FCM</text>
+          <line x1="160" y1="56" x2="160" y2="88" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- Left: Gemini -->
+          <rect x="10" y="80" width="90" height="36" rx="6" fill="white" stroke="#3b82f6" stroke-width="2"/>
+          <text x="55" y="95" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="700" font-family="Noto Sans KR">🤖 Gemini AI</text>
+          <text x="55" y="108" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Noto Sans KR">팀 추천 · 점수 학습</text>
+          <line x1="100" y1="100" x2="118" y2="105" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- Right: Agora -->
+          <rect x="220" y="80" width="90" height="36" rx="6" fill="white" stroke="#10b981" stroke-width="2"/>
+          <text x="265" y="95" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="700" font-family="Noto Sans KR">📞 Agora RTC</text>
+          <text x="265" y="108" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Noto Sans KR">음성 · 화상 통화</text>
+          <line x1="220" y1="100" x2="202" y2="105" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+
+          <!-- Bottom Left: Naver -->
+          <rect x="40" y="160" width="100" height="36" rx="6" fill="white" stroke="#03c75a" stroke-width="2"/>
+          <text x="90" y="175" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="700" font-family="Noto Sans KR">🗺 Naver Maps</text>
+          <text x="90" y="188" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Noto Sans KR">지오코딩 · 장소 검색</text>
+          <line x1="140" y1="170" x2="135" y2="132" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- Bottom Right: GitHub -->
+          <rect x="180" y="160" width="100" height="36" rx="6" fill="white" stroke="#1f2937" stroke-width="2"/>
+          <text x="230" y="175" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="700" font-family="Noto Sans KR">💾 GitHub</text>
+          <text x="230" y="188" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Noto Sans KR">Git · Gradle KTS</text>
+          <line x1="190" y1="160" x2="190" y2="132" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="3,2"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <div class="footer">
+    <div class="label">지도교수</div>
+    <div class="members">○○○ 교수님</div>
+    <div class="label" style="margin-left:20px;">팀원 (BugZero)</div>
+    <div class="members">A(팀장) · B · C · D</div>
+    <div style="margin-left:auto;font-size:10px;color:#7c3aed;font-weight:700;">한성대학교 캡스톤 디자인 2026</div>
+  </div>
+
+</div>
+</body>
+</html>

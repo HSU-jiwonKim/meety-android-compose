@@ -1,6 +1,7 @@
 package com.bugzero.meety.ui.feed
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,7 +49,9 @@ fun MeetingDetailScreen(
     onLikeClick: () -> Unit = {},           // NONE: 좋아요
     onPassClick: () -> Unit = {},           // NONE: 패스
     onCancelLike: () -> Unit = {},          // LIKED: 좋아요 취소
-    onSendLikeFromPassed: () -> Unit = {}   // PASSED: 좋아요 전환
+    onSendLikeFromPassed: () -> Unit = {},  // PASSED: 좋아요 전환
+    onAcceptInvite: () -> Unit = {},        // INVITED: 수락
+    onRejectInvite: () -> Unit = {}         // INVITED: 거절
 ) {
     if (team == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -92,11 +95,13 @@ fun MeetingDetailScreen(
         },
         bottomBar = {
             DetailBottomBar(
-                status             = status,
-                onLikeClick        = onLikeClick,
-                onPassClick        = onPassClick,
-                onCancelLike       = onCancelLike,
-                onSendLikeFromPassed = onSendLikeFromPassed
+                status               = status,
+                onLikeClick          = onLikeClick,
+                onPassClick          = onPassClick,
+                onCancelLike         = onCancelLike,
+                onSendLikeFromPassed = onSendLikeFromPassed,
+                onAcceptInvite       = onAcceptInvite,
+                onRejectInvite       = onRejectInvite
             )
         }
     ) { padding ->
@@ -146,7 +151,9 @@ private fun DetailBottomBar(
     onLikeClick: () -> Unit,
     onPassClick: () -> Unit,
     onCancelLike: () -> Unit,
-    onSendLikeFromPassed: () -> Unit
+    onSendLikeFromPassed: () -> Unit,
+    onAcceptInvite: () -> Unit = {},
+    onRejectInvite: () -> Unit = {}
 ) {
     Surface(
         modifier  = Modifier.fillMaxWidth(),
@@ -252,6 +259,29 @@ private fun DetailBottomBar(
                         fontWeight = FontWeight.SemiBold)
                 }
             }
+
+            TeamActionStatus.INVITED -> {
+                // 팀 초대 받음 → 거절 / 수락하기
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick  = onRejectInvite,
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape    = RoundedCornerShape(14.dp)
+                    ) { Text("거절", color = Gray500, fontWeight = FontWeight.Bold) }
+
+                    Button(
+                        onClick  = onAcceptInvite,
+                        modifier = Modifier.weight(2f).height(52.dp),
+                        shape    = RoundedCornerShape(14.dp),
+                        colors   = ButtonDefaults.buttonColors(containerColor = Purple)
+                    ) { Text("🎉 수락하기", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                }
+            }
         }
     }
 }
@@ -264,11 +294,13 @@ private fun DetailBottomBar(
 private fun StatusBanner(status: TeamActionStatus) {
     val (icon, text, tint, bg) = when (status) {
         TeamActionStatus.LIKED   ->
-            BannerStyle(Icons.Default.Favorite,  "이미 좋아요를 보낸 팀이에요",  Purple,  Purple.copy(alpha = 0.08f))
+            BannerStyle(Icons.Default.Favorite,      "이미 좋아요를 보낸 팀이에요",  Purple,             Purple.copy(alpha = 0.08f))
         TeamActionStatus.PASSED  ->
-            BannerStyle(Icons.Default.Close,     "패스했던 팀이에요",            Gray500, Gray200)
+            BannerStyle(Icons.Default.Close,         "패스했던 팀이에요",            Gray500,            Gray200)
         TeamActionStatus.MY_TEAM ->
-            BannerStyle(Icons.Default.Groups,    "내가 소속된 팀이에요",         SkyBlue, SkyBlue.copy(alpha = 0.08f))
+            BannerStyle(Icons.Default.Groups,        "내가 소속된 팀이에요",         SkyBlue,            SkyBlue.copy(alpha = 0.08f))
+        TeamActionStatus.INVITED ->
+            BannerStyle(Icons.Default.Mail,          "이 팀에서 초대장을 보냈어요!", Color(0xFFD97706),   Color(0xFFFEF3C7))
         TeamActionStatus.NONE    -> return
     }
     Row(
@@ -297,64 +329,124 @@ private data class BannerStyle(
 
 @Composable
 private fun TeamInfoCard(team: Team) {
+    val colorIndex   = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
+    val avatarColors = FeedConstants.CardColorPalette[colorIndex]
+    val initial      = team.teamName.firstOrNull()?.toString() ?: "T"
+
     Card(
         modifier  = Modifier.fillMaxWidth(),
         shape     = RoundedCornerShape(20.dp),
         colors    = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
-        Column(
-            modifier            = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val colorIndex   = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
-            val avatarColors = FeedConstants.CardColorPalette[colorIndex]
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+            // ── 배너 + 아바타 오버랩 ──
+            // 배너 100dp, 아바타 반지름 48dp → 총 높이 148dp
             Box(
-                modifier            = Modifier.size(100.dp).clip(CircleShape),
-                contentAlignment    = Alignment.Center
+                modifier         = Modifier.fillMaxWidth().height(148.dp),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                if (team.teamProfileImage.isNotBlank()) {
-                    AsyncImage(
-                        model              = team.teamProfileImage,
-                        contentDescription = "팀 대표 사진",
-                        modifier           = Modifier.fillMaxSize(),
-                        contentScale       = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier         = Modifier.fillMaxSize()
-                            .background(Brush.verticalGradient(avatarColors)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text       = team.teamName.firstOrNull()?.toString() ?: "T",
-                            fontSize   = 40.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = Color.White
+                // 배너 영역 (상단 100dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .align(Alignment.TopCenter)
+                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                ) {
+                    if (team.teamProfileImage.isNotBlank()) {
+                        AsyncImage(
+                            model              = team.teamProfileImage,
+                            contentDescription = "팀 배너 사진",
+                            modifier           = Modifier.fillMaxSize(),
+                            contentScale       = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Brush.verticalGradient(avatarColors))
                         )
                     }
                 }
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(team.teamName, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Gray900)
-            Text("${team.memberIds.size}명", fontSize = 14.sp, color = Gray500)
-            if (team.description.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text(team.description, fontSize = 14.sp, color = Gray700)
-            }
-            Spacer(Modifier.height(10.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement   = Arrangement.spacedBy(6.dp)
-            ) {
-                team.tags.forEach { tag ->
-                    Box(
-                        modifier = Modifier
-                            .background(FeedConstants.LightPurpleBg, RoundedCornerShape(20.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) { Text(tag, fontSize = 12.sp, color = Purple) }
+
+                // 아바타 (96dp 원형, 흰 테두리 3dp)
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .border(3.dp, Color.White, CircleShape)
+                        .clip(CircleShape)
+                        .background(Brush.verticalGradient(avatarColors)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text       = initial,
+                        fontSize   = 36.sp,
+                        fontWeight = FontWeight.Bold,
+                        color      = Color.White
+                    )
                 }
             }
+
+            Spacer(Modifier.height(10.dp))
+
+            // 팀 이름
+            Text(
+                text       = team.teamName,
+                fontSize   = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color      = Gray900
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            // 팀원 수 배지 (보라 pill)
+            Box(
+                modifier = Modifier
+                    .background(FeedConstants.LightPurpleBg, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text       = "${team.memberIds.size}명",
+                    fontSize   = 13.sp,
+                    color      = Purple,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // 팀 소개 (중앙 정렬)
+            if (team.description.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text      = team.description,
+                    fontSize  = 14.sp,
+                    color     = Gray700,
+                    textAlign = TextAlign.Center,
+                    modifier  = Modifier.padding(horizontal = 20.dp)
+                )
+            }
+
+            // 태그 (중앙 정렬, # 접두사)
+            if (team.tags.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                FlowRow(
+                    modifier              = Modifier.padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement   = Arrangement.spacedBy(8.dp)
+                ) {
+                    team.tags.forEach { tag ->
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .background(FeedConstants.LightPurpleBg, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) { Text("#$tag", fontSize = 12.sp, color = Purple, fontWeight = FontWeight.Medium) }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
         }
     }
 }

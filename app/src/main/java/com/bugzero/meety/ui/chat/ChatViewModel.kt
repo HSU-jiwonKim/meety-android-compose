@@ -9,6 +9,7 @@ import com.bugzero.meety.data.repository.MeetingPlaceRepository
 import com.bugzero.meety.data.repository.PlaceResult
 import com.bugzero.meety.ui.team.FirebaseTeamRepository
 import com.bugzero.meety.ui.team.ReceivedLikeItem
+import com.bugzero.meety.ui.team.Team
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -95,6 +96,29 @@ class ChatViewModel(
     private val _isLoadingFriends = MutableStateFlow(false)
     val isLoadingFriends: StateFlow<Boolean> = _isLoadingFriends.asStateFlow()
 
+    // ── 현재 채팅방 메타 (chat 문서에서 읽어온 실제 값) ──
+    private val _currentTeamId = MutableStateFlow("")
+    val currentTeamId: StateFlow<String> = _currentTeamId.asStateFlow()
+
+    private val _currentChatType = MutableStateFlow("")   // "team" | "direct" | "group"
+    val currentChatType: StateFlow<String> = _currentChatType.asStateFlow()
+
+    // ── 팀원 자동 매칭 / 초대 ──
+    private val _pendingInvitations = MutableStateFlow<List<TeamInvitation>>(emptyList())
+    val pendingInvitations: StateFlow<List<TeamInvitation>> = _pendingInvitations.asStateFlow()
+
+    private val _matchCandidates = MutableStateFlow<List<MatchCandidate>>(emptyList())
+    val matchCandidates: StateFlow<List<MatchCandidate>> = _matchCandidates.asStateFlow()
+
+    private val _isLoadingCandidates = MutableStateFlow(false)
+    val isLoadingCandidates: StateFlow<Boolean> = _isLoadingCandidates.asStateFlow()
+
+    private val _selectedInvitation = MutableStateFlow<TeamInvitation?>(null)
+    val selectedInvitation: StateFlow<TeamInvitation?> = _selectedInvitation.asStateFlow()
+
+    private val _selectedInvitationTeam = MutableStateFlow<Team?>(null)
+    val selectedInvitationTeam: StateFlow<Team?> = _selectedInvitationTeam.asStateFlow()
+
     // ─── 장소 추천 ────────────────────────────────────────────────────────────
     private val _placeRecommendations = MutableStateFlow<List<PlaceResult>>(emptyList())
     val placeRecommendations: StateFlow<List<PlaceResult>> = _placeRecommendations.asStateFlow()
@@ -179,7 +203,7 @@ class ChatViewModel(
         if (userId.isNullOrBlank()) { clearForLoggedOutState(); return }
         likesListener?.remove(); likesListener = null
         _chatList.value = emptyList(); _requestList.value = emptyList(); _errorMessage.value = null
-        loadChatList(); loadRequestList(); saveFcmToken(); loadSavedPlaces()
+        loadChatList(); loadRequestList(); saveFcmToken(); loadSavedPlaces(); loadPendingInvitations()
     }
 
     private fun clearForLoggedOutState() {
@@ -188,6 +212,8 @@ class ChatViewModel(
         _participants.value = emptyList(); _friendList.value = emptyList(); _selectedUserProfile.value = null
         _isLoading.value = false; _isSending.value = false; _isLoadingFriends.value = false; _isLoadingProfile.value = false
         _errorMessage.value = null; _roomName.value = ""
+        _pendingInvitations.value = emptyList(); _matchCandidates.value = emptyList()
+        _selectedInvitation.value = null; _selectedInvitationTeam.value = null
     }
 
     fun clearError() { _errorMessage.value = null }
@@ -195,6 +221,8 @@ class ChatViewModel(
     fun enterChatRoom(chatId: String, roomName: String) {
         val userId = currentUserIdOrNull ?: return
         _roomName.value = roomName
+        _currentTeamId.value = ""
+        _currentChatType.value = ""
         observeMessages(chatId)
         loadParticipants(chatId)
         loadSavedPlaces()   // 찜 목록 Firestore에서 복원
@@ -338,6 +366,11 @@ class ChatViewModel(
                 val chatType = chatDoc.getString("type") ?: "group" // 기본값은 group
                 val isDirect = chatType == "direct" || chatId.startsWith("direct")
                 val isTeam = chatType == "team" // ✨ 팀 채팅인지 체크!
+
+                // 채팅 문서에서 실제 teamId, chatType 저장 (팀원 자동 매칭 시 사용)
+                val resolvedTeamId = chatDoc.getString("teamId")?.takeIf { it.isNotBlank() } ?: chatId
+                _currentTeamId.value = resolvedTeamId
+                _currentChatType.value = chatType
 
                 @Suppress("UNCHECKED_CAST")
                 val participantIds = chatDoc.get("participants") as? List<String> ?: return@launch
@@ -1243,5 +1276,115 @@ class ChatViewModel(
                 _errorMessage.value = "초대 실패: ${e.message}"
             }
         }
+    }
+
+    // ── 팀원 자동 매칭 / 초대 메서드 ──────────────────────────────
+
+    fun loadPendingInvitations() {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            repository.observePendingInvitations(userId)
+                .catch { e ->
+                    // 초대 로드 실패는 채팅 목록 전체 에러로 전파하지 않음 (조용히 처리)
+                    android.util.Log.e("ChatVM", "초대 목록 로드 실패: ${e.message}")
+                    _pendingInvitations.value = emptyList()
+                }
+                .collect { _pendingInvitations.value = it }
+        }
+    }
+
+    fun loadMatchCandidates(teamId: String) {
+        viewModelScope.launch {
+            _isLoadingCandidates.value = true
+            try {
+                _matchCandidates.value = repository.loadMatchCandidates(teamId)
+            } catch (e: Exception) {
+                _errorMessage.value = "후보자 목록 로드 실패: ${e.message}"
+            } finally {
+                _isLoadingCandidates.value = false
+            }
+        }
+    }
+
+    fun sendTeamInvitations(
+        teamId: String,
+        chatId: String,
+        teamName: String,
+        teamEmoji: String,
+        toUserIds: List<String>,
+        onSuccess: () -> Unit
+    ) {
+        val fromUserId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            try {
+                toUserIds.forEach { toUserId ->
+                    repository.sendTeamInvitation(
+                        teamId     = teamId,
+                        chatId     = chatId,
+                        teamName   = teamName,
+                        teamEmoji  = teamEmoji,
+                        fromUserId = fromUserId,
+                        toUserId   = toUserId
+                    )
+                }
+                withContext(Dispatchers.Main) { onSuccess() }
+            } catch (e: Exception) {
+                _errorMessage.value = "초대 전송 실패: ${e.message}"
+            }
+        }
+    }
+
+    fun acceptInvitation(invitationId: String, teamId: String, chatId: String, onSuccess: () -> Unit) {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            try {
+                repository.acceptInvitation(invitationId, userId, teamId, chatId)
+                loadChatList()
+                withContext(Dispatchers.Main) { onSuccess() }
+            } catch (e: Exception) {
+                _errorMessage.value = "수락 실패: ${e.message}"
+            }
+        }
+    }
+
+    fun rejectInvitation(invitationId: String) {
+        viewModelScope.launch {
+            try {
+                repository.rejectInvitation(invitationId)
+            } catch (e: Exception) {
+                _errorMessage.value = "거절 실패: ${e.message}"
+            }
+        }
+    }
+
+    fun selectInvitation(invitation: TeamInvitation) {
+        _selectedInvitation.value = invitation
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val doc = db.collection("teams").document(invitation.teamId).get().await()
+                if (doc.exists()) {
+                    @Suppress("UNCHECKED_CAST")
+                    _selectedInvitationTeam.value = Team(
+                        teamId           = doc.id,
+                        leaderId         = doc.getString("leaderId") ?: "",
+                        memberIds        = (doc.get("memberIds") as? List<String>) ?: emptyList(),
+                        mbtiTags         = (doc.get("mbtiTags") as? List<String>) ?: emptyList(),
+                        tags             = (doc.get("tags") as? List<String>) ?: emptyList(),
+                        teamProfileImage = doc.getString("teamProfileImage") ?: "",
+                        teamName         = doc.getString("teamName") ?: invitation.teamName,
+                        description      = doc.getString("description") ?: "",
+                        status           = doc.getString("status") ?: "active"
+                    )
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "팀 정보 로드 실패"
+            }
+        }
+    }
+
+    fun clearSelectedInvitation() {
+        _selectedInvitation.value = null
+        _selectedInvitationTeam.value = null
     }
 }

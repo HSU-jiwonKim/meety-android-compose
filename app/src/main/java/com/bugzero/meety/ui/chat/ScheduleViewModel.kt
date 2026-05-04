@@ -8,6 +8,11 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
+// ✨ 팀 공강 추천에서 사용하는 사용자 시간표 모델
+data class UserSchedule(
+    val schedule: Map<String, List<String>> = emptyMap()
+)
+
 class ScheduleViewModel : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
@@ -39,6 +44,10 @@ class ScheduleViewModel : ViewModel() {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // --- ✨ [신규 기능] 팀 전체 공강 상태 ---
+    private val _mergedBusyTimes = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val mergedBusyTimes: StateFlow<Map<String, List<String>>> = _mergedBusyTimes
 
     init {
         loadSchedule()
@@ -103,6 +112,29 @@ class ScheduleViewModel : ViewModel() {
             } finally {
                 _isSaving.value = false
             }
+        }
+    }
+
+    // --- ✨ [신규 로직] 팀 공강 데이터 합치기 ---
+    fun fetchTeamSchedules(memberIds: List<String>) {
+        viewModelScope.launch {
+            val combinedSchedule = mutableMapOf<String, MutableSet<String>>()
+            dayNames.forEach { combinedSchedule[it] = mutableSetOf() }
+
+            memberIds.forEach { uid ->
+                try {
+                    val document = db.collection("users").document(uid).get().await()
+                    @Suppress("UNCHECKED_CAST")
+                    val scheduleMap = document.get("schedule") as? Map<String, List<String>>
+
+                    scheduleMap?.forEach { (day, times) ->
+                        combinedSchedule[day]?.addAll(times)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ScheduleLog", "데이터 로드 실패: ${e.message}")
+                }
+            }
+            _mergedBusyTimes.value = combinedSchedule.mapValues { it.value.toList().sorted() }
         }
     }
 }
