@@ -152,17 +152,19 @@ fun ChatRoomScreen(
         )
     }
 
-    // 수신 통화 다이얼로그
-    incomingCall?.let { (callType, _) ->
-        IncomingCallDialog(
-            callType = callType,
-            onAccept  = {
-                callViewModel.clearIncomingCall()
-                onAcceptCall(chatId, callType)
-            },
-            onDecline = { callViewModel.declineCall(chatId, currentUserId ?: "") }
-        )
-    }
+    // 수신 통화 다이얼로그 — 채팅방 안에서는 별도 팝업을 띄우지 않는다.
+    // 전화는 시스템 상단 알림(MyFirebaseMessagingService.forIncomingCall)에서만 표시되도록 함.
+    // (이전 동작 복구가 필요하면 아래 블록의 주석을 해제할 것)
+    // incomingCall?.let { (callType, _) ->
+    //     IncomingCallDialog(
+    //         callType = callType,
+    //         onAccept  = {
+    //             callViewModel.clearIncomingCall()
+    //             onAcceptCall(chatId, callType)
+    //         },
+    //         onDecline = { callViewModel.declineCall(chatId, currentUserId ?: "") }
+    //     )
+    // }
 
     selectedParticipant?.let { participant ->
         ParticipantProfileDialog(participant, selectedUserProfile, isLoadingProfile, isDirectChat, onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() })
@@ -613,7 +615,7 @@ private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: 
     }
     // 장소 카드 메시지 — 네이버 지도 딥링크 포함
     if (message.type == "place_card") {
-        PlaceCardMessage(message = message, timeText = timeText)
+        PlaceCardMessage(message = message, timeText = timeText, onProfileClick = onProfileClick)
         return
     }
     if (message.senderId == "system") {
@@ -999,7 +1001,11 @@ fun IncomingCallDialog(
 // ─── 장소 카드 메시지 (채팅방에서 렌더) ──────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlaceCardMessage(message: ChatMessage, timeText: String) {
+private fun PlaceCardMessage(
+    message: ChatMessage,
+    timeText: String,
+    onProfileClick: () -> Unit = {}
+) {
     val context = LocalContext.current
     val isMe = message.isMe
 
@@ -1025,25 +1031,76 @@ private fun PlaceCardMessage(message: ChatMessage, timeText: String) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
+        verticalAlignment = Alignment.Top // ✨ 프로필을 위쪽으로 맞춤 (텍스트 메시지와 동일)
     ) {
-        if (isMe) {
-            Text(text = timeText, fontSize = 10.sp, color = Color.LightGray,
-                modifier = Modifier.padding(end = 4.dp))
+        // ✨ 상대방(isMe == false)일 때만 프로필 사진(아이콘) 표시 — 텍스트 메시지와 동일
+        if (!isMe) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE5E7EB))
+                    .clickable { onProfileClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (message.senderProfileImage.isNotBlank()) {
+                    coil.compose.AsyncImage(
+                        model = message.senderProfileImage,
+                        contentDescription = message.senderName,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                } else {
+                    Text(
+                        text = message.senderName.take(1).ifEmpty { "👤" },
+                        fontSize = 16.sp,
+                        color = Color.DarkGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
         }
-        Surface(
-            onClick = { openPlaceDetail() },
-            shape = RoundedCornerShape(
-                topStart = if (isMe) 16.dp else 4.dp,
-                topEnd = if (isMe) 4.dp else 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 16.dp
-            ),
-            color = Color.White,
-            shadowElevation = 2.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEAE8F4)),
-            modifier = Modifier.widthIn(max = 280.dp)
+
+        // 이름 + 카드 + 시간을 담는 영역 (텍스트 메시지와 동일한 구조)
+        Column(
+            horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
         ) {
+            // ✨ 상대방일 때만 이름 표시
+            if (!isMe) {
+                Text(
+                    text = message.senderName.ifEmpty { "알 수 없음" },
+                    fontSize = 13.sp,
+                    color = Color(0xFF4B5563),
+                    modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+            ) {
+                if (isMe) {
+                    Text(
+                        text = timeText,
+                        fontSize = 10.sp,
+                        color = Color.LightGray,
+                        modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
+                    )
+                }
+                Surface(
+                    onClick = { openPlaceDetail() },
+                    shape = RoundedCornerShape(
+                        topStart = if (isMe) 16.dp else 4.dp,
+                        topEnd = if (isMe) 4.dp else 16.dp,
+                        bottomStart = 16.dp,
+                        bottomEnd = 16.dp
+                    ),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEAE8F4)),
+                    modifier = Modifier.widthIn(max = 280.dp)
+                ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 // 상단 뱃지 + 네이버 지도
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1142,9 +1199,15 @@ private fun PlaceCardMessage(message: ChatMessage, timeText: String) {
                 }
             }
         }
-        if (!isMe) {
-            Text(text = timeText, fontSize = 10.sp, color = Color.LightGray,
-                modifier = Modifier.padding(start = 4.dp))
+                if (!isMe) {
+                    Text(
+                        text = timeText,
+                        fontSize = 10.sp,
+                        color = Color.LightGray,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                    )
+                }
+            }
         }
     }
 }

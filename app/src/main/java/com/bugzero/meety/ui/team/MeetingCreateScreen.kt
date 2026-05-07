@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -41,6 +43,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +54,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun MeetingCreateScreen(
@@ -64,11 +69,26 @@ fun MeetingCreateScreen(
     onCreateTeamClick: () -> Unit = {}
 ) {
     val teamViewModel: TeamViewModel = viewModel()
+
     var teamName by remember { mutableStateOf("") }
     var teamDescription by remember { mutableStateOf("") }
     val selectedTags = remember { mutableStateListOf<String>() }
 
+    // 변경한 부분: 팀 생성 중 상태
+    var isCreatingTeam by remember { mutableStateOf(false) }
+
+    // 변경한 부분: 버튼 클릭 후 3초 잠금 상태
+    var isCreateButtonLocked by remember { mutableStateOf(false) }
+
+    // 변경한 부분: 필수 입력 에러 표시용 상태
+    var showTeamNameError by remember { mutableStateOf(false) }
+    var showTeamTagError by remember { mutableStateOf(false) }
+
     var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // 변경한 부분: 특정 입력칸으로 자동 스크롤하기 위한 상태
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -85,6 +105,14 @@ fun MeetingCreateScreen(
         "맛집탐방", "예술좋아", "독서좋아", "춤", "노래", "요리"
     )
 
+    fun lockCreateButtonForThreeSeconds() {
+        isCreateButtonLocked = true
+        coroutineScope.launch {
+            delay(3000)
+            isCreateButtonLocked = false
+        }
+    }
+
     Scaffold(
         topBar = {
             TeamCommonTopBar(
@@ -95,6 +123,7 @@ fun MeetingCreateScreen(
         containerColor = Color(0xFFF8F1F8)
     ) { innerPadding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
@@ -114,7 +143,13 @@ fun MeetingCreateScreen(
             item {
                 TeamNameSection(
                     teamName = teamName,
-                    onTeamNameChange = { teamName = it }
+                    isError = showTeamNameError,
+                    onTeamNameChange = {
+                        teamName = it
+                        if (it.trim().isNotBlank()) {
+                            showTeamNameError = false
+                        }
+                    }
                 )
             }
 
@@ -136,11 +171,16 @@ fun MeetingCreateScreen(
                 TeamTagSection(
                     allTags = allTags,
                     selectedTags = selectedTags,
+                    isError = showTeamTagError,
                     onTagClick = { tag ->
                         if (selectedTags.contains(tag)) {
                             selectedTags.remove(tag)
                         } else if (selectedTags.size < 5) {
                             selectedTags.add(tag)
+                        }
+
+                        if (selectedTags.isNotEmpty()) {
+                            showTeamTagError = false
                         }
                     },
                     onAddCustomTag = { newTag ->
@@ -151,6 +191,7 @@ fun MeetingCreateScreen(
                             selectedTags.size < 5
                         ) {
                             selectedTags.add(normalizedTag)
+                            showTeamTagError = false
                         }
                     },
                     onRemoveTag = { tag ->
@@ -162,33 +203,92 @@ fun MeetingCreateScreen(
             item {
                 Button(
                     onClick = {
+                        if (isCreatingTeam || isCreateButtonLocked) return@Button
+
+                        // 변경한 부분: 버튼을 누르는 순간부터 3초 동안 잠금
+                        lockCreateButtonForThreeSeconds()
+
+                        val trimmedTeamName = teamName.trim()
+                        val trimmedDescription = teamDescription.trim()
+
+                        val isTeamNameBlank = trimmedTeamName.isBlank()
+                        val isTeamTagBlank = selectedTags.isEmpty()
+
+                        showTeamNameError = isTeamNameBlank
+                        showTeamTagError = isTeamTagBlank
+
+                        if (isTeamNameBlank) {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(1)
+                            }
+                            return@Button
+                        }
+
+                        if (isTeamTagBlank) {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(4)
+                            }
+                            return@Button
+                        }
+
+                        isCreatingTeam = true
+
                         teamViewModel.createTeam(
-                            teamName = teamName.trim(),
-                            description = teamDescription.trim(),
+                            teamName = trimmedTeamName,
+                            description = trimmedDescription,
                             tags = selectedTags.toList(),
-                            imageUri = selectedPhotoUri, // ✨ 1. 아까 빼먹었던 사진 데이터를 여기서 딱 넘겨줍니다!
+                            imageUri = selectedPhotoUri,
                             onSuccess = { teamId ->
-                                // ✨ 2. 뷰모델이 알아서 팀 만들고 사진까지 다 올려주니까, 여기선 깔끔하게 다음 화면으로 넘어가기만 하면 끝!
+                                isCreatingTeam = false
                                 onCreateTeamClick()
                             },
                             onFailure = { errorMessage ->
+                                isCreatingTeam = false
                                 println("팀 생성 실패: $errorMessage")
                             }
                         )
                     },
+                    enabled = !isCreatingTeam && !isCreateButtonLocked,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA020F0))
-                ) {
-                    Text(
-                        text = "팀 만들기",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFA020F0),
+                        disabledContainerColor = Color(0xFFC9A7E8)
                     )
+                ) {
+                    if (isCreatingTeam) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Text(
+                            text = "팀 생성 중...",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (isCreateButtonLocked) {
+                        Text(
+                            text = "잠시만 기다려주세요...",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Text(
+                            text = "팀 만들기",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -196,13 +296,22 @@ fun MeetingCreateScreen(
 }
 
 @Composable
-private fun TeamNameSection(teamName: String, onTeamNameChange: (String) -> Unit) {
+private fun TeamNameSection(
+    teamName: String,
+    isError: Boolean,
+    onTeamNameChange: (String) -> Unit
+) {
     WhiteCardSection(title = "팀 이름") {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color(0xFFF2F2F5))
+                .border(
+                    width = if (isError) 1.dp else 0.dp,
+                    color = if (isError) Color(0xFFE53935) else Color.Transparent,
+                    shape = RoundedCornerShape(14.dp)
+                )
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
             BasicTextField(
@@ -221,6 +330,16 @@ private fun TeamNameSection(teamName: String, onTeamNameChange: (String) -> Unit
                     }
                     innerTextField()
                 }
+            )
+        }
+
+        if (isError) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "팀 이름을 입력해주세요.",
+                color = Color(0xFFE53935),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
             )
         }
     }
@@ -324,6 +443,7 @@ private fun TeamPhotoSection(
 private fun TeamTagSection(
     allTags: List<String>,
     selectedTags: List<String>,
+    isError: Boolean,
     onTagClick: (String) -> Unit,
     onAddCustomTag: (String) -> Unit,
     onRemoveTag: (String) -> Unit
@@ -334,6 +454,17 @@ private fun TeamTagSection(
         title = "팀 태그 (최대 5개)",
         titleRightText = "${selectedTags.size}/5"
     ) {
+        if (isError) {
+            Text(
+                text = "팀 태그를 최소 1개 이상 선택해주세요.",
+                color = Color(0xFFE53935),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
         TagWrapLayout(
             tags = allTags,
             selectedTags = selectedTags,

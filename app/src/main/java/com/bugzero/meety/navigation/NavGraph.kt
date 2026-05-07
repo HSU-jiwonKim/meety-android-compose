@@ -317,7 +317,14 @@ fun NavGraph(
                             restoreState = true
                         }
                     },
-                    onCreateNewTeamClick = { navController.navigate(Routes.MEETING_CREATE) }
+                    onCreateNewTeamClick = {
+                        navController.navigate(Routes.MEETING_CREATE)
+                    },
+
+                    // 추가할 부분
+                    onCallStarted = { chatId, callType ->
+                        navController.navigate("${Routes.CALL}/$chatId/$callType/false")
+                    }
                 )
             }
             composable(Routes.MY_PAGE) {
@@ -454,7 +461,7 @@ fun NavGraph(
 
                     val isAnyCallActive =
                         vmCallState is CallUiState.Calling ||
-                        vmCallState is CallUiState.InCall
+                                vmCallState is CallUiState.InCall
 
                     // 연속 클릭 방지 (1.5초 디바운스)
                     var lastCallClickTime by remember { mutableStateOf(0L) }

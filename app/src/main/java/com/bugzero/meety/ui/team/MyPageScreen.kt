@@ -248,17 +248,17 @@ private fun ProfileHeaderSection(
     if (showMenu) {
         AlertDialog(
             onDismissRequest = { showMenu = false },
-            containerColor = Color(0xFF2D2D2D),
+            containerColor = Color(0xFFF7F7F7),
             title = {
                 Text(
                     text = "프로필 사진",
-                    color = Color.White
+                    color = Color.Black
                 )
             },
             text = {
                 Text(
                     text = "프로필 사진을 변경할까요?",
-
+                    color = Color.Black
                 )
             },
             confirmButton = {
@@ -268,12 +268,18 @@ private fun ProfileHeaderSection(
                         onChangeMainImageClick()
                     }
                 ) {
-                    Text(text = "프로필 사진 변경")
+                    Text(
+                        text = "프로필 사진 변경",
+                        color = Color.Black
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showMenu = false }) {
-                    Text(text = "취소")
+                    Text(
+                        text = "취소",
+                        color = Color.Black
+                    )
                 }
             }
         )
@@ -629,14 +635,19 @@ private fun PhotoItem(
     if (showMenu) {
         AlertDialog(
             onDismissRequest = { showMenu = false },
-            containerColor = Color(0xFF2D2D2D),
+            containerColor = Color(0xFFF7F7F7),
             title = {
                 Text(
                     text = "사진 관리",
-                    color = Color.White
+                    color = Color.Black
                 )
             },
-            text = { Text(text = "이 사진으로 할 작업을 선택하세요.") },
+            text = {
+                Text(
+                    text = "이 사진으로 할 작업을 선택하세요.",
+                    color = Color.Black
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -644,7 +655,10 @@ private fun PhotoItem(
                         onSetMainClick()
                     }
                 ) {
-                    Text(text = "대표 사진으로 설정")
+                    Text(
+                        text = "대표 사진으로 설정",
+                        color = Color.Black
+                    )
                 }
             },
             dismissButton = {
@@ -655,11 +669,17 @@ private fun PhotoItem(
                             onDeleteClick()
                         }
                     ) {
-                        Text(text = "삭제", color = Color(0xFFE53935))
+                        Text(
+                            text = "삭제",
+                            color = Color(0xFFE53935)
+                        )
                     }
 
                     TextButton(onClick = { showMenu = false }) {
-                        Text(text = "취소")
+                        Text(
+                            text = "취소",
+                            color = Color.Black
+                        )
                     }
                 }
             }

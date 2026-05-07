@@ -1,10 +1,15 @@
 package com.bugzero.meety.ui.team
 
+import android.app.Application
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,57 +21,66 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.HorizontalDivider
-import com.bugzero.meety.ui.theme.*
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.ui.text.style.TextAlign
+import com.bugzero.meety.ui.call.CallViewModel
 import com.bugzero.meety.ui.feed.FeedConstants
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.text.style.TextOverflow
+import com.bugzero.meety.ui.theme.Gray100
+import com.bugzero.meety.ui.theme.Gray200
+import com.bugzero.meety.ui.theme.Gray400
+import com.bugzero.meety.ui.theme.Gray500
+import com.bugzero.meety.ui.theme.Gray900
+import com.bugzero.meety.ui.theme.Purple
+import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 private enum class MyTeamTab {
     FRIENDS, ADD_FRIEND
@@ -87,7 +101,6 @@ data class FriendUiState(
     val foodLikes: List<String> = emptyList()
 )
 
-
 data class ProfilePreviewUiState(
     val id: String = "",
     val name: String = "",
@@ -101,6 +114,7 @@ data class ProfilePreviewUiState(
     val interests: List<String> = emptyList(),
     val foodLikes: List<String> = emptyList()
 )
+
 @Composable
 fun MyTeamScreen(
     viewModel: TeamViewModel = viewModel(),
@@ -113,12 +127,19 @@ fun MyTeamScreen(
     onNotificationClick: () -> Unit = {},
     onCancelSentClick: (String) -> Unit = {},
     onEditTeamClick: () -> Unit = {},
-    onCreateNewTeamClick: () -> Unit = {}
+    onCreateNewTeamClick: () -> Unit = {},
+
+    // 변경한 부분: 통화 시작 후 CallScreen으로 이동시키기 위한 콜백
+    // NavGraph에서 route에 맞게 연결하면 됨
+    onCallStarted: (chatId: String, callType: String) -> Unit = { _, _ -> }
 ) {
     var selectedTab by remember { mutableStateOf(MyTeamTab.FRIENDS) }
     var friendEmail by remember { mutableStateOf("") }
     var selectedProfile by remember { mutableStateOf<ProfilePreviewUiState?>(null) }
     var friendSearchQuery by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val friends by viewModel.friends.collectAsState()
     val friendAddMessage by viewModel.friendAddMessage.collectAsState()
@@ -126,6 +147,7 @@ fun MyTeamScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadFriends()
+
     }
 
     val friendList = friends.map {
@@ -152,10 +174,63 @@ fun MyTeamScreen(
                 friend.email.contains(query, ignoreCase = true)
     }
 
+    fun startProfileCall(
+        targetUserId: String,
+        callType: String
+    ) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+        if (currentUserId.isBlank()) {
+            Toast.makeText(context, "로그인 정보가 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (targetUserId.isBlank()) {
+            Toast.makeText(context, "상대방 정보를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (currentUserId == targetUserId) {
+            Toast.makeText(context, "자기 자신에게는 통화할 수 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        coroutineScope.launch {
+            runCatching {
+                val chatId = findOrCreateOneToOneChat(
+                    currentUserId = currentUserId,
+                    targetUserId = targetUserId
+                )
+
+                onCallStarted(chatId, callType)
+            }.onFailure {
+                Toast.makeText(
+                    context,
+                    "통화를 시작하지 못했습니다: ${it.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     selectedProfile?.let { profile ->
         ProfilePreviewDialog(
             profile = profile,
-            onDismiss = { selectedProfile = null }
+            onDismiss = { selectedProfile = null },
+            onVoiceCallClick = {
+                selectedProfile = null
+                startProfileCall(
+                    targetUserId = profile.id,
+                    callType = "voice"
+                )
+            },
+            onVideoCallClick = {
+                selectedProfile = null
+                startProfileCall(
+                    targetUserId = profile.id,
+                    callType = "video"
+                )
+            }
         )
     }
 
@@ -406,16 +481,17 @@ private fun FriendListItem(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
+            containerColor = Color(0xFFF7F7F7),
             title = {
                 Text(
                     text = "친구 삭제",
-                    color = Color.White
+                    color = Color.Black
                 )
             },
             text = {
                 Text(
                     text = "${friend.name}님을 친구 목록에서 삭제할까요?",
-
+                    color = Color.Black
                 )
             },
             confirmButton = {
@@ -432,7 +508,7 @@ private fun FriendListItem(
                 TextButton(onClick = { showDeleteDialog = false }) {
                     Text(
                         text = "취소",
-
+                        color = Color.Black
                     )
                 }
             }
@@ -506,6 +582,7 @@ private fun FriendListItem(
         }
     }
 }
+
 @Composable
 private fun AddFriendGuideCard() {
     Card(
@@ -655,121 +732,11 @@ private fun LoadingCard() {
 }
 
 @Composable
-private fun ReceivedFriendRequestCard(
-    request: FriendRequestItem,
-    onProfileClick: () -> Unit,
-    onAcceptClick: () -> Unit,
-    onRejectClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFF2F3F5))
-                        .clickable { onProfileClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (request.profileImageUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = request.profileImageUrl,
-                            contentDescription = "프로필 이미지",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "기본 프로필",
-                            tint = Color(0xFF9CA3AF),
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (request.name.isBlank()) "이름 없음" else request.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = Color(0xFF111111)
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = request.email,
-                        color = Color(0xFF9CA3AF),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onAcceptClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(46.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFA020F0),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text(
-                        text = "수락",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Button(
-                    onClick = onRejectClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(46.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE5E7EB),
-                        contentColor = Color(0xFF4B5563)
-                    )
-                ) {
-                    Text(
-                        text = "거절",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun ProfilePreviewDialog(
     profile: ProfilePreviewUiState,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onVoiceCallClick: () -> Unit,
+    onVideoCallClick: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -845,6 +812,7 @@ private fun ProfilePreviewDialog(
                         }
                     }
                 }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
@@ -856,7 +824,7 @@ private fun ProfilePreviewDialog(
                             .size(46.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFF3E7FF))
-                            .clickable { },
+                            .clickable { onVoiceCallClick() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -872,7 +840,7 @@ private fun ProfilePreviewDialog(
                             .size(46.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFF3E7FF))
-                            .clickable { },
+                            .clickable { onVideoCallClick() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -883,6 +851,7 @@ private fun ProfilePreviewDialog(
                         )
                     }
                 }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = Gray200)
                 Spacer(modifier = Modifier.height(16.dp))
@@ -907,7 +876,9 @@ private fun ProfilePreviewDialog(
                             fontWeight = FontWeight.Bold,
                             color = Gray500
                         )
+
                         Spacer(modifier = Modifier.height(6.dp))
+
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -938,7 +909,9 @@ private fun ProfilePreviewDialog(
                             fontWeight = FontWeight.Bold,
                             color = Gray500
                         )
+
                         Spacer(modifier = Modifier.height(6.dp))
+
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -993,6 +966,7 @@ private fun MemberInfoRow(label: String, value: String) {
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(end = 12.dp)
         )
+
         Text(
             text = value,
             fontSize = 13.sp,
@@ -1002,4 +976,44 @@ private fun MemberInfoRow(label: String, value: String) {
             modifier = Modifier.weight(1f)
         )
     }
+}
+
+// 변경한 부분: 친구와의 1:1 채팅방을 찾거나 생성하는 함수
+private suspend fun findOrCreateOneToOneChat(
+    currentUserId: String,
+    targetUserId: String
+): String {
+    val db = FirebaseFirestore.getInstance()
+
+    val participants = listOf(currentUserId, targetUserId).sorted()
+    val directKey = participants.joinToString("_")
+
+    val existingChat = db.collection("chats")
+        .whereEqualTo("directKey", directKey)
+        .limit(1)
+        .get()
+        .await()
+        .documents
+        .firstOrNull()
+
+    if (existingChat != null) {
+        return existingChat.id
+    }
+
+    val newChatRef = db.collection("chats").document()
+    val now = Timestamp.now()
+
+    val chatData = mapOf(
+        "chatId" to newChatRef.id,
+        "type" to "direct",
+        "directKey" to directKey,
+        "participants" to participants,
+        "createdAt" to now,
+        "lastMessage" to "",
+        "lastMessageAt" to now
+    )
+
+    newChatRef.set(chatData).await()
+
+    return newChatRef.id
 }

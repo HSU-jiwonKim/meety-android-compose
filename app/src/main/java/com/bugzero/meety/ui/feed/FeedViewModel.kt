@@ -106,7 +106,7 @@ class FeedViewModel(
                 .onSuccess { newTeams ->
                     if (newTeams.isEmpty()) return@onSuccess
                     _uiState.update { current ->
-                        val sorted = sortByPreference(newTeams)
+                        val sorted = sortByPreference(newTeams, _uiState.value.userPreferences)
                         val seen   = current.teams.take(current.currentIndex)
                         val unseen = current.teams.drop(current.currentIndex)
                         current.copy(teams = seen + unseen + sorted)
@@ -157,7 +157,7 @@ class FeedViewModel(
         viewModelScope.launch {
             repository.fetchActiveTeams(loadMore = false)
                 .onSuccess { (teams, hasMore) ->
-                    val sorted = sortByPreference(teams)
+                    val sorted = sortByPreference(teams, _uiState.value.userPreferences)
                     _uiState.update {
                         it.copy(
                             teams = sorted,
@@ -197,7 +197,7 @@ class FeedViewModel(
                         // 아직 보지 않은 카드 뒤에 새 팀 추가
                         val seen   = state.teams.take(state.currentIndex)
                         val unseen = state.teams.drop(state.currentIndex)
-                        val merged = seen + sortByPreference(unseen + newTeams)
+                        val merged = seen + sortByPreference(unseen + newTeams, _uiState.value.userPreferences )
                         state.copy(
                             teams = merged,
                             isLoadingMore = false,
@@ -259,7 +259,7 @@ class FeedViewModel(
 
         val likeId = if (isLike) UUID.randomUUID().toString() else null
 
-        // Firebase 저장 (비동기)
+        // Firebase 저장은 비동기로 처리
         viewModelScope.launch {
             if (isLike && likeId != null) {
                 repository.saveLike(currentTeam, likeId)
@@ -268,29 +268,72 @@ class FeedViewModel(
             }
         }
 
-        updatePreferenceInMemory(currentTeam, isLike)
-
         val entry = HistoryEntry(
-            index  = state.currentIndex,
-            team   = currentTeam,
+            index = state.currentIndex,
+            team = currentTeam,
             isLike = isLike,
             likeId = likeId
         )
 
-        _uiState.update {
-            val updatedLiked  = if (isLike) it.likedTeamIds  + currentTeam.teamId else it.likedTeamIds
-            val updatedPassed = if (!isLike) it.passedTeamIds + currentTeam.teamId else it.passedTeamIds
-            it.copy(
-                currentIndex  = it.currentIndex + 1,
-                history       = it.history + entry,
-                likedTeamIds  = updatedLiked,
-                passedTeamIds = updatedPassed
+        _uiState.update { current ->
+            val tagWeight = if (isLike) {
+                FeedConstants.TAG_LIKE_WEIGHT
+            } else {
+                FeedConstants.TAG_PASS_WEIGHT
+            }
+
+            val mbtiWeight = if (isLike) {
+                FeedConstants.MBTI_LIKE_WEIGHT
+            } else {
+                FeedConstants.MBTI_PASS_WEIGHT
+            }
+
+            val updatedPreferences = current.userPreferences.toMutableMap()
+
+            currentTeam.tags.forEach { tag ->
+                updatedPreferences[tag] = (updatedPreferences[tag] ?: 0) + tagWeight
+            }
+
+            currentTeam.mbtiTags.forEach { mbti ->
+                updatedPreferences[mbti] = (updatedPreferences[mbti] ?: 0) + mbtiWeight
+            }
+
+            val newIndex = current.currentIndex + 1
+
+            val updatedLikedTeamIds = if (isLike) {
+                current.likedTeamIds + currentTeam.teamId
+            } else {
+                current.likedTeamIds
+            }
+
+            val updatedPassedTeamIds = if (!isLike) {
+                current.passedTeamIds + currentTeam.teamId
+            } else {
+                current.passedTeamIds
+            }
+
+            val seenTeams = current.teams.take(newIndex)
+            val unseenTeams = current.teams.drop(newIndex)
+
+            val sortedUnseenTeams = sortByPreference(
+                teams = unseenTeams,
+                prefs = updatedPreferences
+            )
+
+            current.copy(
+                teams = seenTeams + sortedUnseenTeams,
+                currentIndex = newIndex,
+                history = current.history + entry,
+                likedTeamIds = updatedLikedTeamIds,
+                passedTeamIds = updatedPassedTeamIds,
+                userPreferences = updatedPreferences
             )
         }
 
-        // 남은 카드 3장 이하 → 다음 페이지 미리 로딩
-        val remaining = state.teams.size - (state.currentIndex + 1)
-        if (remaining <= 3 && state.hasMore) {
+        val latestState = _uiState.value
+        val remaining = latestState.teams.size - latestState.currentIndex
+
+        if (remaining <= 3 && latestState.hasMore) {
             loadMoreTeams()
         }
     }
@@ -523,7 +566,7 @@ class FeedViewModel(
         team.mbtiTags.forEach { mbti -> updated[mbti] = (updated[mbti] ?: 0) + mbtiWeight }
 
         _uiState.update { it.copy(userPreferences = updated) }
-        applyPreferenceSort()
+        // applyPreferenceSort()
     }
 
     private fun reversePreferenceInMemory(team: Team, wasLike: Boolean) {
@@ -547,17 +590,19 @@ class FeedViewModel(
         if (prefs.isEmpty()) return
 
         val seen   = state.teams.take(state.currentIndex)
-        val unseen = sortByPreference(state.teams.drop(state.currentIndex))
+        val unseen = sortByPreference(state.teams.drop(state.currentIndex), _uiState.value.userPreferences)
 
         _uiState.update { it.copy(teams = seen + unseen) }
     }
 
-    private fun sortByPreference(teams: List<Team>): List<Team> {
-        val prefs = _uiState.value.userPreferences
+    private fun sortByPreference(
+        teams: List<Team>,
+        prefs: Map<String, Int>
+    ): List<Team> {
         if (prefs.isEmpty()) return teams
 
         return teams.sortedByDescending { team ->
-            val tagScore  = team.tags.sumOf { prefs[it] ?: 0 }
+            val tagScore = team.tags.sumOf { prefs[it] ?: 0 }
             val mbtiScore = team.mbtiTags.sumOf { prefs[it] ?: 0 }
             tagScore + mbtiScore
         }
