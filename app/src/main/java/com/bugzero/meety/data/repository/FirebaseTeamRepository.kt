@@ -171,6 +171,13 @@ class FirebaseTeamRepository : TeamRepository {
     override fun acceptReceivedLike(likeId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         db.collection("likes").document(likeId).get()
             .addOnSuccessListener { likeDoc ->
+
+                // ✨ 1. 중복 완벽 방어: 이미 '수락'된 상태라면 중복해서 처리하지 않고 끝냅니다!
+                if (likeDoc.getString("status") == "accepted") {
+                    onSuccess()
+                    return@addOnSuccessListener
+                }
+
                 val fromUserId = likeDoc.getString("fromUserId").orEmpty()
                 val toTeamId = likeDoc.getString("toTeamId").orEmpty()
 

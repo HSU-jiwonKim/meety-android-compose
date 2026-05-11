@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -52,6 +53,12 @@ import com.bugzero.meety.ui.team.ReceivedLikeItem
 import com.google.firebase.auth.FirebaseAuth
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.text.style.TextAlign
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,156 +177,180 @@ fun ChatRoomScreen(
         ParticipantProfileDialog(participant, selectedUserProfile, isLoadingProfile, isDirectChat, onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() })
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ChatRoomDrawer(
-                chatId = chatId,
-                roomName = currentRoomName.ifEmpty { roomName },
-                participants = participants,
-                requestList = requestList,
-                isLeader = isLeader,
-                isDirectChat = isDirectChat,
-                viewModel = viewModel,
-                onParticipantClick = { participant ->
-                    selectedParticipant = participant
-                    viewModel.loadUserProfile(participant.userId)
-                    coroutineScope.launch { drawerState.close() }
-                },
-                onInviteClick = {
-                    // ✨ 초대 버튼 누르면 친구 목록 새로고침하고 초대 시트 열기
-                    viewModel.loadFriendList()
-                    coroutineScope.launch { drawerState.close() }
-                    showInviteSheet = true
-                },
-                onAutoMatchingClick = {
-                    val teamIdToUse = currentTeamId.ifBlank { chatId }
-                    viewModel.loadMatchCandidates(teamIdToUse)
-                    coroutineScope.launch { drawerState.close() }
-                    showAutoMatchingSheet = true
-                },
-                onAcceptRequest = { viewModel.acceptRequest(it) },
-                onRejectRequest = { viewModel.rejectRequest(it) },
-                onTransferClick = {
-                    coroutineScope.launch { drawerState.close() }
-                    showManagementSheet = true
-                },
-                onScheduleSyncClick = {
-                    coroutineScope.launch { drawerState.close() } // 1. 서랍 닫기
-                    val memberIds = participants.map { it.userId } // 2. 현재 방에 있는 사람들의 UID만 뽑아내기
-                    onScheduleSyncClick(memberIds) // 3. 그 UID 목록을 들고 화면 이동!
-                },
-                onLeaveClick = {
-                    coroutineScope.launch { drawerState.close() }
-                    showLeaveDialog = true
-                }
-            )
-        }
-    ) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets.safeDrawing,
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            Row(modifier = Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = currentRoomName.ifEmpty { roomName },
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp
-                                )
-                                if (participants.size > 2) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "${participants.size}",
-                                        fontSize = 13.sp,
-                                        color = Color.Gray
-                                    )
-                                }
-                            }
+    // 1. 화면 방향을 반대(RTL)로 뒤집어서 서랍이 오른쪽에서 나오게 만듭니다.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                // 2. 서랍 안의 글씨와 내용은 다시 똑바로(LTR) 보여줍니다.
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    ChatRoomDrawer(
+                        chatId = chatId,
+                        roomName = currentRoomName.ifEmpty { roomName },
+                        participants = participants,
+                        requestList = requestList,
+                        isLeader = isLeader,
+                        isDirectChat = isDirectChat,
+                        viewModel = viewModel,
+                        onParticipantClick = { participant ->
+                            selectedParticipant = participant
+                            viewModel.loadUserProfile(participant.userId)
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        onInviteClick = {
+                            viewModel.loadFriendList()
+                            coroutineScope.launch { drawerState.close() }
+                            showInviteSheet = true
+                        },
+                        onAutoMatchingClick = {
+                            val teamIdToUse = currentTeamId.ifBlank { chatId }
+                            viewModel.loadMatchCandidates(teamIdToUse)
+                            coroutineScope.launch { drawerState.close() }
+                            showAutoMatchingSheet = true
+                        },
+                        onAcceptRequest = { viewModel.acceptRequest(it) },
+                        onRejectRequest = { viewModel.rejectRequest(it) },
+                        onTransferClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showManagementSheet = true
+                        },
+                        onScheduleSyncClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            val memberIds = participants.map { it.userId }
+                            onScheduleSyncClick(memberIds)
+                        },
+                        onLeaveClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showLeaveDialog = true
                         }
-                    },
-                    navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기") } },
-                    actions = {
-                        IconButton(onClick = onVoiceCallClick) {
-                            Icon(Icons.Default.Call, contentDescription = "음성통화", tint = Color(0xFF7C3AED))
-                        }
-                        IconButton(onClick = onVideoCallClick) {
-                            Icon(Icons.Default.Videocam, contentDescription = "화상통화", tint = Color(0xFF7C3AED))
-                        }
-                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "더보기")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
-                )
-            },
-            containerColor = Color(0xFFF9FAFB)
-        ) { innerPadding ->
-            Column(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
-
-                // ── 통화 중 배너 (참여 가능한 경우에만 표시) ──────────────────
-                activeCallInfo?.let { info ->
-                    ActiveCallBanner(
-                        callType = info.callType,
-                        participantCount = info.participantCount,
-                        onJoinClick = { onJoinCall(chatId, info.callType) }
                     )
                 }
-
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                        reverseLayout = true,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(top = 52.dp, bottom = 12.dp)
-                    ) {
-                        val reversedMessages = messages.reversed()
-                        itemsIndexed(items = reversedMessages, key = { _, it -> it.id }) { index, message ->
-                            MessageItem(
-                                message = message,
-                                timeText = viewModel.formatTime(message.createdAt),
-                                onProfileClick = {
-                                    val participant = participants.find { it.userId == message.senderId }
-                                    if (participant != null) {
-                                        selectedParticipant = participant
-                                        viewModel.loadUserProfile(message.senderId)
+            }
+        ) {
+            // 3. 채팅방 메인 화면(Scaffold)도 다시 똑바로(LTR) 보여줍니다.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets.safeDrawing,
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    Row(modifier = Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = currentRoomName.ifEmpty { roomName },
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp
+                                        )
+                                        if (participants.size > 2) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "${participants.size}",
+                                                fontSize = 13.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
                                     }
                                 }
-                            )
-                            val showDateSeparator = if (index == reversedMessages.lastIndex) {
-                                true
-                            } else {
-                                val currentMsgDate = formatKakaoDate(message.createdAt)
-                                val olderMsgDate = formatKakaoDate(reversedMessages[index + 1].createdAt)
-                                currentMsgDate != olderMsgDate
-                            }
-                            if (showDateSeparator) {
-                                DateDivider(formatKakaoDate(message.createdAt))
-                            }
-                        }
-                    }
-                    val showScrollToBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
-                    ScrollToBottomButton(isVisible = showScrollToBottom, onClick = { coroutineScope.launch { listState.animateScrollToItem(0) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 8.dp))
+                            },
+                            navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기") } },
+                            actions = {
+                                IconButton(onClick = onVoiceCallClick) {
+                                    Icon(Icons.Default.Call, contentDescription = "음성통화", tint = Color(0xFF7C3AED))
+                                }
+                                IconButton(onClick = onVideoCallClick) {
+                                    Icon(Icons.Default.Videocam, contentDescription = "화상통화", tint = Color(0xFF7C3AED))
+                                }
+                                IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, contentDescription = "더보기")
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                        )
+                    },
+                    containerColor = Color(0xFFF9FAFB)
+                ) { innerPadding ->
+                    Column(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
 
-                    // ── 장소 추천 버튼 (상단 가운데 — 피그마 디자인) ──────────
-                    PlaceRecommendButton(
-                        isLoading = isLoadingPlaces,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 8.dp),
-                        onClick = {
-                            showPlaceDialog = true
-                            if (placeRecommendations.isEmpty() && !isLoadingPlaces) {
-                                viewModel.recommendMeetingPlaces(chatId)
+                        // ── 통화 중 배너 (참여 가능한 경우에만 표시) ──────────────────
+                        activeCallInfo?.let { info ->
+                            ActiveCallBanner(
+                                callType = info.callType,
+                                participantCount = info.participantCount,
+                                onJoinClick = { onJoinCall(chatId, info.callType) }
+                            )
+                        }
+
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                reverseLayout = true,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(top = 52.dp, bottom = 12.dp)
+                            ) {
+                                val reversedMessages = messages.reversed()
+                                itemsIndexed(items = reversedMessages, key = { _, it -> it.id }) { index, message ->
+                                    MessageItem(
+                                        message = message,
+                                        timeText = viewModel.formatTime(message.createdAt),
+                                        onProfileClick = {
+                                            val participant = participants.find { it.userId == message.senderId }
+                                            if (participant != null) {
+                                                selectedParticipant = participant
+                                                viewModel.loadUserProfile(message.senderId)
+                                            }
+                                        }
+
+                                    )
+                                    val showDateSeparator = if (index == reversedMessages.lastIndex) {
+                                        true
+                                    } else {
+                                        val currentMsgDate = formatKakaoDate(message.createdAt)
+                                        val olderMsgDate = formatKakaoDate(reversedMessages[index + 1].createdAt)
+                                        currentMsgDate != olderMsgDate
+                                    }
+                                    if (showDateSeparator) {
+                                        DateDivider(formatKakaoDate(message.createdAt))
+                                    }
+                                }
+                            }
+
+                            val showScrollToBottom by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
+                            ScrollToBottomButton(isVisible = showScrollToBottom, onClick = { coroutineScope.launch { listState.animateScrollToItem(0) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 8.dp))
+
+                            // ── 장소 추천 & 공강 추천 버튼 (상단 가운데 나란히 배치) ──────────
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                PlaceRecommendButton(
+                                    isLoading = isLoadingPlaces,
+                                    onClick = {
+                                        showPlaceDialog = true
+                                        if (placeRecommendations.isEmpty() && !isLoadingPlaces) {
+                                            viewModel.recommendMeetingPlaces(chatId)
+                                        }
+                                    }
+                                )
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                ScheduleRecommendButton(
+                                    onClick = {
+                                        val memberIds = participants.map { it.userId }
+                                        onScheduleSyncClick(memberIds)
+                                    }
+                                )
                             }
                         }
-                    )
+                        MessageInputBar(text = inputText, isSending = isSending, onTextChange = { inputText = it }, onSendClick = { if (inputText.isNotBlank()) { viewModel.sendMessage(chatId, inputText); inputText = "" } })
+                    }
                 }
-                MessageInputBar(text = inputText, isSending = isSending, onTextChange = { inputText = it }, onSendClick = { if (inputText.isNotBlank()) { viewModel.sendMessage(chatId, inputText); inputText = "" } })
             }
         }
     }
@@ -518,16 +549,7 @@ private fun ChatRoomDrawer(
             }
 
             // ✨ 공강 추천 버튼 (팀장 구역 밖으로 꺼내서 누구나, 어떤 채팅방에서든 보이게 함!)
-            Row(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFE0F2FE)).clickable { onScheduleSyncClick() }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("📅", fontSize = 18.sp); Spacer(Modifier.width(10.dp))
-                Text(text = "공강 추천", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
-            }
-            Spacer(modifier = Modifier.height(8.dp))
+
 
             Row(modifier = Modifier.fillMaxWidth().clickable { onInviteClick() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFF3F4F6)), contentAlignment = Alignment.Center) {
@@ -554,16 +576,54 @@ private fun ChatRoomDrawer(
 private fun ParticipantRow(chatId: String, participant: ParticipantItem, isMe: Boolean, viewModel: ChatViewModel, onClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 4.dp)) {
         Box(contentAlignment = Alignment.Center) {
+            // ✨ 프로필 이미지 렌더링 영역
             Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFF3F4F6)), contentAlignment = Alignment.Center) {
-                val profileAlpha = if (participant.isFriend) 1f else 0.5f
-                Text(text = participant.emoji, fontSize = 20.sp, modifier = Modifier.graphicsLayer(alpha = profileAlpha))
+                // 나이거나 친구면 100% 선명하게, 아니면 반투명하게
+                val profileAlpha = if (participant.isFriend || isMe) 1f else 0.5f
+
+                if (participant.profileImage.isNotBlank()) {
+                    // 1. 이미지가 있을 때: 진짜 프로필 사진 렌더링
+                    coil.compose.AsyncImage(
+                        model = participant.profileImage,
+                        contentDescription = "프로필 이미지",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().graphicsLayer(alpha = profileAlpha)
+                    )
+                } else {
+                    // 2. 이미지가 없을 때: 기본 이모지 (👤 또는 👑) 렌더링
+                    Text(text = participant.emoji, fontSize = 20.sp, modifier = Modifier.graphicsLayer(alpha = profileAlpha))
+                }
             }
-            if (!participant.isFriend && !participant.isLeader) {
-                Text(text = "?", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+
+            // 친구가 아닌 사람 프로필 위에 '?' 물음표 표시
+            if (!participant.isFriend && !participant.isLeader && !isMe) {
+                Box(
+                    modifier = Modifier.size(44.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "?", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                }
             }
         }
         Spacer(Modifier.width(12.dp))
-        Text(text = if (isMe) "${participant.name} (나)" else participant.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), color = if (participant.isFriend) Color(0xFF1F2937) else Color.Gray)
+
+        // ✨ 이름 텍스트 처리 (사진이 있는데 방장이면 이름 앞에 왕관을 달아줍니다!)
+        val nameText = buildString {
+            if (participant.isLeader && participant.profileImage.isNotBlank()) {
+                append("👑 ")
+            }
+            append(participant.name)
+            if (isMe) append(" (나)")
+        }
+
+        Text(
+            text = nameText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+            color = if (participant.isFriend || isMe) Color(0xFF1F2937) else Color.Gray
+        )
+
         if (!participant.isFriend && !isMe) {
             IconButton(onClick = { viewModel.addFriend(chatId, participant) }, modifier = Modifier.size(32.dp).background(Color(0xFFF3F4F6), CircleShape)) {
                 Icon(Icons.Default.PersonAdd, contentDescription = "추가", tint = Color(0xFF4B5563), modifier = Modifier.size(18.dp))
@@ -733,97 +793,137 @@ private fun ParticipantProfileDialog(
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 650.dp) // 화면 밖으로 나가지 않게 최대 높이 설정
         ) {
-            // 정보 로딩 중일 때 빙글빙글 도는 UI
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF8B5CF6)) // 보라색
+                    CircularProgressIndicator(color = Color(0xFF8B5CF6))
                 }
             } else {
-                // DB에서 가져온 데이터 꺼내기 (null일 경우 기본값 세팅)
+                // 1. 데이터 가져오기 (변수명이 다르면 이 부분을 수정하세요!)
                 val name = userProfile?.name ?: participant.name
-                val initial = name.take(1).ifEmpty { "👤" }
                 val age = userProfile?.age?.toString() ?: "알 수 없음"
                 val department = userProfile?.department ?: "알 수 없음"
                 val mbti = userProfile?.mbti ?: "알 수 없음"
+                val height = userProfile?.height?.let { "${it}cm" } ?: "미입력"
+                val location = userProfile?.location ?: "미입력"
+                val intro = userProfile?.bio ?: "미입력"
+
+
+
+                val interests = userProfile?.interests ?: emptyList() // 예: 관심사 리스트
+                val favoriteFoods = userProfile?.foodLikes ?: emptyList() // 예: 음식 리스트
 
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()) // 세로 스크롤 가능하게!
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 1. 큰 보라색 프로필 동그라미
+                    // ✨ 프로필 상단 (사진이 있으면 사진, 없으면 글자!)
                     Box(
                         modifier = Modifier
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF8B5CF6)),
+                            .background(Color(0xFF8B5CF6)), // 기본 배경 보라색
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = initial, fontSize = 32.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 2. 이름과 나이
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFFF3F4F6), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(text = "${age}세", fontSize = 12.sp, color = Color.DarkGray)
+                        if (!userProfile?.profileImageUrl.isNullOrBlank()) {
+                            // 📸 1. 진짜 사진 주소가 있다면 사진을 그립니다.
+                            coil.compose.AsyncImage(
+                                model = userProfile?.profileImageUrl,
+                                contentDescription = "프로필 사진",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            // 👤 2. 사진이 없다면 기존처럼 이름 첫 글자를 보여줍니다.
+                            Text(
+                                text = name.take(1).ifEmpty { "👤" },
+                                fontSize = 32.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text(text = name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "${age}세", fontSize = 14.sp, color = Color.Gray)
 
-                    // 3. 통화 / 화상통화 버튼 아이콘
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFEDE9FE)) // 연한 보라색 배경
-                                .clickable { /* TODO: 음성통화 연결 */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Call, contentDescription = "음성통화", tint = Color(0xFF8B5CF6))
-                        }
-                        Spacer(modifier = Modifier.width(24.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFEDE9FE))
-                                .clickable { /* TODO: 화상통화 연결 */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Videocam, contentDescription = "화상통화", tint = Color(0xFF8B5CF6))
-                        }
+                    Spacer(Modifier.height(20.dp))
+                    Row {
+                        IconButton(onClick = {}) { Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF8B5CF6)) }
+                        Spacer(Modifier.width(20.dp))
+                        IconButton(onClick = {}) { Icon(Icons.Default.Videocam, contentDescription = null, tint = Color(0xFF8B5CF6)) }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(Modifier.height(20.dp))
                     HorizontalDivider(color = Color(0xFFF3F4F6))
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(Modifier.height(20.dp))
 
-                    // 4. 학과 및 MBTI 정보
+                    // 상세 정보 (학과, 키, 거주지, MBTI, 소개)
                     ProfileDetailRow("학과", department)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    ProfileDetailRow("키", height)
+                    ProfileDetailRow("거주지", location)
                     ProfileDetailRow("MBTI", mbti)
-                    Spacer(modifier = Modifier.height(24.dp))
+                    ProfileDetailRow("소개", intro)
 
-                    // 5. 닫기 버튼
+                    Spacer(Modifier.height(20.dp))
+
+                    // ✨ 관심사 태그 영역
+                    if (interests.isNotEmpty()) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("관심사", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(10.dp))
+                            // 가로 스크롤로 태그 나열
+                            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                interests.forEach { item ->
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .background(Color(0xFFEDE9FE), RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(text = item, color = Color(0xFF7C3AED), fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(20.dp))
+                    }
+
+                    // ✨ 좋아하는 음식 태그 영역
+                    if (favoriteFoods.isNotEmpty()) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("좋아하는 음식", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(10.dp))
+                            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                favoriteFoods.forEach { food ->
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .background(Color(0xFFD1FAE5), RoundedCornerShape(12.dp)) // 연초록색
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(text = food, color = Color(0xFF059669), fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(30.dp))
+
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier.fillMaxWidth().height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("닫기", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("닫기", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -831,16 +931,15 @@ private fun ParticipantProfileDialog(
     }
 }
 
-// 정보(학과, MBTI)를 양쪽 정렬로 예쁘게 그려주는 미니 부품!
+// 정보 한 줄을 예쁘게 그려주는 부품
 @Composable
 private fun ProfileDetailRow(label: String, value: String) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, fontSize = 14.sp, color = Color.Gray)
-        Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937))
+        Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1F2937), textAlign = TextAlign.End, modifier = Modifier.weight(1f).padding(start = 20.dp))
     }
 }
 
@@ -1316,6 +1415,40 @@ private fun PlaceRecommendButton(
             Spacer(Modifier.width(6.dp))
             Text(
                 text = if (isLoading) "분석 중..." else "장소 추천",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+// ─── 공강 추천 버튼 (장소 추천 버튼과 같은 디자인, 분홍색 그라데이션) ──────────
+@Composable
+private fun ScheduleRecommendButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val gradient = Brush.horizontalGradient(
+        colors = listOf(Color(0xFFFB7185), Color(0xFFDB2777))
+    )
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(gradient)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 9.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.CalendarMonth,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "공강 추천",
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold

@@ -229,11 +229,12 @@ class AdminRepository {
                     autoAcceptLike(
                         likeId, fromUserId, toTeamId, toTeamName,
                         onAccepted = { teamName ->
-                            processingLikes.remove(likeId)
+                            // ✨ 2. 중복 완벽 방어: 성공했을 때는 processingLikes에서 지우지 않습니다!
+                            // (앱이 켜져있는 동안 똑같은 요청이 파이어베이스 캐시 때문에 두 번 실행되는 것을 원천 차단)
                             onAccepted(teamName)
                         },
                         onFailure = { msg ->
-                            processingLikes.remove(likeId)
+                            processingLikes.remove(likeId) // 실패했을 때만 다시 시도할 수 있게 풀어줍니다.
                             onFailure(msg)
                         }
                     )

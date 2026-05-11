@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,8 +55,33 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+// 화면에서 반복해서 사용하는 색상값을 한 곳에 모아둔 부분
+private val ScreenBackgroundColor = Color(0xFFF8F1F8)
+private val MainPurpleColor = Color(0xFFA020F0)
+private val LightPurpleColor = Color(0xFFEEDBFF)
+private val DisabledPurpleColor = Color(0xFFC9A7E8)
+private val ErrorColor = Color(0xFFE53935)
+private val InputBackgroundColor = Color(0xFFF2F2F5)
+private val PlaceholderColor = Color(0xFF9A9AA3)
+private val BorderColor = Color(0xFFD5D6DE)
+
+// LazyColumn 안에서 특정 입력칸으로 이동할 때 사용하는 item 위치
+private const val TEAM_NAME_ITEM_INDEX = 1
+private const val TEAM_TAG_ITEM_INDEX = 4
+
+// 팀 만들기 버튼을 누른 뒤 중복 클릭을 막기 위한 잠금 시간
+private const val CREATE_BUTTON_LOCK_TIME = 3000L
+
+// 기본으로 보여줄 팀 태그 목록
+private val DefaultTeamTags = listOf(
+    "활발한", "조용한", "카페좋아", "술좋아", "운동좋아",
+    "영화매니아", "게임러버", "음악좋아", "여행좋아",
+    "맛집탐방", "예술좋아", "독서좋아", "춤", "노래", "요리"
+)
 
 @Composable
 fun MeetingCreateScreen(
@@ -66,30 +92,32 @@ fun MeetingCreateScreen(
     onProfileClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    onCreateTeamClick: () -> Unit = {}
+
+    // 팀 생성 성공 후 NavGraph로 teamId와 teamName을 넘기는 콜백
+    // NavGraph에서는 이 값을 이용해서 바로 팀 채팅방으로 이동함
+    onCreateTeamClick: (String, String) -> Unit = { _, _ -> }
 ) {
     val teamViewModel: TeamViewModel = viewModel()
 
+    // 팀 만들기 화면에서 입력받는 값들
     var teamName by remember { mutableStateOf("") }
     var teamDescription by remember { mutableStateOf("") }
     val selectedTags = remember { mutableStateListOf<String>() }
+    var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
 
-    // 변경한 부분: 팀 생성 중 상태
+    // 팀 생성 버튼 상태 관리
     var isCreatingTeam by remember { mutableStateOf(false) }
-
-    // 변경한 부분: 버튼 클릭 후 3초 잠금 상태
     var isCreateButtonLocked by remember { mutableStateOf(false) }
 
-    // 변경한 부분: 필수 입력 에러 표시용 상태
+    // 필수 입력값 에러 표시 상태
     var showTeamNameError by remember { mutableStateOf(false) }
     var showTeamTagError by remember { mutableStateOf(false) }
 
-    var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
-
-    // 변경한 부분: 특정 입력칸으로 자동 스크롤하기 위한 상태
+    // 필수 입력 누락 시 해당 영역으로 자동 스크롤하기 위한 상태
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    // 대표 사진 선택 런처
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -98,17 +126,12 @@ fun MeetingCreateScreen(
         }
     }
 
-    // 저장은 # 없이, 화면에는 # 붙여서 표시
-    val allTags = listOf(
-        "활발한", "조용한", "카페좋아", "술좋아", "운동좋아",
-        "영화매니아", "게임러버", "음악좋아", "여행좋아",
-        "맛집탐방", "예술좋아", "독서좋아", "춤", "노래", "요리"
-    )
-
+    // 팀 만들기 버튼을 누르면 3초 동안 다시 누르지 못하게 잠그는 함수
     fun lockCreateButtonForThreeSeconds() {
         isCreateButtonLocked = true
+
         coroutineScope.launch {
-            delay(3000)
+            delay(CREATE_BUTTON_LOCK_TIME)
             isCreateButtonLocked = false
         }
     }
@@ -119,8 +142,8 @@ fun MeetingCreateScreen(
                 onSearchClick = onSearchClick,
                 onNotificationClick = onNotificationClick
             )
-        },
-        containerColor = Color(0xFFF8F1F8)
+        },g
+        containerColor = ScreenBackgroundColor
     ) { innerPadding ->
         LazyColumn(
             state = listState,
@@ -131,13 +154,7 @@ fun MeetingCreateScreen(
             contentPadding = PaddingValues(top = 14.dp, bottom = 110.dp)
         ) {
             item {
-                Text(
-                    text = "팀 만들기",
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    color = Color(0xFFA020F0),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
+                ScreenTitle()
             }
 
             item {
@@ -146,6 +163,8 @@ fun MeetingCreateScreen(
                     isError = showTeamNameError,
                     onTeamNameChange = {
                         teamName = it
+
+                        // 팀 이름을 입력하면 에러 표시 제거
                         if (it.trim().isNotBlank()) {
                             showTeamNameError = false
                         }
@@ -169,7 +188,7 @@ fun MeetingCreateScreen(
 
             item {
                 TeamTagSection(
-                    allTags = allTags,
+                    allTags = DefaultTeamTags,
                     selectedTags = selectedTags,
                     isError = showTeamTagError,
                     onTagClick = { tag ->
@@ -179,12 +198,14 @@ fun MeetingCreateScreen(
                             selectedTags.add(tag)
                         }
 
+                        // 태그를 하나라도 선택하면 에러 표시 제거
                         if (selectedTags.isNotEmpty()) {
                             showTeamTagError = false
                         }
                     },
                     onAddCustomTag = { newTag ->
-                        val normalizedTag = newTag.trim().removePrefix("#")
+                        val normalizedTag = normalizeTag(newTag)
+
                         if (
                             normalizedTag.isNotBlank() &&
                             !selectedTags.contains(normalizedTag) &&
@@ -201,11 +222,13 @@ fun MeetingCreateScreen(
             }
 
             item {
-                Button(
+                CreateTeamButton(
+                    isCreatingTeam = isCreatingTeam,
+                    isCreateButtonLocked = isCreateButtonLocked,
                     onClick = {
-                        if (isCreatingTeam || isCreateButtonLocked) return@Button
+                        if (isCreatingTeam || isCreateButtonLocked) return@CreateTeamButton
 
-                        // 변경한 부분: 버튼을 누르는 순간부터 3초 동안 잠금
+                        // 빠른 연속 클릭으로 팀이 중복 생성되는 문제를 막기 위해 버튼 잠금
                         lockCreateButtonForThreeSeconds()
 
                         val trimmedTeamName = teamName.trim()
@@ -217,22 +240,29 @@ fun MeetingCreateScreen(
                         showTeamNameError = isTeamNameBlank
                         showTeamTagError = isTeamTagBlank
 
+                        // 팀 이름이 비어 있으면 팀 이름 입력칸으로 이동
                         if (isTeamNameBlank) {
-                            coroutineScope.launch {
-                                listState.animateScrollToItem(1)
-                            }
-                            return@Button
+                            scrollToItem(
+                                coroutineScope = coroutineScope,
+                                listState = listState,
+                                itemIndex = TEAM_NAME_ITEM_INDEX
+                            )
+                            return@CreateTeamButton
                         }
 
+                        // 팀 태그가 비어 있으면 태그 영역으로 이동
                         if (isTeamTagBlank) {
-                            coroutineScope.launch {
-                                listState.animateScrollToItem(4)
-                            }
-                            return@Button
+                            scrollToItem(
+                                coroutineScope = coroutineScope,
+                                listState = listState,
+                                itemIndex = TEAM_TAG_ITEM_INDEX
+                            )
+                            return@CreateTeamButton
                         }
 
                         isCreatingTeam = true
 
+                        // 실제 팀 생성 요청
                         teamViewModel.createTeam(
                             teamName = trimmedTeamName,
                             description = trimmedDescription,
@@ -240,61 +270,36 @@ fun MeetingCreateScreen(
                             imageUri = selectedPhotoUri,
                             onSuccess = { teamId ->
                                 isCreatingTeam = false
-                                onCreateTeamClick()
+
+                                // 팀 생성 성공 후 NavGraph로 teamId와 teamName 전달
+                                // 이 값을 이용해 생성된 팀 채팅방 화면으로 바로 이동함
+                                onCreateTeamClick(teamId, trimmedTeamName)
                             },
                             onFailure = { errorMessage ->
                                 isCreatingTeam = false
                                 println("팀 생성 실패: $errorMessage")
                             }
                         )
-                    },
-                    enabled = !isCreatingTeam && !isCreateButtonLocked,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFA020F0),
-                        disabledContainerColor = Color(0xFFC9A7E8)
-                    )
-                ) {
-                    if (isCreatingTeam) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp,
-                            color = Color.White
-                        )
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Text(
-                            text = "팀 생성 중...",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    } else if (isCreateButtonLocked) {
-                        Text(
-                            text = "잠시만 기다려주세요...",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    } else {
-                        Text(
-                            text = "팀 만들기",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
-                }
+                )
             }
         }
     }
 }
 
+// 화면 상단의 제목 영역
+@Composable
+private fun ScreenTitle() {
+    Text(
+        text = "팀 만들기",
+        modifier = Modifier.padding(horizontal = 20.dp),
+        color = MainPurpleColor,
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+// 팀 이름 입력 영역
 @Composable
 private fun TeamNameSection(
     teamName: String,
@@ -306,10 +311,10 @@ private fun TeamNameSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFFF2F2F5))
+                .background(InputBackgroundColor)
                 .border(
                     width = if (isError) 1.dp else 0.dp,
-                    color = if (isError) Color(0xFFE53935) else Color.Transparent,
+                    color = if (isError) ErrorColor else Color.Transparent,
                     shape = RoundedCornerShape(14.dp)
                 )
                 .padding(horizontal = 14.dp, vertical = 14.dp)
@@ -324,10 +329,11 @@ private fun TeamNameSection(
                     if (teamName.isEmpty()) {
                         Text(
                             text = "예: 경영학과 프렌즈",
-                            color = Color(0xFF9A9AA3),
+                            color = PlaceholderColor,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
+
                     innerTextField()
                 }
             )
@@ -335,9 +341,10 @@ private fun TeamNameSection(
 
         if (isError) {
             Spacer(modifier = Modifier.height(8.dp))
+
             Text(
                 text = "팀 이름을 입력해주세요.",
-                color = Color(0xFFE53935),
+                color = ErrorColor,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium
             )
@@ -345,6 +352,7 @@ private fun TeamNameSection(
     }
 }
 
+// 팀 소개 입력 영역
 @Composable
 private fun TeamDescriptionSection(
     teamDescription: String,
@@ -355,7 +363,7 @@ private fun TeamDescriptionSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFFF2F2F5))
+                .background(InputBackgroundColor)
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
             BasicTextField(
@@ -367,10 +375,11 @@ private fun TeamDescriptionSection(
                     if (teamDescription.isEmpty()) {
                         Text(
                             text = "예: 함께 카페 가고 영화 볼 팀원을 구해요",
-                            color = Color(0xFF9A9AA3),
+                            color = PlaceholderColor,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
+
                     innerTextField()
                 }
             )
@@ -378,6 +387,7 @@ private fun TeamDescriptionSection(
     }
 }
 
+// 팀 대표 사진 선택 영역
 @Composable
 private fun TeamPhotoSection(
     selectedPhotoUri: Uri?,
@@ -391,54 +401,72 @@ private fun TeamPhotoSection(
                 .clip(RoundedCornerShape(16.dp))
                 .border(
                     width = 1.dp,
-                    color = Color(0xFFD5D6DE),
+                    color = BorderColor,
                     shape = RoundedCornerShape(16.dp)
                 )
                 .clickable { onUploadPhotoClick() },
             contentAlignment = Alignment.Center
         ) {
             if (selectedPhotoUri != null) {
-                AsyncImage(
-                    model = selectedPhotoUri,
-                    contentDescription = "팀 대표 사진",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(16.dp)),
-                    contentScale = ContentScale.Crop
-                )
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "선택됨",
-                        tint = Color(0xFFA020F0),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
+                SelectedTeamPhoto(selectedPhotoUri = selectedPhotoUri)
             } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "사진 업로드",
-                        tint = Color(0xFF9AA1AE),
-                        modifier = Modifier.size(44.dp)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "사진을 업로드하세요",
-                        color = Color(0xFF6D7483),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
+                EmptyTeamPhotoPlaceholder()
             }
         }
     }
 }
 
+// 대표 사진이 선택된 경우 보여주는 이미지 영역
+@Composable
+private fun SelectedTeamPhoto(
+    selectedPhotoUri: Uri
+) {
+    AsyncImage(
+        model = selectedPhotoUri,
+        contentDescription = "팀 대표 사진",
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(16.dp)),
+        contentScale = ContentScale.Crop
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp),
+        contentAlignment = Alignment.TopEnd
+    ) {
+        Icon(
+            imageVector = Icons.Default.CheckCircle,
+            contentDescription = "선택됨",
+            tint = MainPurpleColor,
+            modifier = Modifier.size(28.dp)
+        )
+    }
+}
+
+// 대표 사진이 선택되지 않았을 때 보여주는 안내 영역
+@Composable
+private fun EmptyTeamPhotoPlaceholder() {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            imageVector = Icons.Default.CameraAlt,
+            contentDescription = "사진 업로드",
+            tint = Color(0xFF9AA1AE),
+            modifier = Modifier.size(44.dp)
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = "사진을 업로드하세요",
+            color = Color(0xFF6D7483),
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
+// 팀 태그 선택 및 직접 입력 영역
 @Composable
 private fun TeamTagSection(
     allTags: List<String>,
@@ -457,7 +485,7 @@ private fun TeamTagSection(
         if (isError) {
             Text(
                 text = "팀 태그를 최소 1개 이상 선택해주세요.",
-                color = Color(0xFFE53935),
+                color = ErrorColor,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium
             )
@@ -473,75 +501,19 @@ private fun TeamTagSection(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF2F2F5))
-                    .padding(horizontal = 14.dp, vertical = 14.dp)
-            ) {
-                BasicTextField(
-                    value = customTagInput,
-                    onValueChange = { customTagInput = it },
-                    textStyle = TextStyle(color = Color(0xFF222222)),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    decorationBox = { innerTextField ->
-                        if (customTagInput.isEmpty()) {
-                            Text(
-                                text = "직접 태그 입력 후 추가",
-                                color = Color(0xFF9A9AA3),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        innerTextField()
-                    }
-                )
+        CustomTagInputRow(
+            customTagInput = customTagInput,
+            selectedTags = selectedTags,
+            onCustomTagInputChange = { customTagInput = it },
+            onAddCustomTag = { tag ->
+                onAddCustomTag(tag)
+                customTagInput = ""
             }
-
-            Surface(
-                modifier = Modifier.clickable {
-                    val normalizedTag = customTagInput.trim().removePrefix("#")
-                    if (
-                        normalizedTag.isNotBlank() &&
-                        selectedTags.size < 5 &&
-                        !selectedTags.contains(normalizedTag)
-                    ) {
-                        onAddCustomTag(normalizedTag)
-                        customTagInput = ""
-                    }
-                },
-                shape = RoundedCornerShape(14.dp),
-                color = Color(0xFFEEDBFF)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "태그 추가",
-                        tint = Color(0xFFA020F0),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "추가",
-                        color = Color(0xFFA020F0),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
+        )
 
         if (selectedTags.isNotEmpty()) {
             Spacer(modifier = Modifier.height(14.dp))
+
             SelectedTagList(
                 selectedTags = selectedTags,
                 onRemoveTag = onRemoveTag
@@ -550,6 +522,144 @@ private fun TeamTagSection(
     }
 }
 
+// 직접 태그 입력 후 추가하는 영역
+@Composable
+private fun CustomTagInputRow(
+    customTagInput: String,
+    selectedTags: List<String>,
+    onCustomTagInputChange: (String) -> Unit,
+    onAddCustomTag: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(InputBackgroundColor)
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+        ) {
+            BasicTextField(
+                value = customTagInput,
+                onValueChange = onCustomTagInputChange,
+                textStyle = TextStyle(color = Color(0xFF222222)),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                decorationBox = { innerTextField ->
+                    if (customTagInput.isEmpty()) {
+                        Text(
+                            text = "직접 태그 입력 후 추가",
+                            color = PlaceholderColor,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+
+                    innerTextField()
+                }
+            )
+        }
+
+        Surface(
+            modifier = Modifier.clickable {
+                val normalizedTag = normalizeTag(customTagInput)
+
+                if (
+                    normalizedTag.isNotBlank() &&
+                    selectedTags.size < 5 &&
+                    !selectedTags.contains(normalizedTag)
+                ) {
+                    onAddCustomTag(normalizedTag)
+                }
+            },
+            shape = RoundedCornerShape(14.dp),
+            color = LightPurpleColor
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "태그 추가",
+                    tint = MainPurpleColor,
+                    modifier = Modifier.size(16.dp)
+                )
+
+                Text(
+                    text = "추가",
+                    color = MainPurpleColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// 팀 만들기 버튼 영역
+@Composable
+private fun CreateTeamButton(
+    isCreatingTeam: Boolean,
+    isCreateButtonLocked: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        enabled = !isCreatingTeam && !isCreateButtonLocked,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .height(56.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MainPurpleColor,
+            disabledContainerColor = DisabledPurpleColor
+        )
+    ) {
+        when {
+            isCreatingTeam -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Text(
+                    text = "팀 생성 중...",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            isCreateButtonLocked -> {
+                Text(
+                    text = "잠시만 기다려주세요...",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            else -> {
+                Text(
+                    text = "팀 만들기",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// 각 입력 영역을 감싸는 공통 카드 UI
 @Composable
 private fun WhiteCardSection(
     title: String,
@@ -575,6 +685,7 @@ private fun WhiteCardSection(
 
                 if (titleRightText != null) {
                     Spacer(modifier = Modifier.width(8.dp))
+
                     Text(
                         text = titleRightText,
                         color = Color(0xFF63708C),
@@ -584,11 +695,13 @@ private fun WhiteCardSection(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
             content()
         }
     }
 }
 
+// 기본 태그 목록을 3개씩 끊어서 보여주는 영역
 @Composable
 private fun TagWrapLayout(
     tags: List<String>,
@@ -609,12 +722,12 @@ private fun TagWrapLayout(
                             .wrapContentHeight()
                             .clickable { onTagClick(tag) },
                         shape = RoundedCornerShape(20.dp),
-                        color = if (selected) Color(0xFFEEDBFF) else Color(0xFFF2F2F5)
+                        color = if (selected) LightPurpleColor else InputBackgroundColor
                     ) {
                         Text(
                             text = "#$tag",
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            color = if (selected) Color(0xFFA020F0) else Color(0xFF444B5A),
+                            color = if (selected) MainPurpleColor else Color(0xFF444B5A),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                         )
@@ -625,6 +738,7 @@ private fun TagWrapLayout(
     }
 }
 
+// 선택된 태그 목록을 보여주고, X 버튼으로 삭제할 수 있는 영역
 @Composable
 private fun SelectedTagList(
     selectedTags: List<String>,
@@ -646,15 +760,17 @@ private fun SelectedTagList(
                         ) {
                             Text(
                                 text = "#$tag",
-                                color = Color(0xFFA020F0),
+                                color = MainPurpleColor,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
+
                             Spacer(modifier = Modifier.width(6.dp))
+
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "태그 제거",
-                                tint = Color(0xFFA020F0),
+                                tint = MainPurpleColor,
                                 modifier = Modifier
                                     .size(14.dp)
                                     .clickable { onRemoveTag(tag) }
@@ -664,5 +780,21 @@ private fun SelectedTagList(
                 }
             }
         }
+    }
+}
+
+// 사용자가 직접 입력한 태그에서 공백과 # 기호를 정리하는 함수
+private fun normalizeTag(tag: String): String {
+    return tag.trim().removePrefix("#")
+}
+
+// 필수 입력이 비어 있을 때 해당 입력 영역으로 스크롤하는 함수
+private fun scrollToItem(
+    coroutineScope: CoroutineScope,
+    listState: LazyListState,
+    itemIndex: Int
+) {
+    coroutineScope.launch {
+        listState.animateScrollToItem(itemIndex)
     }
 }

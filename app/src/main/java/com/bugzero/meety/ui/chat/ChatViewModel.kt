@@ -378,16 +378,20 @@ class ChatViewModel(
                 val rawItems = participantIds.mapIndexed { index, pUserId ->
                     val userDoc = db.collection("users").document(pUserId).get().await()
 
-                    // ✨ [핵심 로직] 팀 채팅(team)이면서 첫 번째 참여자(0번)일 때만 리더UI 적용!
                     val shouldShowLeader = isTeam && index == 0
+
+                    // ✨ [핵심 로직] 파이어베이스 필드명이 다를 수 있으므로 3가지를 다 찔러서 무조건 사진을 가져옵니다!
+                    val fetchedImage = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
+                        ?: userDoc.getString("profileImageUrl")
+                        ?: userDoc.getString("profileImage")
+                        ?: ""
 
                     ParticipantItem(
                         userId = pUserId,
                         name = userDoc.getString("name") ?: "알 수 없음",
-                        // 팀 채팅일 때만 왕관(👑), 아니면 기본 아이콘(👤)
                         emoji = if (shouldShowLeader) "👑" else "👤",
                         isLeader = shouldShowLeader,
-                        profileImage = (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString() ?: "",
+                        profileImage = fetchedImage, // 👈 완벽하게 가져온 이미지 변수를 쏙 넣어줍니다!
                         isFriend = friendIds.contains(pUserId) || pUserId == myId
                     )
                 }
@@ -427,24 +431,7 @@ class ChatViewModel(
         }
     }
 
-    fun loadFriendList() {
-        val userId = currentUserIdOrNull ?: return
-        viewModelScope.launch {
-            _isLoadingFriends.value = true
-            try {
-                val friendsSnapshot = FirebaseFirestore.getInstance().collection("users").document(userId).collection("friends").get().await()
-                val friendIds = friendsSnapshot.documents.mapNotNull { it.getString("friendUserId") }
-                val friends = mutableListOf<UserProfileData>()
-                for (id in friendIds) {
-                    val doc = FirebaseFirestore.getInstance().collection("users").document(id).get().await()
-                    if (doc.exists()) {
-                        friends.add(UserProfileData(userId = doc.id, name = doc.getString("name") ?: "알 수 없음", department = doc.getString("department") ?: "", mbti = doc.getString("mbti") ?: ""))
-                    }
-                }
-                _friendList.value = friends.sortedBy { it.name }
-            } finally { _isLoadingFriends.value = false }
-        }
-    }
+
 
     fun createOrGetDirectChat(friend: UserProfileData, onSuccess: (String, String) -> Unit, onFailure: (String) -> Unit) {
         val myId = currentUserIdOrNull ?: return
@@ -594,16 +581,71 @@ class ChatViewModel(
         }
     }
 
+    // ✨ 1. 실수로 지워졌던 친구 목록 불러오기 함수 복구
+    fun loadFriendList() {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            _isLoadingFriends.value = true
+            try {
+                val friendsSnapshot = FirebaseFirestore.getInstance().collection("users").document(userId).collection("friends").get().await()
+                val friendIds = friendsSnapshot.documents.mapNotNull { it.getString("friendUserId") }
+                val friends = mutableListOf<UserProfileData>()
+                for (id in friendIds) {
+                    val doc = FirebaseFirestore.getInstance().collection("users").document(id).get().await()
+                    if (doc.exists()) {
+                        friends.add(UserProfileData(userId = doc.id, name = doc.getString("name") ?: "알 수 없음", department = doc.getString("department") ?: "", mbti = doc.getString("mbti") ?: ""))
+                    }
+                }
+                _friendList.value = friends.sortedBy { it.name }
+            } finally { _isLoadingFriends.value = false }
+        }
+    }
+
+
+    // ✨ 관심사와 음식을 꽉꽉 채워오고 프사까지 완벽하게 가져오는 함수
     fun loadUserProfile(userId: String) {
         viewModelScope.launch {
             _isLoadingProfile.value = true
             try {
                 val doc = FirebaseFirestore.getInstance().collection("users").document(userId).get().await()
-                _selectedUserProfile.value = UserProfileData(userId = doc.id, name = doc.getString("name") ?: "", mbti = doc.getString("mbti") ?: "", department = doc.getString("department") ?: "", age = doc.getLong("age")?.toInt() ?: 0, height = doc.getLong("height")?.toInt() ?: 0, location = doc.getString("location") ?: "", bio = doc.getString("bio") ?: "")
-            } finally { _isLoadingProfile.value = false }
+
+                // ✨ [수정 포인트 1] 이 똑똑한 변수를...
+                val photoUrl = doc.getString("profileImageUrl")
+                    ?: doc.getString("profileImage")
+                    ?: (doc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
+                    ?: ""
+
+                @Suppress("UNCHECKED_CAST")
+                val fetchedInterests = (doc.get("interests") as? List<String>) ?: emptyList()
+                @Suppress("UNCHECKED_CAST")
+                val fetchedFoodLikes = (doc.get("foodLikes") as? List<String>) ?: emptyList()
+                @Suppress("UNCHECKED_CAST")
+                val fetchedFoodDislikes = (doc.get("foodDislikes") as? List<String>) ?: emptyList()
+
+                _selectedUserProfile.value = UserProfileData(
+                    userId = doc.id,
+                    name = doc.getString("name") ?: "",
+                    mbti = doc.getString("mbti") ?: "",
+                    department = doc.getString("department") ?: "",
+                    age = doc.getLong("age")?.toInt() ?: 0,
+                    height = doc.getLong("height")?.toInt() ?: 0,
+                    location = doc.getString("location") ?: "",
+                    bio = doc.getString("bio") ?: "",
+
+                    interests = fetchedInterests,
+                    foodLikes = fetchedFoodLikes,
+                    foodDislikes = fetchedFoodDislikes,
+
+                    // ✨ [수정 포인트 2] 여기서 photoUrl 변수를 그대로 사용해야 합니다!
+                    profileImageUrl = photoUrl
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "프로필 로드 에러: ${e.message}")
+            } finally {
+                _isLoadingProfile.value = false
+            }
         }
     }
-
     fun clearUserProfile() { _selectedUserProfile.value = null }
 
     /**

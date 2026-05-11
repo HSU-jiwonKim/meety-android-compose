@@ -43,7 +43,7 @@ import com.bugzero.meety.ui.feed.ProfileEditScreen
 import com.bugzero.meety.ui.team.MeetingCreateScreen
 import com.bugzero.meety.ui.team.MyPageRoute
 import com.bugzero.meety.ui.team.MyTeamScreen
-
+import android.net.Uri // 05-10 추가함
 object Routes {
     const val ONBOARDING = "onboarding"
     const val LOGIN = "login"
@@ -416,7 +416,16 @@ fun NavGraph(
                             restoreState = true
                         }
                     },
-                    onCreateTeamClick = { navController.popBackStack() }
+                    onCreateTeamClick = { teamId, teamName -> // 05-10 변경함
+                        navController.navigate(
+                            "${Routes.CHAT_ROOM}/$teamId?roomName=${Uri.encode(teamName)}"
+                        ) {
+                            popUpTo(Routes.MEETING_CREATE) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
             composable(Routes.CHAT_LIST) {
