@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
@@ -411,7 +413,7 @@ fun ChatRoomScreen(
                                 exit = fadeOut()
                             ) {
                                 StickerPickerPanel(
-                                    onStickerClick = { stickerId ->
+                                    onSendSticker = { stickerId ->
                                         viewModel.sendSticker(chatId, stickerId)
                                         showStickerPicker = false
                                     }
@@ -767,37 +769,141 @@ private fun MessageInputBar(
     }
 }
 
-/** 카카오톡 스타일 스티커 피커 패널 — 입력창 바로 아래에 펼쳐짐 */
+/** 카카오톡 스타일 스티커 피커 패널 — 선택 시 미리보기 바가 위에 펼쳐지고, 보내기 버튼으로 전송 */
 @Composable
-private fun StickerPickerPanel(onStickerClick: (String) -> Unit) {
-    Surface(
-        color = Color.White,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(260.dp)
-    ) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+private fun StickerPickerPanel(onSendSticker: (String) -> Unit) {
+    // 그리드에서 선택한 스티커 id (null 이면 미리보기 없음)
+    var selectedPreview by remember { mutableStateOf<String?>(null) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ─ 상단 미리보기 바 (선택된 스티커가 있을 때만) ─
+        AnimatedVisibility(
+            visible = selectedPreview != null,
+            enter = fadeIn(),
+            exit = fadeOut()
         ) {
-            items(Stickers.STICKER_IDS) { stickerId ->
-                Box(
-                    modifier = Modifier
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF7F7F8))
-                        .clickable { onStickerClick(stickerId) }
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = Stickers.drawableFor(stickerId)),
-                        contentDescription = stickerId,
-                        modifier = Modifier.fillMaxSize()
-                    )
+            val sid = selectedPreview
+            if (sid != null) {
+                StickerPreviewBar(
+                    stickerId = sid,
+                    onSend = {
+                        onSendSticker(sid)
+                        selectedPreview = null
+                    },
+                    onCancel = { selectedPreview = null }
+                )
+            }
+        }
+
+        // ─ 스티커 그리드 ─
+        Surface(
+            color = Color.White,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+        ) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(Stickers.STICKER_IDS) { stickerId ->
+                    val isSelected = selectedPreview == stickerId
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSelected) Color(0xFFF3EEFF)
+                                else Color(0xFFF7F7F8)
+                            )
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        width = 2.dp,
+                                        color = Color(0xFF8B5CF6),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                } else Modifier
+                            )
+                            .clickable { selectedPreview = stickerId }
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = Stickers.drawableFor(stickerId)),
+                            contentDescription = stickerId,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+/** 스티커 그리드 상단에 펼쳐지는 미리보기 바 — 큰 이미지 + 취소/보내기 버튼 */
+@Composable
+private fun StickerPreviewBar(
+    stickerId: String,
+    onSend: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Surface(
+        color = Color(0xFFFAF8FF),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 큰 미리보기 이미지
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .padding(6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = Stickers.drawableFor(stickerId)),
+                    contentDescription = "미리보기",
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // 취소 (X 아이콘 버튼)
+            IconButton(onClick = onCancel) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "취소",
+                    tint = Color(0xFF6B7280)
+                )
+            }
+
+            Spacer(Modifier.width(4.dp))
+
+            // 보내기 (강조된 보라색 버튼)
+            Button(
+                onClick = onSend,
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.White
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("보내기", fontSize = 14.sp, color = Color.White)
             }
         }
     }
@@ -1442,71 +1548,97 @@ private fun PlaceCardMessage(
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEAE8F4)),
                     modifier = Modifier.widthIn(max = 280.dp)
                 ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                // 상단 뱃지 + 네이버 지도
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("📍", fontSize = 14.sp)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "공유된 장소",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF6C5CE7)
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        // 상단 뱃지 + 네이버 지도
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📍", fontSize = 14.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "공유된 장소",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF6C5CE7)
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
 
-                // 이미지 + 정보
-                Row(verticalAlignment = Alignment.Top) {
-                    if (message.placeImageUrl.isNotBlank()) {
-                        coil.compose.AsyncImage(
-                            model = message.placeImageUrl,
-                            contentDescription = message.placeName,
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFF3F1FA)),
-                            contentAlignment = Alignment.Center
-                        ) { Text("🗺️", fontSize = 24.sp) }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        if (message.placeCategory.isNotBlank()) {
-                            Text(
-                                text = message.placeCategory,
-                                fontSize = 11.sp,
-                                color = Color(0xFF9CA3AF)
-                            )
+                        // 이미지 + 정보
+                        Row(verticalAlignment = Alignment.Top) {
+                            if (message.placeImageUrl.isNotBlank()) {
+                                coil.compose.AsyncImage(
+                                    model = message.placeImageUrl,
+                                    contentDescription = message.placeName,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFF3F1FA)),
+                                    contentAlignment = Alignment.Center
+                                ) { Text("🗺️", fontSize = 24.sp) }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                if (message.placeCategory.isNotBlank()) {
+                                    Text(
+                                        text = message.placeCategory,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF9CA3AF)
+                                    )
+                                }
+                                Text(
+                                    text = message.placeName,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1A1A2E),
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                if (message.placeAddress.isNotBlank()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = message.placeAddress,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF6B7280),
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (message.placeReviewCount > 0) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = "방문자 리뷰 ${message.placeReviewCount}개",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF6C5CE7),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
-                        Text(
-                            text = message.placeName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1A1A2E),
-                            maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                        if (message.placeAddress.isNotBlank()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = message.placeAddress,
-                                fontSize = 11.sp,
-                                color = Color(0xFF6B7280),
-                                maxLines = 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+
+                        Spacer(Modifier.height(10.dp))
+                        // "네이버 지도에서 상세보기" 힌트
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF3F1FA), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = Color(0xFF6C5CE7),
+                                modifier = Modifier.size(14.dp)
                             )
-                        }
-                        if (message.placeReviewCount > 0) {
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "방문자 리뷰 ${message.placeReviewCount}개",
+                                text = "네이버 지도에서 상세보기",
                                 fontSize = 11.sp,
                                 color = Color(0xFF6C5CE7),
                                 fontWeight = FontWeight.Medium
@@ -1514,32 +1646,6 @@ private fun PlaceCardMessage(
                         }
                     }
                 }
-
-                Spacer(Modifier.height(10.dp))
-                // "네이버 지도에서 상세보기" 힌트
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFF3F1FA), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = Color(0xFF6C5CE7),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "네이버 지도에서 상세보기",
-                        fontSize = 11.sp,
-                        color = Color(0xFF6C5CE7),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
                 if (!isMe) {
                     Text(
                         text = timeText,

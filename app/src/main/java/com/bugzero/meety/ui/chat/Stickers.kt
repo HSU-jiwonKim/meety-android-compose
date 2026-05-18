@@ -12,6 +12,7 @@ import com.bugzero.meety.R
  * 새 스티커 추가 절차:
  *  1) PNG 를 app/src/main/res/drawable/ 에 sticker_NN.png 로 저장 (NN 은 두 자리 0패딩)
  *  2) 아래 STICKER_IDS 리스트에 "sticker_NN" 추가
+ *  3) drawableFor() when 분기에도 한 줄 추가
  *
  * 잘못된 id 가 들어왔거나 리소스가 없을 땐 fallback 으로 sticker_01 을 보여줍니다.
  */
@@ -25,7 +26,21 @@ object Stickers {
         "sticker_05",
         "sticker_06",
         "sticker_07",
-        "sticker_09"
+        "sticker_09",
+        "sticker_10",
+        "sticker_11",
+        "sticker_12",
+        "sticker_13",
+        "sticker_14",
+        "sticker_15",
+        "sticker_16",
+        "sticker_17",
+        "sticker_18",
+        "sticker_19",
+        "sticker_20",
+        "sticker_21",
+        "sticker_22",
+        "sticker_23"
     )
 
     /** id → drawable resource. 못 찾으면 fallback */
@@ -38,6 +53,20 @@ object Stickers {
         "sticker_06" -> R.drawable.sticker_06
         "sticker_07" -> R.drawable.sticker_07
         "sticker_09" -> R.drawable.sticker_09
+        "sticker_10" -> R.drawable.sticker_10
+        "sticker_11" -> R.drawable.sticker_11
+        "sticker_12" -> R.drawable.sticker_12
+        "sticker_13" -> R.drawable.sticker_13
+        "sticker_14" -> R.drawable.sticker_14
+        "sticker_15" -> R.drawable.sticker_15
+        "sticker_16" -> R.drawable.sticker_16
+        "sticker_17" -> R.drawable.sticker_17
+        "sticker_18" -> R.drawable.sticker_18
+        "sticker_19" -> R.drawable.sticker_19
+        "sticker_20" -> R.drawable.sticker_20
+        "sticker_21" -> R.drawable.sticker_21
+        "sticker_22" -> R.drawable.sticker_22
+        "sticker_23" -> R.drawable.sticker_23
         else -> R.drawable.sticker_01
     }
 
