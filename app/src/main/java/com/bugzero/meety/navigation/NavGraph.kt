@@ -320,6 +320,14 @@ fun NavGraph(
                     onCreateNewTeamClick = {
                         navController.navigate(Routes.MEETING_CREATE)
                     },
+                    // 2026-05-17 추가: 친구 탭에서 채팅 선택 시 기존/신규 개인 채팅방 화면으로 바로 이동
+                    onFriendChatClick = { chatId, roomName ->
+                        navController.navigate(
+                            "${Routes.CHAT_ROOM}/$chatId?roomName=${Uri.encode(roomName)}"
+                        ) {
+                            launchSingleTop = true
+                        }
+                    },
 
                     // 추가할 부분
                     onCallStarted = { chatId, callType ->
@@ -487,6 +495,11 @@ fun NavGraph(
                         chatId = chatId,
                         roomName = roomName,
                         onBackClick = { navController.popBackStack() },
+
+                        onNavigateToChat = { newChatId, newRoomName ->
+                            val safeRoomName = android.net.Uri.encode(newRoomName)
+                            navController.navigate("chat_room/$newChatId?roomName=$safeRoomName")
+                        },
                         onVideoCallClick = {
                             if (isCallClickAllowed()) {
                                 navController.navigate("${Routes.CALL}/$chatId/video/false")

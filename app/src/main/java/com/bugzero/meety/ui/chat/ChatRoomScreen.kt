@@ -5,10 +5,14 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Menu
@@ -30,6 +35,8 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.bugzero.meety.data.repository.PlaceResult
@@ -71,6 +78,7 @@ fun ChatRoomScreen(
     onScheduleSyncClick: (List<String>) -> Unit = {},
     onAcceptCall: (chatId: String, callType: String) -> Unit = { _, _ -> },
     onJoinCall: (chatId: String, callType: String) -> Unit = { _, _ -> },
+    onNavigateToChat: (String, String) -> Unit = { _, _ -> },
     viewModel: ChatViewModel = viewModel(),
     callViewModel: CallViewModel = viewModel()
 ) {
@@ -96,6 +104,10 @@ fun ChatRoomScreen(
     var showInviteSheet by remember { mutableStateOf(false) } // ✨ 초대 시트 상태 추가
     var showAutoMatchingSheet by remember { mutableStateOf(false) } // 팀원 자동 매칭 시트
     var selectionMode by remember { mutableStateOf("kick") }
+
+    // 스티커(이모티콘) 피커 상태 — 카톡 입력창 아래 패널
+    var showStickerPicker by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // 수신 통화 감지
     val incomingCall by callViewModel.incomingCallState.collectAsState()
@@ -173,8 +185,32 @@ fun ChatRoomScreen(
     //     )
     // }
 
+
+
     selectedParticipant?.let { participant ->
-        ParticipantProfileDialog(participant, selectedUserProfile, isLoadingProfile, isDirectChat, onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() })
+        ParticipantProfileDialog(
+            participant = participant,
+            userProfile = selectedUserProfile,
+            isLoading = isLoadingProfile,
+            isDirectChat = isDirectChat,
+            onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() },
+
+            // ✨ [새로 추가된 부분] 1:1 채팅 버튼을 눌렀을 때 실행될 행동!
+            onDirectChatClick = { profile ->
+                viewModel.createOrGetDirectChat(
+                    friend = profile,
+                    onSuccess = { newChatId, newRoomName ->
+                        // 팝업 닫고 새로운 1:1 채팅방 화면으로 이동!
+                        selectedParticipant = null
+                        viewModel.clearUserProfile()
+                        onNavigateToChat(newChatId, newRoomName)
+                    },
+                    onFailure = {
+                        snackScope.launch { snackbarHostState.showSnackbar("1:1 채팅방 생성에 실패했습니다.") }
+                    }
+                )
+            }
+        )
     }
 
     // 1. 화면 방향을 반대(RTL)로 뒤집어서 서랍이 오른쪽에서 나오게 만듭니다.
@@ -348,7 +384,40 @@ fun ChatRoomScreen(
                                 )
                             }
                         }
-                        MessageInputBar(text = inputText, isSending = isSending, onTextChange = { inputText = it }, onSendClick = { if (inputText.isNotBlank()) { viewModel.sendMessage(chatId, inputText); inputText = "" } })
+                        Column(
+                            modifier = Modifier.windowInsetsPadding(
+                                WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)
+                            )
+                        ) {
+                            MessageInputBar(
+                                text = inputText,
+                                isSending = isSending,
+                                onTextChange = { inputText = it },
+                                onSendClick = {
+                                    if (inputText.isNotBlank()) {
+                                        viewModel.sendMessage(chatId, inputText)
+                                        inputText = ""
+                                    }
+                                },
+                                onEmojiClick = {
+                                    showStickerPicker = !showStickerPicker
+                                    if (showStickerPicker) keyboardController?.hide()
+                                },
+                                isStickerPickerOpen = showStickerPicker
+                            )
+                            AnimatedVisibility(
+                                visible = showStickerPicker,
+                                enter = fadeIn(),
+                                exit = fadeOut()
+                            ) {
+                                StickerPickerPanel(
+                                    onStickerClick = { stickerId ->
+                                        viewModel.sendSticker(chatId, stickerId)
+                                        showStickerPicker = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -656,12 +725,159 @@ private fun ReceivedLikeSheet(requestList: List<ReceivedLikeItem>, onAccept: (St
 }
 
 @Composable
-private fun MessageInputBar(text: String, isSending: Boolean, onTextChange: (String) -> Unit, onSendClick: () -> Unit) {
-    Surface(color = Color.White, modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextField(value = text, onValueChange = onTextChange, modifier = Modifier.weight(1f), placeholder = { Text("메시지를 입력하세요") }, colors = TextFieldDefaults.colors(focusedContainerColor = Color(0xFFF3F4F6), unfocusedContainerColor = Color(0xFFF3F4F6), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), shape = RoundedCornerShape(24.dp))
+private fun MessageInputBar(
+    text: String,
+    isSending: Boolean,
+    onTextChange: (String) -> Unit,
+    onSendClick: () -> Unit,
+    onEmojiClick: () -> Unit = {},
+    isStickerPickerOpen: Boolean = false
+) {
+    // bottom inset 은 바깥 Column 에서 처리하므로 여기서는 제거
+    Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onEmojiClick) {
+                Icon(
+                    imageVector = Icons.Filled.EmojiEmotions,
+                    contentDescription = "이모티콘",
+                    tint = if (isStickerPickerOpen) Color(0xFF8B5CF6) else Color(0xFF6B7280)
+                )
+            }
+            TextField(
+                value = text,
+                onValueChange = onTextChange,
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("메시지를 입력하세요") },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color(0xFFF3F4F6),
+                    unfocusedContainerColor = Color(0xFFF3F4F6),
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = onSendClick, enabled = text.isNotBlank() && !isSending) {
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "전송")
+            }
+        }
+    }
+}
+
+/** 카카오톡 스타일 스티커 피커 패널 — 입력창 바로 아래에 펼쳐짐 */
+@Composable
+private fun StickerPickerPanel(onStickerClick: (String) -> Unit) {
+    Surface(
+        color = Color.White,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+    ) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(Stickers.STICKER_IDS) { stickerId ->
+                Box(
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFF7F7F8))
+                        .clickable { onStickerClick(stickerId) }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = Stickers.drawableFor(stickerId)),
+                        contentDescription = stickerId,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 스티커(이모티콘) 메시지 — 말풍선 없이 이미지만 표시 */
+@Composable
+private fun StickerMessage(
+    message: ChatMessage,
+    timeText: String,
+    onProfileClick: () -> Unit = {}
+) {
+    val isMe = message.isMe
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        if (!isMe) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE5E7EB))
+                    .clickable { onProfileClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (message.senderProfileImage.isNotBlank()) {
+                    AsyncImage(
+                        model = message.senderProfileImage,
+                        contentDescription = "프로필",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = message.senderName.take(1).ifEmpty { "👤" },
+                        fontSize = 16.sp,
+                        color = Color.DarkGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onSendClick, enabled = text.isNotBlank() && !isSending) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "전송") }
+        }
+
+        Column(horizontalAlignment = if (isMe) Alignment.End else Alignment.Start) {
+            if (!isMe && message.senderName.isNotBlank()) {
+                Text(
+                    text = message.senderName,
+                    fontSize = 12.sp,
+                    color = Color(0xFF6B7280),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                if (isMe) {
+                    Text(
+                        text = timeText,
+                        fontSize = 10.sp,
+                        color = Color(0xFF9CA3AF),
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                }
+                Image(
+                    painter = painterResource(id = Stickers.drawableFor(message.content)),
+                    contentDescription = "이모티콘",
+                    modifier = Modifier.size(140.dp)
+                )
+                if (!isMe) {
+                    Text(
+                        text = timeText,
+                        fontSize = 10.sp,
+                        color = Color(0xFF9CA3AF),
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -676,6 +892,11 @@ private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: 
     // 장소 카드 메시지 — 네이버 지도 딥링크 포함
     if (message.type == "place_card") {
         PlaceCardMessage(message = message, timeText = timeText, onProfileClick = onProfileClick)
+        return
+    }
+    // 스티커(이모티콘) 메시지 — 말풍선 없이 이미지만 표시
+    if (message.type == "sticker") {
+        StickerMessage(message = message, timeText = timeText, onProfileClick = onProfileClick)
         return
     }
     if (message.senderId == "system") {
@@ -693,7 +914,7 @@ private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: 
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Top // ✨ 프로필을 위쪽으로 맞춤 (카카오톡 스타일)
+        verticalAlignment = Alignment.Top
     ) {
         // ✨ 상대방(isMe == false)일 때만 프로필 사진(아이콘) 표시
         if (!isMe) {
@@ -702,15 +923,25 @@ private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: 
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFE5E7EB))
-                    .clickable { onProfileClick() }, // ✨ 프로필 클릭으로 다이얼로그 열기
+                    .clickable { onProfileClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = message.senderName.take(1).ifEmpty { "👤" },
-                    fontSize = 16.sp,
-                    color = Color.DarkGray,
-                    fontWeight = FontWeight.Bold
-                )
+                // 📸 여기서 사진이 있는지 검사하고 그려줍니다!
+                if (message.senderProfileImage.isNotBlank()) {
+                    coil.compose.AsyncImage(
+                        model = message.senderProfileImage,
+                        contentDescription = "프로필 이미지",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = message.senderName.take(1).ifEmpty { "👤" },
+                        fontSize = 16.sp,
+                        color = Color.DarkGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -787,7 +1018,8 @@ private fun ParticipantProfileDialog(
     userProfile: UserProfileData?,
     isLoading: Boolean,
     isDirectChat: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onDirectChatClick: (UserProfileData) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -858,7 +1090,17 @@ private fun ParticipantProfileDialog(
                         IconButton(onClick = {}) { Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF8B5CF6)) }
                         Spacer(Modifier.width(20.dp))
                         IconButton(onClick = {}) { Icon(Icons.Default.Videocam, contentDescription = null, tint = Color(0xFF8B5CF6)) }
+                        val myId = FirebaseAuth.getInstance().currentUser?.uid
+                        if (!isDirectChat && participant.userId != myId) {
+                            Spacer(Modifier.width(20.dp))
+                            IconButton(onClick = {
+                                userProfile?.let { onDirectChatClick(it) }
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "1:1 채팅", tint = Color(0xFF8B5CF6))
+                            }
+                        }
                     }
+
 
                     Spacer(Modifier.height(20.dp))
                     HorizontalDivider(color = Color(0xFFF3F4F6))

@@ -81,6 +81,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 
 private enum class MyTeamTab {
     FRIENDS, ADD_FRIEND
@@ -98,7 +100,8 @@ data class FriendUiState(
     val location: String = "",
     val height: Int = 0,
     val interests: List<String> = emptyList(),
-    val foodLikes: List<String> = emptyList()
+    val foodLikes: List<String> = emptyList(),
+    val isFavorite: Boolean = false
 )
 
 data class ProfilePreviewUiState(
@@ -128,6 +131,7 @@ fun MyTeamScreen(
     onCancelSentClick: (String) -> Unit = {},
     onEditTeamClick: () -> Unit = {},
     onCreateNewTeamClick: () -> Unit = {},
+    onFriendChatClick: (chatId: String, roomName: String) -> Unit = { _, _ -> },
 
     // 변경한 부분: 통화 시작 후 CallScreen으로 이동시키기 위한 콜백
     // NavGraph에서 route에 맞게 연결하면 됨
@@ -163,7 +167,8 @@ fun MyTeamScreen(
             location = it.location,
             height = it.height,
             interests = it.interests,
-            foodLikes = it.foodLikes
+            foodLikes = it.foodLikes,
+            isFavorite = it.isFavorite
         )
     }
 
@@ -173,6 +178,9 @@ fun MyTeamScreen(
                 friend.name.contains(query, ignoreCase = true) ||
                 friend.email.contains(query, ignoreCase = true)
     }
+
+    val favoriteFriendList = filteredFriendList.filter { it.isFavorite }
+    val normalFriendList = filteredFriendList.filter { !it.isFavorite }
 
     fun startProfileCall(
         targetUserId: String,
@@ -207,6 +215,38 @@ fun MyTeamScreen(
                 Toast.makeText(
                     context,
                     "통화를 시작하지 못했습니다: ${it.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun startFriendChat(friend: FriendUiState) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+        if (currentUserId.isBlank()) {
+            Toast.makeText(context, "로그인 정보가 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (friend.id.isBlank()) {
+            Toast.makeText(context, "상대방 정보를 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        coroutineScope.launch {
+            runCatching {
+                findOrCreateOneToOneChat(
+                    currentUserId = currentUserId,
+                    targetUserId = friend.id,
+                    targetUserName = friend.name
+                )
+            }.onSuccess { chatId ->
+                onFriendChatClick(chatId, friend.name)
+            }.onFailure {
+                Toast.makeText(
+                    context,
+                    "채팅방을 만들지 못했습니다: ${it.message}",
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -294,7 +334,43 @@ fun MyTeamScreen(
                             EmptyFriendCard(text = "검색 결과가 없습니다.")
                         }
                     } else {
-                        items(filteredFriendList) { friend ->
+                        if (favoriteFriendList.isNotEmpty()) {
+                            item {
+                                SectionTitle(text = "즐겨찾기")
+                            }
+
+                            items(favoriteFriendList) { friend ->
+                                FriendListItem(
+                                    friend = friend,
+                                    onProfileClick = {
+                                        selectedProfile = ProfilePreviewUiState(
+                                            id = friend.id,
+                                            name = friend.name,
+                                            profileImageUrl = friend.profileImageUrl,
+                                            department = friend.department,
+                                            age = friend.age,
+                                            mbti = friend.mbti,
+                                            bio = friend.bio,
+                                            location = friend.location,
+                                            height = friend.height,
+                                            interests = friend.interests,
+                                            foodLikes = friend.foodLikes
+                                        )
+                                    },
+                                    onFavoriteClick = { viewModel.toggleFavoriteFriend(friend.id, friend.isFavorite) },
+                                    onChatClick = { startFriendChat(friend) },
+                                    onRemoveClick = { viewModel.removeFriend(friend.id) }
+                                )
+                            }
+
+                            if (normalFriendList.isNotEmpty()) {
+                                item {
+                                    SectionTitle(text = "친구")
+                                }
+                            }
+                        }
+
+                        items(normalFriendList) { friend ->
                             FriendListItem(
                                 friend = friend,
                                 onProfileClick = {
@@ -312,6 +388,8 @@ fun MyTeamScreen(
                                         foodLikes = friend.foodLikes
                                     )
                                 },
+                                onFavoriteClick = { viewModel.toggleFavoriteFriend(friend.id, friend.isFavorite) },
+                                onChatClick = { startFriendChat(friend) },
                                 onRemoveClick = { viewModel.removeFriend(friend.id) }
                             )
                         }
@@ -474,9 +552,55 @@ private fun SectionTitle(
 private fun FriendListItem(
     friend: FriendUiState,
     onProfileClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
+    onChatClick: () -> Unit,
     onRemoveClick: () -> Unit
 ) {
+    var showActionDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showActionDialog = false },
+            containerColor = Color(0xFFF7F7F7),
+            title = {
+                Text(
+                    text = friend.name,
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    FriendActionMenuItem(
+                        text = if (friend.isFavorite) "즐겨찾기 해제" else "즐겨찾기",
+                        onClick = {
+                            showActionDialog = false
+                            onFavoriteClick()
+                        }
+                    )
+
+                    FriendActionMenuItem(
+                        text = "채팅",
+                        onClick = {
+                            showActionDialog = false
+                            onChatClick()
+                        }
+                    )
+
+                    FriendActionMenuItem(
+                        text = "친구 삭제",
+                        onClick = {
+                            showActionDialog = false
+                            showDeleteDialog = true
+                        }
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
+    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -501,7 +625,7 @@ private fun FriendListItem(
                         onRemoveClick()
                     }
                 ) {
-                    Text(text = "삭제", color = Color(0xFFE53935))
+                    Text(text = "삭제", color = Color.Black)
                 }
             },
             dismissButton = {
@@ -520,7 +644,7 @@ private fun FriendListItem(
             .fillMaxWidth()
             .combinedClickable(
                 onClick = {},
-                onLongClick = { showDeleteDialog = true }
+                onLongClick = { showActionDialog = true }
             ),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -580,6 +704,39 @@ private fun FriendListItem(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun FriendActionMenuItem(
+    text: String,
+    textColor: Color = Color(0xFF111111),
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (isPressed) Color(0xFFEDEDED)
+                else Color.Transparent
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -981,7 +1138,8 @@ private fun MemberInfoRow(label: String, value: String) {
 // 변경한 부분: 친구와의 1:1 채팅방을 찾거나 생성하는 함수
 private suspend fun findOrCreateOneToOneChat(
     currentUserId: String,
-    targetUserId: String
+    targetUserId: String,
+    targetUserName: String = ""
 ): String {
     val db = FirebaseFirestore.getInstance()
 
@@ -1000,6 +1158,25 @@ private suspend fun findOrCreateOneToOneChat(
         return existingChat.id
     }
 
+    val oldDirectChat = db.collection("chats")
+        .whereArrayContains("participants", currentUserId)
+        .get()
+        .await()
+        .documents
+        .firstOrNull { doc ->
+            val savedParticipants = doc.get("participants") as? List<String> ?: emptyList()
+            doc.getString("type") == "direct" &&
+                    savedParticipants.size == 2 &&
+                    savedParticipants.contains(targetUserId)
+        }
+
+    if (oldDirectChat != null) {
+        if (oldDirectChat.getString("directKey").isNullOrBlank()) {
+            oldDirectChat.reference.update("directKey", directKey).await()
+        }
+        return oldDirectChat.id
+    }
+
     val newChatRef = db.collection("chats").document()
     val now = Timestamp.now()
 
@@ -1008,6 +1185,8 @@ private suspend fun findOrCreateOneToOneChat(
         "type" to "direct",
         "directKey" to directKey,
         "participants" to participants,
+        "teamName" to targetUserName,
+        "emoji" to "💬",
         "createdAt" to now,
         "lastMessage" to "",
         "lastMessageAt" to now

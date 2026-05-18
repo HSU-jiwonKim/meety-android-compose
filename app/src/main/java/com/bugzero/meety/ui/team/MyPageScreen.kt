@@ -65,7 +65,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.heightIn
-
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 data class UserProfileUiState(
     val name: String,
     val age: Int,
@@ -243,48 +244,6 @@ private fun ProfileHeaderSection(
     onImageClick: () -> Unit,
     onChangeMainImageClick: () -> Unit
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    if (showMenu) {
-        AlertDialog(
-            onDismissRequest = { showMenu = false },
-            containerColor = Color(0xFFF7F7F7),
-            title = {
-                Text(
-                    text = "프로필 사진",
-                    color = Color.Black
-                )
-            },
-            text = {
-                Text(
-                    text = "프로필 사진을 변경할까요?",
-                    color = Color.Black
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showMenu = false
-                        onChangeMainImageClick()
-                    }
-                ) {
-                    Text(
-                        text = "프로필 사진 변경",
-                        color = Color.Black
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMenu = false }) {
-                    Text(
-                        text = "취소",
-                        color = Color.Black
-                    )
-                }
-            }
-        )
-    }
-
     Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
         Column {
             Box(
@@ -337,7 +296,7 @@ private fun ProfileHeaderSection(
                 .border(4.dp, Color.White, CircleShape)
                 .combinedClickable(
                     onClick = onImageClick,
-                    onLongClick = { showMenu = true }
+                    onLongClick = onChangeMainImageClick
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -635,7 +594,7 @@ private fun PhotoItem(
     if (showMenu) {
         AlertDialog(
             onDismissRequest = { showMenu = false },
-            containerColor = Color(0xFFF7F7F7),
+            containerColor = Color.White,
             title = {
                 Text(
                     text = "사진 관리",
@@ -643,46 +602,26 @@ private fun PhotoItem(
                 )
             },
             text = {
-                Text(
-                    text = "이 사진으로 할 작업을 선택하세요.",
-                    color = Color.Black
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showMenu = false
-                        onSetMainClick()
-                    }
-                ) {
-                    Text(
-                        text = "대표 사진으로 설정",
-                        color = Color.Black
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    PhotoActionMenuItem(
+                        text = "프로필 사진으로 변경",
+                        onClick = {
+                            showMenu = false
+                            onSetMainClick()
+                        }
                     )
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(
+
+                    PhotoActionMenuItem(
+                        text = "삭제",
                         onClick = {
                             showMenu = false
                             onDeleteClick()
                         }
-                    ) {
-                        Text(
-                            text = "삭제",
-                            color = Color(0xFFE53935)
-                        )
-                    }
-
-                    TextButton(onClick = { showMenu = false }) {
-                        Text(
-                            text = "취소",
-                            color = Color.Black
-                        )
-                    }
+                    )
                 }
-            }
+            },
+            confirmButton = {},
+            dismissButton = {}
         )
     }
 
@@ -699,8 +638,37 @@ private fun PhotoItem(
         contentScale = ContentScale.Crop
     )
 }
+@Composable
+private fun PhotoActionMenuItem(
+    text: String,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
 
-
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (isPressed) Color(0xFFEDEDED)
+                else Color.Transparent
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+    ) {
+        Text(
+            text = text,
+            color = Color.Black,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
 @Composable
 private fun AddPhotoItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Button(
@@ -773,10 +741,17 @@ private fun SelectMainProfileImageDialog(
     onSelect: (String) -> Unit
 ) {
     val photos = imageUrls.filter { it.isNotBlank() }
+    var selectedImageUrl by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "프로필 사진 변경") },
+        containerColor = Color.White,
+        title = {
+            Text(
+                text = "프로필 사진 변경",
+                color = Color.Black
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 photos.chunked(3).forEach { rowItems ->
@@ -784,13 +759,20 @@ private fun SelectMainProfileImageDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         rowItems.forEach { imageUrl ->
+                            val isSelected = selectedImageUrl == imageUrl
+
                             AsyncImage(
                                 model = imageUrl,
                                 contentDescription = "선택할 사진",
                                 modifier = Modifier
                                     .size(72.dp)
                                     .clip(RoundedCornerShape(14.dp))
-                                    .clickable { onSelect(imageUrl) },
+                                    .border(
+                                        width = if (isSelected) 3.dp else 0.dp,
+                                        color = if (isSelected) Color.Black else Color.Transparent,
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { selectedImageUrl = imageUrl },
                                 contentScale = ContentScale.Crop
                             )
                         }
@@ -798,14 +780,29 @@ private fun SelectMainProfileImageDialog(
                 }
 
                 if (photos.isEmpty()) {
-                    Text(text = "선택할 사진이 없습니다.")
+                    Text(
+                        text = "선택할 사진이 없습니다.",
+                        color = Color.Black
+                    )
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            TextButton(
+                enabled = selectedImageUrl != null,
+                onClick = {
+                    selectedImageUrl?.let { onSelect(it) }
+                }
+            ) {
+                Text(
+                    text = "확인",
+                    color = Color.Black
+                )
+            }
+        },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
+                Text(text = "취소", color = Color.Black)
             }
         }
     )

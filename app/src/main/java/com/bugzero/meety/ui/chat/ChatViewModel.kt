@@ -309,6 +309,28 @@ class ChatViewModel(
         }
     }
 
+    /** 스티커(이모티콘) 전송 — content 에는 sticker id 가 들어가고 type="sticker" */
+    fun sendSticker(chatId: String, stickerId: String) {
+        val userId = currentUserIdOrNull ?: return
+        if (stickerId.isBlank()) return
+        viewModelScope.launch {
+            _isSending.value = true
+            try {
+                repository.sendMessage(
+                    chatId   = chatId,
+                    senderId = userId,
+                    content  = stickerId,
+                    type     = "sticker"
+                )
+            } catch (e: Exception) {
+                Log.e("ChatVM", "sendSticker 실패: ${e.message}")
+                _errorMessage.value = "이모티콘 전송에 실패했어요"
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
+
     /** 장소 추천 화면에서 선택한 업체를 채팅방에 카드 메시지로 공유 */
     fun sharePlaceToChat(chatId: String, place: PlaceResult) {
         val userId = currentUserIdOrNull ?: return
@@ -341,6 +363,48 @@ class ChatViewModel(
         timestamp ?: return ""
         val date = timestamp.toDate()
         return SimpleDateFormat("HH:mm", Locale.KOREA).format(date)
+    }
+
+    fun formatChatListTime(timestamp: com.google.firebase.Timestamp?): String {
+        if (timestamp == null) return ""
+
+        val targetDate = timestamp.toDate()
+
+        val todayCal = Calendar.getInstance()
+        val targetCal = Calendar.getInstance().apply { time = targetDate }
+
+        val todayYear = todayCal.get(Calendar.YEAR)
+        val todayMonth = todayCal.get(Calendar.MONTH)
+        val todayDay = todayCal.get(Calendar.DAY_OF_MONTH)
+        val targetYear = targetCal.get(Calendar.YEAR)
+
+        // 오늘 자정(00:00:00) 구하기 (이걸 기준으로 어제/오늘을 나눕니다)
+        val todayMidnight = Calendar.getInstance().apply {
+            set(todayYear, todayMonth, todayDay, 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val targetTime = targetCal.timeInMillis
+
+        return when {
+            // 1. 오늘 (타겟 시간이 오늘 자정 이후) -> 기존처럼 시간만 표시
+            targetTime >= todayMidnight -> {
+                SimpleDateFormat("HH:mm", Locale.KOREA).format(targetDate)
+                // 💡 만약 카톡처럼 '오후 8:52' 스타일로 바꾸고 싶다면 "a h:mm" 으로 적어주시면 됩니다!
+            }
+            // 2. 어제 (타겟 시간이 어제 자정 ~ 오늘 자정 전)
+            targetTime >= (todayMidnight - 24 * 60 * 60 * 1000) -> {
+                "어제"
+            }
+            // 3. 그 이전 (올해 안) -> "5월 12일" 형식
+            todayYear == targetYear -> {
+                SimpleDateFormat("M월 d일", Locale.KOREA).format(targetDate)
+            }
+            // 4. 작년 등 해가 넘어간 경우 -> "2025.12.31" 형식
+            else -> {
+                SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(targetDate)
+            }
+        }
     }
 
     fun saveFcmToken() {
@@ -439,18 +503,20 @@ class ChatViewModel(
             try {
                 val db = FirebaseFirestore.getInstance()
 
-                // 1. 현재 '진짜 1:1 방(direct)'이면서 '나'와 '이 친구' 딱 둘만 있는 방을 검색합니다.
+                // ✨ [수정 포인트] 파이어베이스 인덱스 에러를 피하기 위해 조건 하나를 뺍니다!
+                // 먼저 내가 참여한 방을 싹 다 가져옵니다.
                 val snapshot = db.collection("chats")
-                    .whereEqualTo("type", "direct")
                     .whereArrayContains("participants", myId)
                     .get()
                     .await()
 
                 var existingChatId: String? = null
                 for (doc in snapshot.documents) {
+                    val type = doc.getString("type") ?: ""
                     val participants = doc.get("participants") as? List<String> ?: emptyList()
-                    // 참여자가 딱 2명이고, 그 중 한 명이 선택한 친구라면 그 방이 진짜 1:1 방!
-                    if (participants.size == 2 && participants.contains(friend.userId)) {
+
+                    // ✨ 앱 안에서 걸러내기: 'direct' 타입이고, 딱 2명이며, 그 친구가 있는지 확인!
+                    if (type == "direct" && participants.size == 2 && participants.contains(friend.userId)) {
                         existingChatId = doc.id
                         break
                     }
@@ -460,8 +526,8 @@ class ChatViewModel(
                     // 2-A. 기존에 온전한 1:1 방이 남아있다면 그 방으로 이동
                     withContext(Dispatchers.Main) { onSuccess(existingChatId, friend.name) }
                 } else {
-                    // 2-B. 방이 없거나, 예전 방이 단체톡으로 진화해버렸다면 완전 새로운 1:1 방 생성!
-                    val newChatId = "direct_${UUID.randomUUID()}" // 고정 ID 대신 랜덤 ID 사용
+                    // 2-B. 완전 새로운 1:1 방 생성!
+                    val newChatId = "direct_${UUID.randomUUID()}"
                     val now = com.google.firebase.Timestamp.now()
                     val ids = listOf(myId, friend.userId).sorted()
 
@@ -472,7 +538,7 @@ class ChatViewModel(
                             "teamName" to friend.name,
                             "emoji" to "💬",
                             "createdAt" to now,
-                            "lastMessage" to "",
+                            "lastMessage" to "1:1 채팅방이 생성되었습니다.", // 첫 메시지도 센스있게!
                             "lastMessageAt" to now
                         )
                     ).await()
@@ -480,6 +546,8 @@ class ChatViewModel(
                     withContext(Dispatchers.Main) { onSuccess(newChatId, friend.name) }
                 }
             } catch (e: Exception) {
+                // ✨ 진짜 에러 원인이 뭔지 안드로이드 스튜디오 Logcat에 빨간 글씨로 찍어줍니다!
+                android.util.Log.e("ChatViewModel", "1:1 채팅 에러: ${e.message}", e)
                 withContext(Dispatchers.Main) { onFailure("생성 실패") }
             }
         }

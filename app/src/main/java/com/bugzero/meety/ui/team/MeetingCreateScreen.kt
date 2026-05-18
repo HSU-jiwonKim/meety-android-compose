@@ -142,7 +142,7 @@ fun MeetingCreateScreen(
                 onSearchClick = onSearchClick,
                 onNotificationClick = onNotificationClick
             )
-        },g
+        },
         containerColor = ScreenBackgroundColor
     ) { innerPadding ->
         LazyColumn(

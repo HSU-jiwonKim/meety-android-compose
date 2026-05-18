@@ -204,7 +204,7 @@ fun ChatListScreen(
                             items(items = filteredChatList, key = { it.id }) { chat ->
                                 ChatListItem(
                                     chat = chat,
-                                    timeText = viewModel.formatTime(chat.lastMessageAt),
+                                    timeText = viewModel.formatChatListTime(chat.lastMessageAt),
                                     onClick = { onChatClick(chat.id, chat.teamName) }
                                 )
                                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Color(0xFFF3F4F6))

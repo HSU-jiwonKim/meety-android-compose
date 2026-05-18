@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import com.bugzero.meety.data.repository.FriendRepository
 import com.bugzero.meety.data.repository.FirebaseFriendRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 
 data class Team(
@@ -34,7 +35,8 @@ data class FriendItem(
     val location: String = "",
     val height: Int = 0,
     val interests: List<String> = emptyList(),
-    val foodLikes: List<String> = emptyList()
+    val foodLikes: List<String> = emptyList(),
+    val isFavorite: Boolean = false
 )
 
 data class FriendRequestItem(
@@ -85,6 +87,7 @@ class TeamViewModel(
     val sentLikes: StateFlow<List<SentLikeItem>> = _sentLikes
 
     private val auth = FirebaseAuth.getInstance()
+    private val db = FirebaseFirestore.getInstance()
 
     private val _friends = MutableStateFlow<List<FriendItem>>(emptyList())
     val friends: StateFlow<List<FriendItem>> = _friends
@@ -227,8 +230,25 @@ class TeamViewModel(
                 friendRepository.loadFriendProfiles(
                     friendIds = friendIds,
                     onSuccess = { friendList ->
-                        _friends.value = friendList
-                        _isLoading.value = false
+                        db.collection("users")
+                            .document(myUserId)
+                            .collection("friends")
+                            .get()
+                            .addOnSuccessListener { result ->
+                                val favoriteIds = result.documents
+                                    .filter { it.getBoolean("isFavorite") == true }
+                                    .map { it.id }
+                                    .toSet()
+
+                                _friends.value = friendList.map { friend ->
+                                    friend.copy(isFavorite = favoriteIds.contains(friend.userId))
+                                }
+                                _isLoading.value = false
+                            }
+                            .addOnFailureListener {
+                                _friends.value = friendList
+                                _isLoading.value = false
+                            }
                     },
                     onFailure = {
                         _message.value = it
@@ -336,6 +356,27 @@ class TeamViewModel(
                 _isLoading.value = false
             }
         )
+    }
+
+    fun toggleFavoriteFriend(friendUserId: String, currentFavorite: Boolean) {
+        val myUserId = auth.currentUser?.uid
+        if (myUserId == null) {
+            _message.value = "로그인된 사용자가 없습니다."
+            return
+        }
+
+        db.collection("users")
+            .document(myUserId)
+            .collection("friends")
+            .document(friendUserId)
+            .update("isFavorite", !currentFavorite)
+            .addOnSuccessListener {
+                _message.value = if (currentFavorite) "즐겨찾기를 해제했습니다." else "즐겨찾기에 추가했습니다."
+                loadFriends()
+            }
+            .addOnFailureListener {
+                _message.value = it.message ?: "즐겨찾기 변경 실패"
+            }
     }
 
     fun clearFriendAddMessage() {

@@ -334,11 +334,17 @@ class FirebaseChatRepository : ChatRepository {
             .add(messageData)
             .await()
 
+        // 채팅 목록 미리보기는 타입별로 가공된 텍스트를 보여줌
+        val previewText = when (type) {
+            "sticker" -> "(이모티콘)"
+            else      -> content
+        }
+
         db.collection("chats")
             .document(chatId)
             .update(
                 mapOf(
-                    "lastMessage" to content,
+                    "lastMessage" to previewText,
                     "lastMessageAt" to now
                 )
             )
