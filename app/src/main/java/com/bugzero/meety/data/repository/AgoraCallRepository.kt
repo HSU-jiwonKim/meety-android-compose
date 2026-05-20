@@ -1,6 +1,8 @@
 package com.bugzero.meety.data.repository
 
 import android.util.Log
+import com.bugzero.meety.data.model.InAppNotification
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -23,7 +25,9 @@ import kotlinx.coroutines.tasks.await
 class AgoraCallRepository : CallRepository {
 
     private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
     private val listeners = mutableMapOf<String, ListenerRegistration>()
+    private val notificationRepository = InAppNotificationRepository(db, auth)
 
     override suspend fun startCall(chatId: String, callType: String, callerId: String): String {
         return try {
@@ -38,6 +42,37 @@ class AgoraCallRepository : CallRepository {
                 "callLogClaimedBy" to ""
             )
             db.collection("calls").document(chatId).set(callData).await()
+
+            // 인앱 알림: 채팅방 참여자(발신자 제외)에게 수신 전화 알림 추가
+            try {
+                val chatDoc = db.collection("chats").document(chatId).get().await()
+                @Suppress("UNCHECKED_CAST")
+                val participants = (chatDoc.get("participants") as? List<String>) ?: emptyList()
+                val callerName = runCatching {
+                    db.collection("users").document(callerId).get().await()
+                        .getString("name") ?: ""
+                }.getOrDefault("").ifBlank { "누군가" }
+
+                val isVideo = callType == "video"
+                val notifType = if (isVideo) InAppNotification.TYPE_VIDEO_CALL else InAppNotification.TYPE_CALL
+                val callLabel = if (isVideo) "영상 통화" else "음성 통화"
+
+                Log.d(
+                    "AgoraCallRepo",
+                    "통화 알림 발송: chat=$chatId caller=$callerId type=$callType participants=$participants"
+                )
+                notificationRepository.addNotificationToMany(
+                    toUserIds = participants,
+                    type = notifType,
+                    title = "${callerName} 님의 $callLabel",
+                    body = "${callLabel} 수신",
+                    relatedId = chatId,
+                    fromUserName = callerName
+                )
+            } catch (e: Exception) {
+                Log.e("AgoraCallRepo", "통화 알림 발송 실패: ${e.message}", e)
+            }
+
             channelName
         } catch (e: Exception) {
             Log.e("AgoraCallRepo", "startCall 실패: ${e.message}", e)

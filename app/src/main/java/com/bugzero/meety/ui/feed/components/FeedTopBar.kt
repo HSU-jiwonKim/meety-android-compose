@@ -32,7 +32,8 @@ import com.bugzero.meety.ui.feed.FeedConstants
 @Composable
 fun FeedTopBar(
     onSearchClick: () -> Unit = {},
-    onNotificationClick: () -> Unit = {}
+    onNotificationClick: () -> Unit = {},
+    hasUnreadNotification: Boolean = false
 ) {
     Row(
         modifier = Modifier
@@ -88,14 +89,16 @@ fun FeedTopBar(
                 IconButton(onClick = onNotificationClick) {
                     Icon(Icons.Default.Notifications, contentDescription = "알림", tint = FeedConstants.IconGray)
                 }
-                // 알림 빨간 점
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(FeedConstants.AccentPink, CircleShape)
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-10).dp, y = 10.dp)
-                )
+                // 미읽음 알림이 있을 때만 빨간 점 표시
+                if (hasUnreadNotification) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(FeedConstants.AccentPink, CircleShape)
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-10).dp, y = 10.dp)
+                    )
+                }
             }
         }
     }

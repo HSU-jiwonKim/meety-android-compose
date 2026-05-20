@@ -19,6 +19,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -30,6 +32,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bugzero.meety.ui.notification.NotificationViewModel
 
 enum class TeamBottomTab {
     HOME, MATCHING, CREATE_TEAM, CHAT, PROFILE
@@ -38,8 +42,13 @@ enum class TeamBottomTab {
 @Composable
 fun TeamCommonTopBar(
     onSearchClick: () -> Unit = {},
-    onNotificationClick: () -> Unit = {}
+    onNotificationClick: () -> Unit = {},
+    hasUnreadNotification: Boolean? = null,
+    notificationViewModel: NotificationViewModel = viewModel()
 ) {
+    // hasUnreadNotification이 명시되지 않은 경우 알림 ViewModel에서 자동 관찰
+    val unreadCount by notificationViewModel.unreadCount.collectAsState()
+    val showBadge = hasUnreadNotification ?: (unreadCount > 0)
     val gradientBrush = Brush.linearGradient(listOf(Color(0xFFB44FD3), Color(0xFFEC4899)))
 
     Row(
@@ -94,13 +103,15 @@ fun TeamCommonTopBar(
             IconButton(onClick = onNotificationClick) {
                 Icon(Icons.Default.Notifications, contentDescription = "알림", tint = Color(0xFF4B4B4B))
             }
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(Color(0xFFEC4899), CircleShape)
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-10).dp, y = 10.dp)
-            )
+            if (showBadge) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color(0xFFEC4899), CircleShape)
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-10).dp, y = 10.dp)
+                )
+            }
         }
     }
 }

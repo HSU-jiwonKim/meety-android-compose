@@ -1189,7 +1189,9 @@ private suspend fun findOrCreateOneToOneChat(
         "emoji" to "💬",
         "createdAt" to now,
         "lastMessage" to "",
-        "lastMessageAt" to now
+        "lastMessageAt" to now,
+        // ✨ 원년 멤버 모두에게 생성 시점 기록 → 재입장 시 acceptInvitation/inviteFriendsToChat 에서 덮어쓰기
+        "memberJoinedAt" to participants.associateWith { now }
     )
 
     newChatRef.set(chatData).await()

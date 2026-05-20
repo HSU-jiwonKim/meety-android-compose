@@ -36,7 +36,7 @@ data class OnboardingSlide(
 val onboardingSlides = listOf(
     OnboardingSlide("안전한 대학 인증", "한성대 이메일 인증으로\n신뢰할 수 있는 만남을 시작하세요",
         Icons.Default.Shield, Color(0xFF8B5CF6), Color(0xFF6D28D9)),
-    OnboardingSlide("친구들과 함께", "N:N 팀 매칭으로\n친구들과 함께하는 즐거운 과팅",
+    OnboardingSlide("친구들과 함께", "관심사 기반 팀 매칭으로\n친구들과 함께하는 즐거운 과팅",
         Icons.Default.Group, Color(0xFF9333EA), Color(0xFFEC4899)),
     OnboardingSlide("똑똑한 매칭", "MBTI, 관심사 기반으로\n나와 잘 맞는 팀을 찾아보세요",
         Icons.Default.Favorite, Color(0xFFEC4899), Color(0xFFBE185D)),

@@ -51,6 +51,7 @@ class FirebaseTeamRepository : TeamRepository {
                     .addOnSuccessListener {
 
                         // 🔥 2. 팀 채팅방 생성
+                        val chatCreatedAt = com.google.firebase.Timestamp.now()
                         val chatData = mapOf(
                             "chatId" to teamId,
                             "teamId" to teamId,
@@ -58,10 +59,13 @@ class FirebaseTeamRepository : TeamRepository {
                             "leaderId" to userId,
                             "participants" to listOf(userId),
                             "type" to "team",
-                            "createdAt" to com.google.firebase.Timestamp.now(),
+                            "createdAt" to chatCreatedAt,
                             "lastMessage" to "",
                             "lastMessageAt" to null,
-                            "emoji" to "👥"
+                            "emoji" to "👥",
+                            // ✨ 원년 멤버는 방 생성 시점부터 모든 메시지 가시. 재입장 멤버만
+                            //    acceptInvitation 에서 더 늦은 시각으로 덮어써져 이전 기록이 가려짐.
+                            "memberJoinedAt" to mapOf(userId to chatCreatedAt)
                         )
 
                         db.collection("chats").document(teamId)

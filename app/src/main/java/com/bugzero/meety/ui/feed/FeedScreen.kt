@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bugzero.meety.ui.feed.components.*
+import com.bugzero.meety.ui.notification.NotificationViewModel
 import com.bugzero.meety.ui.team.Team
 import com.bugzero.meety.ui.theme.*
 import com.bugzero.meety.ui.feed.TeamActionStatus
@@ -41,9 +42,12 @@ import com.bugzero.meety.ui.feed.TeamActionStatus
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
-    viewModel: FeedViewModel = viewModel()
+    viewModel: FeedViewModel = viewModel(),
+    notificationViewModel: NotificationViewModel = viewModel(),
+    onNotificationClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val unreadCount by notificationViewModel.unreadCount.collectAsStateWithLifecycle()
     val currentTeam = uiState.teams.getOrNull(uiState.currentIndex)
     val nextTeam    = uiState.teams.getOrNull(uiState.currentIndex + 1)
 
@@ -53,7 +57,10 @@ fun FeedScreen(
                 .fillMaxSize()
                 .background(FeedConstants.BackgroundGray)
         ) {
-            FeedTopBar()
+            FeedTopBar(
+                onNotificationClick = onNotificationClick,
+                hasUnreadNotification = unreadCount > 0
+            )
 
             FeedTabBar(
                 currentMode = uiState.viewMode,

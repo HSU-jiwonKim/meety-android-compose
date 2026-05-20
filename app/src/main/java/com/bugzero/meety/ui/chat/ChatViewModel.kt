@@ -539,7 +539,9 @@ class ChatViewModel(
                             "emoji" to "💬",
                             "createdAt" to now,
                             "lastMessage" to "1:1 채팅방이 생성되었습니다.", // 첫 메시지도 센스있게!
-                            "lastMessageAt" to now
+                            "lastMessageAt" to now,
+                            // ✨ 원년 멤버는 방 생성 시점부터 가시. 재입장 시 덮어써져 이전 기록이 가려짐.
+                            "memberJoinedAt" to ids.associateWith { now }
                         )
                     ).await()
 
@@ -581,7 +583,9 @@ class ChatViewModel(
                         "emoji" to "👥",
                         "createdAt" to now,
                         "lastMessage" to "채팅방이 생성되었습니다.",
-                        "lastMessageAt" to now
+                        "lastMessageAt" to now,
+                        // ✨ 원년 멤버 전원에게 생성 시점 기록. 재입장 시 자동으로 덮어써짐.
+                        "memberJoinedAt" to ids.associateWith { now }
                     )
                 ).await()
 
@@ -1356,9 +1360,15 @@ class ChatViewModel(
                 val currentType = chatDoc.getString("type") ?: "group"
 
                 // 2. 업데이트할 내용 준비 (참여자 추가)
+                val inviteNow = com.google.firebase.Timestamp.now()
                 val updates = mutableMapOf<String, Any>(
                     "participants" to com.google.firebase.firestore.FieldValue.arrayUnion(*newParticipantIds.toTypedArray())
                 )
+                // ✨ 신규 초대 멤버는 이 시점부터 메시지를 볼 수 있도록 memberJoinedAt 도 함께 set.
+                //    재초대(이전에 나갔다 다시 들어오는 경우)도 자동으로 새 시각으로 덮어쓰기 됨.
+                for (newId in newParticipantIds) {
+                    updates["memberJoinedAt.$newId"] = inviteNow
+                }
 
                 // ✨ 3. 만약 1:1(direct) 채팅방이었다면 단체톡(group)으로 타입 변경!
                 if (currentType == "direct") {

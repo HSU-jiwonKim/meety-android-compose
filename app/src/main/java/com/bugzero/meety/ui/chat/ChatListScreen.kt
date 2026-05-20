@@ -78,6 +78,7 @@ import coil.compose.AsyncImage
 import com.bugzero.meety.ui.feed.FeedConstants
 import com.bugzero.meety.ui.feed.MeetingDetailScreen
 import com.bugzero.meety.ui.feed.TeamActionStatus
+import com.bugzero.meety.ui.notification.NotificationViewModel
 import com.google.firebase.auth.FirebaseAuth
 
 @Composable
@@ -85,8 +86,10 @@ fun ChatListScreen(
     onChatClick: (chatId: String, roomName: String) -> Unit = { _, _ -> },
     onNotificationClick: () -> Unit = {},
     onLikeClick: () -> Unit = {},
-    viewModel: ChatViewModel = viewModel()
+    viewModel: ChatViewModel = viewModel(),
+    notificationViewModel: NotificationViewModel = viewModel()
 ) {
+    val unreadCount by notificationViewModel.unreadCount.collectAsState()
     val currentUser = FirebaseAuth.getInstance().currentUser
 
     LaunchedEffect(currentUser?.uid) {
@@ -135,7 +138,8 @@ fun ChatListScreen(
                 onNewChatClick = {
                     viewModel.loadFriendList()
                     showFriendScreen = true
-                }
+                },
+                hasUnreadNotification = unreadCount > 0
             )
 
             // ✨ 2. 카카오톡 스타일 상단 필터 UI 추가
@@ -385,7 +389,8 @@ private fun ChatListItem(chat: ChatPreview, timeText: String, onClick: () -> Uni
 private fun ChatTopBar(
     onLikeClick: () -> Unit,
     onNotificationClick: () -> Unit,
-    onNewChatClick: () -> Unit
+    onNewChatClick: () -> Unit,
+    hasUnreadNotification: Boolean = false
 ) {
     Row(
         modifier = Modifier
@@ -454,13 +459,15 @@ private fun ChatTopBar(
                 IconButton(onClick = onNotificationClick) {
                     Icon(Icons.Default.Notifications, contentDescription = "알림", tint = FeedConstants.IconGray)
                 }
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(FeedConstants.AccentPink, CircleShape)
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-10).dp, y = 10.dp)
-                )
+                if (hasUnreadNotification) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(FeedConstants.AccentPink, CircleShape)
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-10).dp, y = 10.dp)
+                    )
+                }
             }
         }
     }

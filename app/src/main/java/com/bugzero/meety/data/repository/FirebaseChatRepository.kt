@@ -1,5 +1,6 @@
 package com.bugzero.meety.data.repository
 
+import com.bugzero.meety.data.model.InAppNotification
 import com.bugzero.meety.ui.chat.ChatMessage
 import com.bugzero.meety.ui.chat.ChatPreview
 import com.bugzero.meety.ui.chat.MatchCandidate
@@ -22,6 +23,7 @@ class FirebaseChatRepository : ChatRepository {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val notificationRepository = InAppNotificationRepository(db, auth)
 
     override fun observeChatList(userId: String): Flow<List<ChatPreview>> = callbackFlow {
         val listener = db.collection("chats")
@@ -133,11 +135,28 @@ class FirebaseChatRepository : ChatRepository {
         val currentUserId = auth.currentUser?.uid ?: ""
         val profileCache = mutableMapOf<String, Pair<String, String>>()
 
-        val listener = db.collection("chats")
-            .document(chatId)
-            .collection("messages")
-            .orderBy("createdAt", Query.Direction.ASCENDING)
-            .addSnapshotListener { snap, err ->
+        // ✨ 사용자별 "합류 시점(memberJoinedAt)" 을 먼저 읽어온다.
+        // - 값이 있으면: 그 시점 이후 메시지만 보여준다 (재입장한 멤버는 이전 기록이 가려짐)
+        // - 값이 없으면(레거시 채팅방): 기존 동작 유지 (전체 메시지)
+        var listenerRef: com.google.firebase.firestore.ListenerRegistration? = null
+        val setupJob = launch {
+            val joinedAt: Timestamp? = try {
+                val chatDoc = db.collection("chats").document(chatId).get().await()
+                val map = chatDoc.get("memberJoinedAt") as? Map<*, *>
+                map?.get(currentUserId) as? Timestamp
+            } catch (e: Exception) {
+                null
+            }
+
+            var query: com.google.firebase.firestore.Query = db.collection("chats")
+                .document(chatId)
+                .collection("messages")
+            if (joinedAt != null) {
+                query = query.whereGreaterThanOrEqualTo("createdAt", joinedAt)
+            }
+            query = query.orderBy("createdAt", Query.Direction.ASCENDING)
+
+            listenerRef = query.addSnapshotListener { snap, err ->
                 if (err != null) {
                     close(err)
                     return@addSnapshotListener
@@ -302,8 +321,12 @@ class FirebaseChatRepository : ChatRepository {
                     }
                 }
             }
+        }
 
-        awaitClose { listener.remove() }
+        awaitClose {
+            setupJob.cancel()
+            listenerRef?.remove()
+        }
     }
 
     override suspend fun sendMessage(chatId: String, senderId: String, content: String, type: String) {
@@ -349,6 +372,30 @@ class FirebaseChatRepository : ChatRepository {
                 )
             )
             .await()
+
+        // 인앱 알림: 시스템 메시지가 아닌 경우 채팅방의 다른 참여자들에게 알림 전송
+        if (senderId != "system") {
+            try {
+                val chatDoc = db.collection("chats").document(chatId).get().await()
+                @Suppress("UNCHECKED_CAST")
+                val participants = (chatDoc.get("participants") as? List<String>) ?: emptyList()
+                val roomName = chatDoc.getString("teamName")?.takeIf { it.isNotBlank() } ?: senderName
+                android.util.Log.d(
+                    "ChatRepo",
+                    "메시지 알림 발송: chat=$chatId sender=$senderId participants=$participants"
+                )
+                notificationRepository.addNotificationToMany(
+                    toUserIds = participants,
+                    type = InAppNotification.TYPE_MESSAGE,
+                    title = "$roomName · $senderName",
+                    body = previewText,
+                    relatedId = chatId,
+                    fromUserName = senderName
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("ChatRepo", "메시지 알림 발송 실패: ${e.message}", e)
+            }
+        }
     }
     override suspend fun sendPlaceCard(
         chatId: String,
@@ -503,8 +550,15 @@ class FirebaseChatRepository : ChatRepository {
             .await()
 
         // 2. 팀 채팅방 참여자에 추가
+        //    ✨ memberJoinedAt.{userId} 도 함께 set → 재입장이면 자동으로 덮어쓰기 되어
+        //       observeMessages 의 시간 필터가 이전 메시지를 가린다.
         db.collection("chats").document(chatId)
-            .update("participants", FieldValue.arrayUnion(userId))
+            .update(
+                mapOf(
+                    "participants" to FieldValue.arrayUnion(userId),
+                    "memberJoinedAt.$userId" to now
+                )
+            )
             .await()
 
         // 3. 팀 memberIds에 추가

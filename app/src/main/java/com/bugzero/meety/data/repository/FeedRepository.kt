@@ -1,5 +1,6 @@
 package com.bugzero.meety.data.repository
 
+import com.bugzero.meety.data.model.InAppNotification
 import com.bugzero.meety.ui.feed.FeedConstants
 import com.bugzero.meety.ui.feed.Like
 import com.bugzero.meety.ui.feed.MemberProfile
@@ -42,7 +43,8 @@ import kotlinx.coroutines.tasks.await
  */
 class FeedRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
+    private val notificationRepository: InAppNotificationRepository = InAppNotificationRepository(db, auth)
 ) {
 
     // 페이지네이션 커서 — RECOMMEND 탭 (필터링된 목록)
@@ -239,6 +241,37 @@ class FeedRepository(
             db.collection("likes").document(likeId).set(like).await()
 
             updatePreferenceScores(userId = userId, team = team, isLike = true)
+
+            // 인앱 알림: 좋아요 받은 팀의 팀장 + 멤버들에게 알림 전송
+            try {
+                val myName = runCatching {
+                    db.collection("users").document(userId).get().await()
+                        .getString("name") ?: ""
+                }.getOrDefault("")
+                val displayName = myName.ifBlank { "누군가" }
+
+                // leaderId가 memberIds에 없을 가능성에 대비해 둘 다 포함
+                val recipients = (listOf(team.leaderId) + team.memberIds)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                android.util.Log.d(
+                    "FeedRepo",
+                    "좋아요 알림 발송: team=${team.teamId} leader=${team.leaderId} " +
+                            "members=${team.memberIds} recipients=$recipients"
+                )
+
+                notificationRepository.addNotificationToMany(
+                    toUserIds = recipients,
+                    type = InAppNotification.TYPE_LIKE,
+                    title = "좋아요를 받았어요",
+                    body = "${displayName}님이 ${team.teamName}팀에 좋아요를 보냈어요",
+                    // relatedId에 likeId를 저장해야 알림 화면에서 수락/거절 호출 가능
+                    relatedId = likeId,
+                    fromUserName = displayName
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("FeedRepo", "좋아요 알림 발송 실패: ${e.message}", e)
+            }
 
             Result.success(Unit)
         } catch (e: Exception) {

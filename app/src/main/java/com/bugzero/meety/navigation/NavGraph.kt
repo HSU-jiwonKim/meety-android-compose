@@ -40,6 +40,7 @@ import com.bugzero.meety.ui.chat.TeamScheduleScreen // ✨ 새로 추가한 화�
 import com.bugzero.meety.ui.feed.FeedScreen
 import com.bugzero.meety.ui.feed.MeetingDetailScreen
 import com.bugzero.meety.ui.feed.ProfileEditScreen
+import com.bugzero.meety.ui.notification.NotificationListScreen
 import com.bugzero.meety.ui.team.MeetingCreateScreen
 import com.bugzero.meety.ui.team.MyPageRoute
 import com.bugzero.meety.ui.team.MyTeamScreen
@@ -63,6 +64,7 @@ object Routes {
     const val SCHEDULE_SYNC = "schedule_sync"
     const val TEAM_SCHEDULE = "team_schedule" // ✨ 팀 공강 추천 화면 경로 추가!
     const val CALL = "call"   // call/{chatId}/{callType}/{isIncoming}
+    const val NOTIFICATIONS = "notifications" // 상단 알림 버튼이 열어주는 알림 목록
 }
 
 data class NavItem(
@@ -269,7 +271,9 @@ fun NavGraph(
                 )
             }
             composable(Routes.FEED) {
-                FeedScreen()
+                FeedScreen(
+                    onNotificationClick = { navController.navigate(Routes.NOTIFICATIONS) }
+                )
             }
             composable(
                 route = "${Routes.MEETING_DETAIL}/{teamId}",
@@ -320,6 +324,7 @@ fun NavGraph(
                     onCreateNewTeamClick = {
                         navController.navigate(Routes.MEETING_CREATE)
                     },
+                    onNotificationClick = { navController.navigate(Routes.NOTIFICATIONS) },
                     // 2026-05-17 추가: 친구 탭에서 채팅 선택 시 기존/신규 개인 채팅방 화면으로 바로 이동
                     onFriendChatClick = { chatId, roomName ->
                         navController.navigate(
@@ -375,6 +380,7 @@ fun NavGraph(
                             }
                         },
                         onProfileClick = {},
+                        onNotificationClick = { navController.navigate(Routes.NOTIFICATIONS) },
                         onEditProfileClick = { navController.navigate(Routes.PROFILE_EDIT) },
                         onScheduleClick = { navController.navigate(Routes.SCHEDULE_SYNC) },
                         onRequireLogin = {
@@ -424,6 +430,7 @@ fun NavGraph(
                             restoreState = true
                         }
                     },
+                    onNotificationClick = { navController.navigate(Routes.NOTIFICATIONS) },
                     onCreateTeamClick = { teamId, teamName -> // 05-10 변경함
                         navController.navigate(
                             "${Routes.CHAT_ROOM}/$teamId?roomName=${Uri.encode(teamName)}"
@@ -449,7 +456,8 @@ fun NavGraph(
                     ChatListScreen(
                         onChatClick = { chatId, roomName ->
                             navController.navigate("${Routes.CHAT_ROOM}/$chatId?roomName=$roomName")
-                        }
+                        },
+                        onNotificationClick = { navController.navigate(Routes.NOTIFICATIONS) }
                     )
                 }
             }
@@ -549,6 +557,25 @@ fun NavGraph(
             composable(Routes.SCHEDULE_SYNC) {
                 ScheduleSyncScreen(
                     onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            // ─── 상단 알림 버튼이 여는 인앱 알림 목록 ───────────────────────
+            composable(Routes.NOTIFICATIONS) {
+                NotificationListScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onMessageClick = { chatId ->
+                        // 채팅방으로 이동 (roomName은 ChatRoomScreen이 자체 로딩)
+                        navController.navigate("${Routes.CHAT_ROOM}/$chatId") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onCallClick = { chatId, callType ->
+                        // 통화 화면으로 이동 (isIncoming=true → 수락/거절 UI 노출)
+                        navController.navigate("${Routes.CALL}/$chatId/$callType/true") {
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
 

@@ -284,8 +284,15 @@ class AdminRepository {
                                             .update("teamIds", FieldValue.arrayUnion(toTeamId))
 
                                         // 5. 채팅방 참가자 추가
+                                        //    ✨ memberJoinedAt 도 같이 set → 재가입 시 자동 덮어쓰기 되어
+                                        //       이전 메시지가 observeMessages 의 시간 필터에서 가려진다.
                                         db.collection("chats").document(toTeamId)
-                                            .update("participants", FieldValue.arrayUnion(fromUserId))
+                                            .update(
+                                                mapOf(
+                                                    "participants" to FieldValue.arrayUnion(fromUserId),
+                                                    "memberJoinedAt.$fromUserId" to com.google.firebase.Timestamp.now()
+                                                )
+                                            )
 
                                         // 6. 시스템 메시지
                                         val systemMessage = mapOf(
