@@ -83,12 +83,14 @@ class MyPageViewModel : ViewModel() {
                 val department = document.getString("department") ?: ""
                 val height = document.getLong("height")?.toInt() ?: 0
                 val location = document.getString("location") ?: ""
+                val mbti = document.getString("mbti") ?: ""
                 val bio = document.getString("bio") ?: ""
 
                 val interests = document.get("interests") as? List<String> ?: emptyList()
                 val foodLikes = document.get("foodLikes") as? List<String> ?: emptyList()
                 val foodDislikes = document.get("foodDislikes") as? List<String> ?: emptyList()
-                val profileImages = document.get("profileImages") as? List<String> ?: emptyList()
+                val profileImages = (document.get("profileImages") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                val mainProfileImageUrl = document.getString("mainProfileImageUrl") ?: profileImages.firstOrNull().orEmpty()
 
                 val scheduleMap = mutableMapOf<String, List<String>>()
                 val rawSchedule = document.get("schedule") as? Map<*, *> ?: emptyMap<Any, Any>()
@@ -106,11 +108,13 @@ class MyPageViewModel : ViewModel() {
                     department = department,
                     height = height,
                     location = location,
+                    mbti = mbti,
                     bio = bio,
                     interests = interests,
                     foodLikes = foodLikes,
                     foodDislikes = foodDislikes,
                     profileImages = profileImages,
+                    mainProfileImageUrl = mainProfileImageUrl,
                     schedule = scheduleMap
                 )
 
@@ -123,6 +127,14 @@ class MyPageViewModel : ViewModel() {
     }
 
     fun onAddPhotoClick(imageUri: Uri) {
+        uploadProfileImage(imageUri = imageUri, setAsMain = false)
+    }
+
+    fun onAddMainPhotoClick(imageUri: Uri) {
+        uploadProfileImage(imageUri = imageUri, setAsMain = true)
+    }
+
+    private fun uploadProfileImage(imageUri: Uri, setAsMain: Boolean) {
         val userId = auth.currentUser?.uid
 
         if (userId == null) {
@@ -146,9 +158,20 @@ class MyPageViewModel : ViewModel() {
             .addOnSuccessListener {
                 imageRef.downloadUrl
                     .addOnSuccessListener { uri ->
+                        val newUrl = uri.toString()
+                        val currentImages = _screenState.value.uiState?.profileImages ?: emptyList()
+                        val newImages = listOf(newUrl) + currentImages.filter { it.isNotBlank() && it != newUrl }
+                        val updateData = mutableMapOf<String, Any>(
+                            "profileImages" to newImages
+                        )
+
+                        if (setAsMain) {
+                            updateData["mainProfileImageUrl"] = newUrl
+                        }
+
                         firestore.collection("users")
                             .document(userId)
-                            .update("profileImages", FieldValue.arrayUnion(uri.toString()))
+                            .update(updateData)
                             .addOnFailureListener { e ->
                                 _screenState.value = _screenState.value.copy(
                                     isLoading = false,
@@ -186,22 +209,12 @@ class MyPageViewModel : ViewModel() {
 
     fun changeMainProfileImage(imageUrl: String) {
         val userId = auth.currentUser?.uid ?: return
-        val currentImages = _screenState.value.uiState?.profileImages ?: return
 
         if (imageUrl.isBlank()) return
 
-        val newImages = mutableListOf<String>()
-        newImages.add(imageUrl)
-
-        currentImages.forEach { url ->
-            if (url.isNotBlank() && url != imageUrl) {
-                newImages.add(url)
-            }
-        }
-
         firestore.collection("users")
             .document(userId)
-            .update("profileImages", newImages)
+            .update("mainProfileImageUrl", imageUrl)
             .addOnFailureListener { e ->
                 _screenState.value = _screenState.value.copy(
                     isLoading = false,

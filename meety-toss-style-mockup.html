@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meety · 토스 스타일 목업</title>
+<style>
+  :root{
+    --bg:#F2F4F6;
+    --white:#FFFFFF;
+    --ink:#191F28;
+    --ink2:#4E5968;
+    --muted:#8B95A1;
+    --line:#EDF0F3;
+    --accent:#6C2BD9;
+    --accent-press:#5A1FC0;
+    --accent-soft:#F3EEFD;
+    --blue-soft:#F2F4F6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",Helvetica,Arial,sans-serif;
+    background:#E9ECEF;color:var(--ink);
+    display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;padding:26px 12px 70px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;letter-spacing:-0.2px;
+  }
+  .page-head{max-width:1200px;width:100%;text-align:center;margin-bottom:24px;}
+  .page-head h1{font-size:23px;font-weight:800;color:var(--ink);}
+  .page-head h1 b{color:var(--accent);}
+  .page-head p{font-size:13px;color:var(--muted);margin-top:8px;}
+  .page-head .badge{display:inline-block;margin-top:12px;font-size:11px;color:#fff;background:var(--accent);padding:5px 14px;border-radius:8px;font-weight:700;}
+
+  .stage{display:flex;gap:30px;flex-wrap:wrap;justify-content:center;align-items:flex-start;}
+  .device-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;}
+  .device-label{font-size:12px;font-weight:700;color:var(--ink2);background:#fff;padding:5px 14px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+
+  .phone{
+    width:380px;max-width:94vw;height:800px;max-height:85vh;
+    background:var(--bg);border-radius:44px;border:11px solid #0B0D10;
+    box-shadow:0 22px 55px rgba(0,0,0,.2);
+    position:relative;overflow:hidden;display:flex;flex-direction:column;
+  }
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:24px;background:#0B0D10;border-radius:0 0 16px 16px;z-index:50;}
+  .statusbar{height:36px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 5px;font-size:12px;font-weight:700;color:var(--ink);flex-shrink:0;background:var(--white);}
+  .statusbar .right{display:flex;gap:5px;}
+
+  /* 헤더 (토스: 큰 인사 + 플랫 아이콘) */
+  .thead{display:flex;align-items:center;justify-content:space-between;padding:10px 20px 14px;background:var(--white);flex-shrink:0;}
+  .thead .hi .greet{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-0.5px;}
+  .thead .hi .greet b{color:var(--accent);}
+  .thead .hi .sub{font-size:13px;color:var(--muted);margin-top:1px;}
+  .thead . icons{display:flex;gap:14px;}
+  .thead .ico{position:relative;}
+  .thead .ico svg{width:25px;height:25px;color:var(--ink);}
+  .thead .ico .dot{position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:var(--accent);border:1.5px solid #fff;}
+  .thead.center{justify-content:flex-start;gap:6px;}
+  .thead .title{font-size:24px;font-weight:800;letter-spacing:-0.6px;}
+
+  .screen{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--bg);}
+  .screen::-webkit-scrollbar{width:0;}
+  .scroll{padding:12px 16px 18px;display:flex;flex-direction:column;gap:12px;}
+
+  /* 카드 (토스: 흰 카드, 큰 라운드, 아주 옅은 그림자) */
+  .card{background:var(--white);border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
+  .card.p{padding:20px;}
+
+  /* 큰 타이틀 */
+  .big-q{font-size:21px;font-weight:800;letter-spacing:-0.5px;line-height:1.35;}
+  .label-accent{font-size:13px;font-weight:800;color:var(--accent);margin-bottom:7px;}
+  .sec-title{font-size:18px;font-weight:800;letter-spacing:-0.4px;padding:6px 4px 2px;display:flex;justify-content:space-between;align-items:center;}
+  .sec-title .more{font-size:13px;font-weight:600;color:var(--muted);}
+
+  /* 토스 큰 리스트 행 */
+  .trow{display:flex;align-items:center;gap:14px;padding:15px 18px;}
+  .trow+.trow{border-top:1px solid var(--line);}
+  .trow .ic{width:46px;height:46px;border-radius:15px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+  .trow .ic.av{color:#fff;font-weight:800;font-size:17px;}
+  .trow .tx{flex:1;min-width:0;}
+  .trow .tx .t{font-size:16px;font-weight:700;letter-spacing:-0.3px;}
+  .trow .tx .s{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .trow .rt{display:flex;align-items:center;gap:8px;flex-shrink:0;color:var(--muted);}
+  .trow .rt .val{font-size:15px;font-weight:700;color:var(--ink);}
+  .trow .chev{width:18px;height:18px;color:#C4CAD0;}
+  .trow .addbtn{border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;padding:9px 15px;border-radius:11px;}
+  .trow .donebtn{border:none;background:var(--blue-soft);color:var(--ink2);font-size:13px;font-weight:700;padding:9px 15px;border-radius:11px;}
+  .trow .mini{width:40px;height:40px;border-radius:13px;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;}
+  .trow .mini svg{width:19px;height:19px;color:var(--ink2);}
+
+  /* 버튼 */
+  .btn{width:100%;border:none;border-radius:16px;font-size:16px;font-weight:800;padding:16px 0;letter-spacing:-0.3px;}
+  .btn.primary{background:var(--accent);color:#fff;}
+  .btn.light{background:var(--blue-soft);color:var(--ink);}
+
+  /* 통계 (토스: 큰 숫자) */
+  .stats{display:flex;}
+  .stats .s{flex:1;text-align:center;padding:4px 0;}
+  .stats .s+.s{border-left:1px solid var(--line);}
+  .stats .s .n{font-size:22px;font-weight:800;letter-spacing:-0.5px;}
+  .stats .s .n b{color:var(--accent);}
+  .stats .s .l{font-size:12px;color:var(--muted);margin-top:3px;font-weight:600;}
+
+  /* 검색 */
+  .search{display:flex;align-items:center;gap:9px;background:var(--white);border-radius:14px;padding:13px 15px;color:var(--muted);font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
+  .search svg{width:19px;height:19px;color:var(--muted);}
+
+  /* 홈 히어로 */
+  .hero .team-prev{display:flex;align-items:center;gap:12px;margin:16px 0;padding:14px;background:var(--bg);border-radius:16px;}
+  .hero .team-prev .e{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:24px;background:#fff;}
+  .hero .team-prev .nm{font-size:15px;font-weight:700;}
+  .hero .team-prev .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+
+  /* 칩 */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chips .c{font-size:13px;font-weight:600;color:var(--ink2);background:var(--blue-soft);padding:9px 14px;border-radius:11px;}
+  .chips .c.on{background:var(--accent-soft);color:var(--accent);font-weight:700;}
+
+  /* 프로필 큰 헤더 */
+  .pf-top{padding:8px 4px 6px;display:flex;align-items:center;gap:15px;}
+  .pf-top .av{width:64px;height:64px;border-radius:22px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;flex-shrink:0;}
+  .pf-top .nm{font-size:22px;font-weight:800;letter-spacing:-0.5px;}
+  .pf-top .sub{font-size:13px;color:var(--muted);margin-top:2px;}
+
+  /* 그리드 */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .grid .cell{aspect-ratio:1/1;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:28px;}
+
+  /* 채팅방 */
+  .room-top{display:flex;align-items:center;gap:11px;padding:8px 16px 12px;background:var(--white);flex-shrink:0;}
+  .room-top .back{font-size:26px;color:var(--ink);font-weight:600;}
+  .room-top .av{width:40px;height:40px;border-radius:14px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0;}
+  .room-top .meta{flex:1;min-width:0;}
+  .room-top .meta .nm{font-size:16px;font-weight:800;letter-spacing:-0.3px;}
+  .room-top .meta .st{font-size:12px;color:var(--muted);}
+  .room-top .ic svg{width:23px;height:23px;color:var(--ink);}
+  .room-body{padding:10px 14px;}
+  .day{text-align:center;font-size:12px;color:var(--muted);font-weight:600;margin:10px 0;}
+  .m{display:flex;align-items:flex-end;gap:8px;margin:5px 2px;}
+  .m.me{justify-content:flex-end;}
+  .m .mav{width:30px;height:30px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0;}
+  .m .mav.hidden{visibility:hidden;}
+  .m .col{display:flex;flex-direction:column;max-width:75%;}
+  .m.me .col{align-items:flex-end;}
+  .m .sender{font-size:12px;color:var(--ink2);font-weight:700;margin:0 0 3px 11px;}
+  .bub{padding:11px 15px;border-radius:18px;font-size:15px;line-height:1.4;width:fit-content;letter-spacing:-0.2px;}
+  .m.them .bub{background:var(--white);color:var(--ink);border-bottom-left-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .m.me .bub{background:var(--accent);color:#fff;border-bottom-right-radius:6px;}
+  .bub.img{padding:5px;}
+  .bub.img .ph{width:160px;height:118px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:42px;}
+  .seen{font-size:12px;color:var(--muted);text-align:right;padding:4px 12px 2px;font-weight:600;}
+  .sys{text-align:center;font-size:12px;color:var(--ink2);font-weight:600;background:#fff;width:fit-content;margin:10px auto;padding:7px 15px;border-radius:13px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+  .room-input{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--white);flex-shrink:0;}
+  .room-input .plus svg{width:26px;height:26px;color:var(--muted);}
+  .room-input .pill{flex:1;background:var(--bg);border-radius:20px;padding:12px 16px;color:var(--muted);font-size:15px;}
+  .room-input .send{width:44px;height:44px;border-radius:15px;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .room-input .send svg{width:20px;height:20px;color:#fff;}
+
+  /* 하단 네비 (토스: 플랫, 미니멀) */
+  .bnav{height:62px;background:var(--white);border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-around;flex-shrink:0;}
+  .bnav .bi{display:flex;flex-direction:column;align-items:center;gap:3px;color:#C4CAD0;font-size:11px;font-weight:700;flex:1;}
+  .bnav .bi svg{width:25px;height:25px;}
+  .bnav .bi.on{color:var(--accent);}
+  .home-ind{height:5px;width:130px;background:#0B0D10;border-radius:3px;margin:7px auto 9px;flex-shrink:0;opacity:.85;}
+
+  .note{max-width:1000px;font-size:12px;color:var(--ink2);margin-top:30px;text-align:center;line-height:1.85;background:#fff;padding:18px 22px;border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.05);}
+  .note b{color:var(--accent);}
+  @media (max-width:840px){ .phone{height:780px;} }
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <h1>Meety · <b>토스 스타일</b> 목업</h1>
+    <p>토스의 디자인 언어(여백·굵은 타이포·단색 절제·큰 리스트 행·친근한 말투) + 포인트는 Meety 보라</p>
+    <span class="badge">Toss-inspired Design</span>
+  </div>
+
+  <div class="stage">
+
+    <!-- ════════ 홈 ════════ -->
+    <div class="device-wrap">
+      <div class="device-label">홈</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="right">📶 🔋</span></div>
+        <div class="thead">
+          <div class="hi"><div class="greet"><b>김지원</b>님</div><div class="sub">오늘 어떤 팀과 만나볼까요?</div></div>
+          <div class="icons">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot"></span></div>
+          </div>
+        </div>
+        <div class="screen"><div class="scroll">
+
+          <!-- 히어로 -->
+          <div class="card p hero">
+            <div class="label-accent">오늘의 추천 팀</div>
+            <div class="big-q">취향이 딱 맞는<br>팀 3곳을 찾았어요</div>
+            <div class="team-prev">
+              <div class="e">☕️</div>
+              <div><div class="nm">카페투어 모임</div><div class="sub">#카페 #맛집 · 4명 모집중</div></div>
+            </div>
+            <button class="btn primary">매칭 시작하기</button>
+          </div>
+
+          <!-- 내 활동 -->
+          <div class="card p">
+            <div class="stats">
+              <div class="s"><div class="n"><b>23</b></div><div class="l">매칭</div></div>
+              <div class="s"><div class="n">148</div><div class="l">친구</div></div>
+              <div class="s"><div class="n">5</div><div class="l">받은 관심</div></div>
+            </div>
+          </div>
+
+          <!-- 추천 팀 리스트 -->
+          <div class="sec-title">추천 팀 <span class="more">전체 보기</span></div>
+          <div class="card">
+            <div class="trow">
+              <div class="ic">🎬</div>
+              <div class="tx"><div class="t">영화 같이볼 사람</div><div class="s">#영화 #문화 · 3명 모집중</div></div>
+              <div class="rt"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div>
+            </div>
+            <div class="trow">
+              <div class="ic">🏃</div>
+              <div class="tx"><div class="t">아침 러닝크루</div><div class="s">#운동 #건강 · 5명 모집중</div></div>
+              <div class="rt"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div>
+            </div>
+            <div class="trow">
+              <div class="ic">🍜</div>
+              <div class="tx"><div class="t">맛집탐방 모임</div><div class="s">#맛집 #먹방 · 2명 모집중</div></div>
+              <div class="rt"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div>
+            </div>
+          </div>
+
+        </div></div>
+        <div class="bnav">
+          <div class="bi on"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>친구</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="10" y1="11" x2="14" y2="11"/></svg>팀</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>채팅</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>전체</div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <!-- ════════ 친구 ════════ -->
+    <div class="device-wrap">
+      <div class="device-label">친구</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="right">📶 🔋</span></div>
+        <div class="thead center"><span class="title">친구</span></div>
+        <div class="screen"><div class="scroll">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>친구 이름 · 학과 검색</div>
+
+          <div class="sec-title">새로운 친구가 기다려요</div>
+          <div class="card">
+            <div class="trow">
+              <div class="ic av" style="background:#FF8FB1">소</div>
+              <div class="tx"><div class="t">한소희</div><div class="s">디자인학과 · 취향 일치</div></div>
+              <button class="addbtn">친구 추가</button>
+            </div>
+            <div class="trow">
+              <div class="ic av" style="background:#7C6CF5">현</div>
+              <div class="tx"><div class="t">김도현</div><div class="s">경영학과 · 친구 3명</div></div>
+              <button class="addbtn">친구 추가</button>
+            </div>
+            <div class="trow">
+              <div class="ic av" style="background:#34C759">하</div>
+              <div class="tx"><div class="t">정시하</div><div class="s">심리학과 · 매칭 추천</div></div>
+              <button class="donebtn">요청됨</button>
+            </div>
+          </div>
+
+          <div class="sec-title">내 친구 <span class="more">148명</span></div>
+          <div class="card">
+            <div class="trow">
+              <div class="ic av" style="background:#FF6B9D">서</div>
+              <div class="tx"><div class="t">박서연 ⭐</div><div class="s">시각디자인과 · 카페투어 좋아해요</div></div>
+              <div class="mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            </div>
+            <div class="trow">
+              <div class="ic av" style="background:#9B6CF5">준</div>
+              <div class="tx"><div class="t">이준호</div><div class="s">전자공학과 · 같이 영화 볼 사람</div></div>
+              <div class="mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            </div>
+            <div class="trow">
+              <div class="ic av" style="background:#5AC8FA">민</div>
+              <div class="tx"><div class="t">최민지</div><div class="s">국문과 · 글쓰기 모임</div></div>
+              <div class="mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+            </div>
+          </div>
+        </div></div>
+        <div class="bnav">
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>홈</div>
+          <div class="bi on"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>친구</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="10" y1="11" x2="14" y2="11"/></svg>팀</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>채팅</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>전체</div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <!-- ════════ 프로필 (전체) ════════ -->
+    <div class="device-wrap">
+      <div class="device-label">전체 · 마이</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="right">📶 🔋</span></div>
+        <div class="thead center" style="justify-content:space-between;">
+          <span class="title">전체</span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        </div>
+        <div class="screen"><div class="scroll">
+          <div class="pf-top">
+            <div class="av">지</div>
+            <div><div class="nm">김지원</div><div class="sub">한성대 · 컴퓨터공학과 · 22세 · ENFP</div></div>
+          </div>
+
+          <div class="card p">
+            <div class="stats">
+              <div class="s"><div class="n">12</div><div class="l">게시물</div></div>
+              <div class="s"><div class="n">148</div><div class="l">친구</div></div>
+              <div class="s"><div class="n"><b>23</b></div><div class="l">매칭</div></div>
+            </div>
+          </div>
+
+          <div class="sec-title">내 사진</div>
+          <div class="grid">
+            <div class="cell" style="background:linear-gradient(135deg,#ffd6e7,#ff8fb1)">☕️</div>
+            <div class="cell" style="background:linear-gradient(135deg,#c2e9fb,#81a4fd)">🌊</div>
+            <div class="cell" style="background:linear-gradient(135deg,#fceabb,#f8b500)">🍜</div>
+            <div class="cell" style="background:linear-gradient(135deg,#d4fc79,#96e6a1)">🌿</div>
+            <div class="cell" style="background:linear-gradient(135deg,#fbc2eb,#a18cd1)">🎬</div>
+            <div class="cell" style="background:linear-gradient(135deg,#a1c4fd,#c2e9fb)">✈️</div>
+          </div>
+
+          <div class="card" style="margin-top:4px;">
+            <div class="trow"><div class="ic">✏️</div><div class="tx"><div class="t">프로필 편집</div></div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div>
+            <div class="trow"><div class="ic">🗓️</div><div class="tx"><div class="t">시간표 관리</div></div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div>
+            <div class="trow"><div class="ic">💜</div><div class="tx"><div class="t">관심사 설정</div></div><div class="rt"><span class="val" style="color:var(--muted);font-weight:600;font-size:13px;">5개</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+            <div class="trow"><div class="ic">⚙️</div><div class="tx"><div class="t">설정</div></div><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+        </div></div>
+        <div class="bnav">
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>홈</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>친구</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="10" y1="11" x2="14" y2="11"/></svg>팀</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>채팅</div>
+          <div class="bi on"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1z"/></svg>전체</div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <!-- ════════ 채팅 목록 ════════ -->
+    <div class="device-wrap">
+      <div class="device-label">채팅</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="right">📶 🔋</span></div>
+        <div class="thead center" style="justify-content:space-between;">
+          <span class="title">채팅</span>
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/><path d="M11 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-6"/></svg></div>
+        </div>
+        <div class="screen"><div class="scroll">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>대화 검색</div>
+          <div class="chips"><span class="c on">전체</span><span class="c">팀 채팅</span><span class="c">개인</span><span class="c">단체</span></div>
+
+          <div class="card">
+            <div class="trow">
+              <div class="ic">🎉</div>
+              <div class="tx"><div class="t">한성대 미팅팀</div><div class="s">정유진: 내일 7시 홍대 어때요?</div></div>
+              <div class="rt"><span class="val" style="color:var(--accent);">3</span></div>
+            </div>
+            <div class="trow">
+              <div class="ic av" style="background:#FF8FB1">박</div>
+              <div class="tx"><div class="t">박서연</div><div class="s">사진을 보냈습니다 💜</div></div>
+              <div class="rt"><span class="val" style="color:var(--accent);">1</span></div>
+            </div>
+            <div class="trow">
+              <div class="ic">☕️</div>
+              <div class="tx"><div class="t">카페투어 모임</div><div class="s">강태웅: 사진 공유했어요</div></div>
+              <div class="rt"><span style="font-size:12px;color:var(--muted);">3시간</span></div>
+            </div>
+            <div class="trow">
+              <div class="ic av" style="background:#9B6CF5">준</div>
+              <div class="tx"><div class="t">이준호</div><div class="s">ㅋㅋㅋ 그래 좋아</div></div>
+              <div class="rt"><span style="font-size:12px;color:var(--muted);">어제</span></div>
+            </div>
+            <div class="trow">
+              <div class="ic">🎬</div>
+              <div class="tx"><div class="t">영화 같이볼 사람</div><div class="s">한소희: 다들 주말 가능?</div></div>
+              <div class="rt"><span style="font-size:12px;color:var(--muted);">2일</span></div>
+            </div>
+          </div>
+        </div></div>
+        <div class="bnav">
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>홈</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>친구</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="10" y1="11" x2="14" y2="11"/></svg>팀</div>
+          <div class="bi on"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>채팅</div>
+          <div class="bi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>전체</div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <!-- ════════ 채팅방 ════════ -->
+    <div class="device-wrap">
+      <div class="device-label">채팅방</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="right">📶 🔋</span></div>
+        <div class="room-top">
+          <span class="back">‹</span>
+          <div class="av">🎉</div>
+          <div class="meta"><div class="nm">한성대 미팅팀</div><div class="st">멤버 4명 · 2명 활동 중</div></div>
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+        </div>
+        <div class="screen"><div class="room-body">
+          <div class="sys">강태웅님이 팀에 들어왔어요</div>
+          <div class="day">오후 7:02</div>
+          <div class="m them">
+            <div class="mav" style="background:#34C759">유</div>
+            <div class="col"><div class="sender">정유진</div><div class="bub">다들 내일 7시 홍대 어때요?</div></div>
+          </div>
+          <div class="m them">
+            <div class="mav" style="background:#5AC8FA">태</div>
+            <div class="col"><div class="sender">강태웅</div><div class="bub">저는 완전 좋아요 👍</div></div>
+          </div>
+          <div class="m me">
+            <div class="col"><div class="bub">홍대 콜! 제가 맛집 예약해둘게요 🍜</div></div>
+          </div>
+          <div class="m them">
+            <div class="mav" style="background:#FF8FB1">서</div>
+            <div class="col"><div class="sender">박서연</div><div class="bub img"><div class="ph" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb)">🍜</div></div></div>
+          </div>
+          <div class="m them">
+            <div class="mav hidden">서</div>
+            <div class="col"><div class="bub">여기 어때요? 분위기 좋아 보여요!</div></div>
+          </div>
+          <div class="seen">읽음 4 · 오후 7:05</div>
+        </div></div>
+        <div class="room-input">
+          <div class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+          <div class="pill">메시지 보내기...</div>
+          <div class="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>Meety · 토스 스타일</b> — 색을 베낀 게 아니라 토스의 <b>디자인 언어</b>를 가져왔습니다.<br>
+    <b>토스 DNA:</b> 넉넉한 여백 · 큼직하고 굵은 타이포(인사·타이틀·숫자) · 단 하나의 포인트 컬러로 절제 · 큼직하고 누르기 쉬운 흰 카드 리스트 행 + 오른쪽 화살표 · 친근한 말투("김지원님", "오늘 어떤 팀과 만나볼까요?") · 회색(#F2F4F6) 배경 위 흰 섹션 · 플랫 미니멀 하단 탭.<br>
+    <b>Meety 정체성:</b> 포인트 컬러는 토스 블루가 아니라 <b>Meety 보라(#6C2BD9)</b> — 주요 버튼·핵심 숫자·활성 탭에만 사용. 팀 매칭·하트 무드는 그대로.
+  </div>
+
+</body>
+</html>

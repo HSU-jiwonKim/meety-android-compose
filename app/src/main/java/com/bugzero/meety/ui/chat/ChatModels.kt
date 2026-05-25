@@ -66,5 +66,8 @@ data class ChatMessage(
     val placeReviewCount: Int = 0,
     val placePlaceId: String = "",       // 네이버 지도 place ID (상세 페이지 딥링크용)
     val placeLat: Double = 0.0,
-    val placeLng: Double = 0.0
+    val placeLng: Double = 0.0,
+
+    val imageUrl: String = "",
+    val voteData: Map<String, Any>? = null
 )

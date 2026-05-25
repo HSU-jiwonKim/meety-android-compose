@@ -23,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import com.bugzero.meety.ui.admin.AdminScreen
 import com.bugzero.meety.ui.auth.AuthViewModel
+import com.bugzero.meety.ui.auth.BalanceGameScreen
 import com.bugzero.meety.ui.auth.LoginScreen
 import com.bugzero.meety.ui.auth.OnboardingScreen
 import com.bugzero.meety.ui.auth.PendingVerificationScreen
@@ -50,6 +51,7 @@ object Routes {
     const val LOGIN = "login"
     const val SIGNUP = "signup"
     const val SETUP_PROFILE = "setup_profile"
+    const val BALANCE_GAME = "balance_game"
     const val STUDENT_ID_UPLOAD = "student_id_upload"
     const val PENDING_VERIFICATION = "pending_verification"
     const val ADMIN = "admin"
@@ -232,6 +234,19 @@ fun NavGraph(
             composable(Routes.SETUP_PROFILE) {
                 SetupProfileScreen(
                     onComplete = {
+                        // 프로필 설정 후 밸런스 게임으로
+                        navController.navigate(Routes.BALANCE_GAME)
+                    }
+                )
+            }
+            composable(Routes.BALANCE_GAME) {
+                BalanceGameScreen(
+                    onComplete = {
+                        navController.navigate(Routes.STUDENT_ID_UPLOAD) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        }
+                    },
+                    onSkip = {
                         navController.navigate(Routes.STUDENT_ID_UPLOAD) {
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }

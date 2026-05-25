@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meety · 콜드스타트 정직 근거</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+:root{
+  --brand-1:#7B5CFF; --brand-2:#FF5C8A;
+  --grad:linear-gradient(135deg,#7B5CFF 0%,#A24BFF 45%,#FF5C8A 100%);
+  --grad-soft:linear-gradient(135deg,#EFE9FF 0%,#FFE8F1 100%);
+  --ink:#17161D; --ink-2:#56535F; --ink-3:#9B98A6; --ink-4:#C4C2CD;
+  --bg:#F4F4F8; --surface:#fff; --surface-2:#FAFAFD; --line:#ECEAF1; --line-2:#F1EFF5;
+  --violet-soft:#F2EEFF; --ok:#19C37D; --amber:#F5A623;
+  --sh-sm:0 1px 2px rgba(23,22,29,.04),0 2px 8px rgba(23,22,29,.04);
+  --sh-md:0 4px 14px rgba(23,22,29,.06),0 8px 30px rgba(23,22,29,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:radial-gradient(900px 600px at 12% -5%,#EEE7FF 0%,transparent 55%),
+    radial-gradient(900px 600px at 95% 8%,#FFE6EF 0%,transparent 50%),#EDEBF4;
+  color:var(--ink);-webkit-font-smoothing:antialiased;padding:40px 20px 80px;min-height:100vh}
+.page-head{max-width:1000px;margin:0 auto 14px;text-align:center}
+.brand-pill{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);
+  padding:7px 14px 7px 8px;border-radius:999px;box-shadow:var(--sh-sm);font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:16px}
+.brand-pill .logo{width:26px;height:26px;border-radius:8px;background:var(--grad);display:grid;place-items:center}
+.brand-pill .logo svg{width:15px;height:15px}
+.page-head h1{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.25}
+.page-head h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.page-head p{margin-top:12px;color:var(--ink-2);font-size:15px;line-height:1.6;max-width:580px;margin:12px auto 0}
+.stage{max-width:1000px;margin:34px auto 0;display:flex;justify-content:center;align-items:center;gap:48px;flex-wrap:wrap}
+
+.phone{width:362px;height:770px;flex:0 0 auto;background:#0b0b10;border-radius:44px;padding:10px;box-shadow:0 40px 80px -24px rgba(40,30,90,.5);position:relative}
+.screen{width:100%;height:100%;border-radius:35px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:112px;height:28px;background:#0b0b10;border-radius:0 0 16px 16px;z-index:60}
+.statusbar{height:44px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 4px;font-size:12.5px;font-weight:700;flex:0 0 auto}
+.statusbar .r{display:flex;gap:5px}.statusbar svg{width:15px;height:15px}
+.appbar{display:flex;align-items:center;gap:8px;padding:6px 18px 12px}
+.appbar .logo{width:30px;height:30px;border-radius:9px;background:var(--grad);display:grid;place-items:center}
+.appbar .logo svg{width:17px;height:17px}
+.appbar .wm{font-size:19px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.appbar .sp{flex:1}
+.iconbtn{width:36px;height:36px;border-radius:11px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center}
+.iconbtn svg{width:18px;height:18px;stroke:var(--ink)}
+.seg{display:flex;background:#EAE8F0;border-radius:13px;padding:4px;margin:0 18px 6px;gap:3px}
+.seg b{flex:1;text-align:center;font-size:13px;font-weight:800;color:var(--ink-3);padding:8px 0;border-radius:10px}
+.seg b.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-sm)}
+
+.deck{margin:6px 18px 0;height:486px;position:relative}
+.card{position:absolute;inset:0;border-radius:26px;overflow:hidden;box-shadow:var(--sh-md)}
+.g1{background:linear-gradient(150deg,#9D7BFF,#7B5CFF 60%,#5B3FE0)}
+.card .scrim{position:absolute;inset:0;background:linear-gradient(180deg,transparent 42%,rgba(0,0,0,.7))}
+.recruit{position:absolute;top:15px;left:15px;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.36);backdrop-filter:blur(6px);color:#fff;font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:999px}
+.recruit .pulse{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.6)}70%{box-shadow:0 0 0 7px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+.qbtn{position:absolute;top:14px;right:14px;width:38px;height:38px;border-radius:50%;border:0;cursor:pointer;z-index:20;
+  background:rgba(255,255,255,.94);color:var(--brand-1);font-size:20px;font-weight:800;font-family:inherit;
+  box-shadow:0 6px 16px rgba(0,0,0,.22);display:grid;place-items:center;transition:transform .15s}
+.qbtn:active{transform:scale(.9)}
+.qbtn.ping::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid #fff;opacity:.7;animation:ping 1.8s infinite}
+@keyframes ping{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.qbubble{position:absolute;top:60px;right:14px;z-index:19;background:#fff;color:var(--ink);font-size:12.5px;font-weight:700;
+  padding:9px 13px;border-radius:13px;box-shadow:0 8px 22px rgba(0,0,0,.18);white-space:nowrap;
+  animation:floaty 2.4s ease-in-out infinite;transition:opacity .25s,transform .25s}
+.qbubble::after{content:"";position:absolute;top:-6px;right:13px;width:12px;height:12px;background:#fff;transform:rotate(45deg)}
+.qbubble.hide{opacity:0;transform:translateY(-6px);pointer-events:none}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.card .info{position:absolute;left:20px;right:20px;bottom:20px;color:#fff;transition:opacity .25s}
+.card .info .nm{font-size:25px;font-weight:800;letter-spacing:-.02em}
+.card .info .meta{font-size:13px;font-weight:600;opacity:.92;margin-top:3px}
+.card .info .tags{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;backdrop-filter:blur(4px)}
+
+.why{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:flex-end;
+  background:linear-gradient(180deg,rgba(20,12,46,.1) 0%,rgba(20,12,46,.5) 38%,rgba(20,12,46,.86) 100%);
+  backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .28s}
+.why.open{opacity:1;pointer-events:auto}
+.why-sheet{background:var(--surface);border-radius:24px;padding:15px 15px 16px;transform:translateY(20px);transition:transform .32s cubic-bezier(.2,.8,.2,1)}
+.why.open .why-sheet{transform:translateY(0)}
+.why-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.why-top .ttl{font-size:13px;font-weight:800;display:flex;align-items:center;gap:6px}
+.why-top .ttl svg{width:15px;height:15px;fill:var(--brand-1)}
+.why-top .counter{font-size:12px;font-weight:800;color:var(--ink-3)}.why-top .counter b{color:var(--brand-1)}
+.why-close{width:30px;height:30px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line);display:grid;place-items:center;cursor:pointer}
+.why-close svg{width:15px;height:15px;stroke:var(--ink-2)}
+.reason{min-height:230px;animation:rin .28s ease}
+@keyframes rin{from{opacity:0;transform:translateX(var(--dir,14px))}to{opacity:1;transform:none}}
+.rhead{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.rhead .ic{width:42px;height:42px;border-radius:13px;background:var(--grad-soft);display:grid;place-items:center;font-size:21px;flex:0 0 auto}
+.rhead .ti{flex:1}.rhead .ti b{font-size:15.5px;font-weight:800;display:block}
+.rhead .ti .src{font-size:11px;color:var(--ink-3);font-weight:600;margin-top:2px}
+.strength{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;padding:4px 8px;border-radius:999px}
+.strength.hi{background:#E7F8F0;color:#12A866}.strength.mid{background:#FFF3DE;color:#C8860D}
+.strength .d{display:flex;gap:2px}.strength .d i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.32}
+.strength.hi .d i:nth-child(-n+3){opacity:1}.strength.mid .d i:nth-child(-n+2){opacity:1}
+
+.stat-hero{display:flex;align-items:baseline;gap:10px;background:var(--grad-soft);border-radius:15px;padding:14px 16px;margin-bottom:11px}
+.stat-hero .num{font-size:32px;font-weight:800;letter-spacing:-.02em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.stat-hero .lab{font-size:13px;font-weight:800;color:var(--ink)}
+.stat-hero .sub{font-size:11.5px;color:var(--ink-2);font-weight:600;margin-top:3px;display:block}
+.stat-hero .col{display:flex;flex-direction:column}
+
+.ovbars{margin-bottom:8px}
+.ovrow{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.ovrow .k{font-size:11.5px;font-weight:700;color:var(--ink-2);width:108px;flex:0 0 auto}
+.ovrow .k.dim{color:var(--ink-4)}
+.ovrow .track{flex:1;height:9px;border-radius:999px;background:var(--line-2);overflow:hidden}
+.ovrow .fill{height:100%;border-radius:999px;background:var(--grad)}
+.ovrow .fill.dim{background:var(--ink-4)}
+.ovrow .v{font-size:11.5px;font-weight:800;color:var(--brand-1);width:38px;text-align:right;flex:0 0 auto}
+.ovrow .v.dim{color:var(--ink-4)}
+
+.evs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:11px}
+.ev{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:7px 11px;border-radius:999px;background:var(--violet-soft);color:#6D49E0}
+.ev svg{width:13px;height:13px;stroke:#19C37D;stroke-width:3}
+.ev.off{background:var(--surface-2);color:var(--ink-4);border:1px solid var(--line)}
+
+.rows{margin-bottom:11px}
+.rows .nr{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 2px}
+.rows .nr+.nr{border-top:1px dashed var(--line)}
+.rows .nr .lab{font-size:11px;font-weight:700;color:var(--ink-2);flex:1}
+.rows .nr .me{font-weight:800;color:var(--ink)}
+.rows .nr .mt svg{width:17px;height:17px;stroke:var(--ok);stroke-width:3;vertical-align:-3px}
+.rows .nr .no{font-size:11px;font-weight:700;color:var(--ink-4)}
+.rows .nr .dkm{font-size:11.5px;font-weight:700;color:var(--ink-3);white-space:nowrap}
+.rows .nr .dsc{font-size:12px;font-weight:800;color:var(--brand-1);min-width:42px;text-align:right}
+
+.why-tx{font-size:13px;color:var(--ink-2);line-height:1.55;background:var(--surface-2);border-radius:12px;padding:11px 13px}
+.why-tx b{color:var(--ink);font-weight:700}
+.calc{font-size:11px;color:var(--ink-3);font-weight:600;background:var(--surface-2);border:1px dashed var(--line);border-radius:10px;padding:8px 11px;margin-bottom:10px;line-height:1.5}
+.calc b{color:var(--brand-1);font-weight:800}
+.caveat{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#0B7A52;font-weight:600;background:#EAF9F2;border:1px solid #C7EEDD;border-radius:11px;padding:9px 12px;margin-top:9px;line-height:1.45}
+.caveat svg{width:15px;height:15px;stroke:#0B7A52;flex:0 0 auto;margin-top:1px}
+
+.why-nav{display:flex;align-items:center;gap:13px;margin-top:15px}
+.nav-btn{width:46px;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;flex:0 0 auto;transition:.15s}
+.nav-btn:active{transform:scale(.92)}.nav-btn svg{width:22px;height:22px;stroke:var(--ink)}
+.nav-btn.cta{flex:1;background:var(--grad);border:0;color:#fff;font-size:14.5px;font-weight:800;width:auto;gap:7px;box-shadow:0 8px 20px rgba(123,92,255,.34)}
+.nav-btn.cta svg{stroke:#fff;width:17px;height:17px}
+.dots{flex:1;display:flex;justify-content:center;gap:7px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--line);transition:.2s}
+.dots i.on{background:var(--grad);width:20px;border-radius:999px}
+
+.acts{display:flex;align-items:center;justify-content:center;gap:20px;padding:18px 0 8px}
+.act{border:0;border-radius:50%;display:grid;place-items:center;box-shadow:var(--sh-md);background:var(--surface);cursor:pointer}
+.act.sm{width:52px;height:52px}.act.lg{width:64px;height:64px}
+.act svg{width:25px;height:25px}.act.pass svg{stroke:var(--ink-3)}
+.act.like{background:var(--grad);box-shadow:0 10px 22px rgba(255,77,125,.4)}.act.like svg{fill:#fff;stroke:#fff}
+
+.aside{max-width:300px}
+.aside h3{font-size:17px;font-weight:800;margin-bottom:6px}
+.aside .lead{font-size:12.5px;color:var(--ink-2);margin-bottom:16px;line-height:1.5}
+.aside .it{display:flex;gap:11px;margin-bottom:13px}
+.aside .it .n{width:24px;height:24px;border-radius:7px;background:var(--grad);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;flex:0 0 auto}
+.aside .it .t b{font-size:13px;font-weight:800;display:block}
+.aside .it .t span{font-size:12px;color:var(--ink-2);line-height:1.45}
+.try{margin-top:4px;font-size:12.5px;color:var(--brand-1);font-weight:800;background:var(--violet-soft);border-radius:12px;padding:11px 14px;line-height:1.5}
+@media(max-width:840px){.aside{max-width:362px}}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="brand-pill"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.8 2 5.5 5.2 5.1c2-.3 3.6.8 4.8 2.4 1.2-1.6 2.8-2.7 4.8-2.4 3.2.4 4.6 3.7 3.2 6.6C19.5 16.4 12 21 12 21z"/></svg></span>Meety · 콜드스타트 정직 근거</div>
+  <h1>사용자 0명이어도 <span class="g">검증되는</span> 근거만</h1>
+  <p>유지율·수락률 같은 결과 예측은 뺐어요. 집합 겹침·동네 근접도(거주지 거리)·밸런스게임 응답처럼 <b>지금 데이터로 직접 계산되고 그 자리에서 셀 수 있는 수치</b>만 남겼습니다.</p>
+</header>
+
+<div class="stage">
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="r">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 13h2v4H2zM6 10h2v7H6zM10 7h2v10h-2zM14 4h2v13h-2z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none"><rect x="1" y="6" width="20" height="12" rx="3" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="8" width="15" height="8" rx="1.5" fill="currentColor"/></svg>
+      </span></div>
+      <div class="appbar"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff" stroke="none"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.8 2 5.5 5.2 5.1c2-.3 3.6.8 4.8 2.4 1.2-1.6 2.8-2.7 4.8-2.4 3.2.4 4.6 3.7 3.2 6.6C19.5 16.4 12 21 12 21z"/></svg></span><span class="wm">Meety</span><span class="sp"></span><div class="iconbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div></div>
+      <div class="seg"><b class="on">추천</b><b>목록</b></div>
+
+      <div class="deck">
+        <div class="card g1">
+          <div class="scrim"></div>
+          <div class="recruit"><span class="pulse"></span>모집중 · 1자리</div>
+          <button class="qbtn ping" id="qbtn" onclick="openWhy()">?</button>
+          <div class="qbubble" id="bubble" onclick="openWhy()">왜 이 팀이 매칭 되었나요?</div>
+          <div class="info" id="cardinfo">
+            <div class="nm">한성 맛집원정대</div>
+            <div class="meta">한성대 · 멤버 4명 · 평균 22세</div>
+            <div class="tags"><span class="chip">#맛집탐방</span><span class="chip">#카페좋아</span><span class="chip">#활발한</span></div>
+          </div>
+          <div class="why" id="why">
+            <div class="why-sheet">
+              <div class="why-top">
+                <div class="ttl"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>매칭 근거</div>
+                <div class="counter"><b id="cur">1</b> / 5</div>
+                <div class="why-close" onclick="closeWhy()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+              </div>
+              <div id="reasonBox"></div>
+              <div class="why-nav">
+                <div class="nav-btn" onclick="prevReason()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+                <div class="dots" id="dots"></div>
+                <div class="nav-btn" id="nextBtn" onclick="nextReason()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="acts">
+        <button class="act sm pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        <button class="act lg like"><svg viewBox="0 0 24 24" fill="#fff" stroke="#fff"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.8 2 5.5 5.2 5.1c2-.3 3.6.8 4.8 2.4 1.2-1.6 2.8-2.7 4.8-2.4 3.2.4 4.6 3.7 3.2 6.6C19.5 16.4 12 21 12 21z"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="aside">
+    <h3>이 근거가 방어되는 이유</h3>
+    <div class="lead">실사용자 0명에서도 교수님이 "그 숫자 어디서 나왔냐"고 물으면 화면에서 바로 분해해 보여줄 수 있어요.</div>
+    <div class="it"><div class="n">1</div><div class="t"><b>재현 가능한 수치만</b><span>4/5, 0.86처럼 입력·행동 데이터로 그 자리에서 다시 계산됨.</span></div></div>
+    <div class="it"><div class="n">2</div><div class="t"><b>예측이 아닌 사실</b><span>"유지율 82%" 같은 결과 예측 제거. 셀 수 있는 겹침만.</span></div></div>
+    <div class="it"><div class="n">3</div><div class="t"><b>단순·검증 가능</b><span>거리 평균·집합 Jaccard처럼 그 자리에서 다시 계산되는 식만 사용.</span></div></div>
+    <div class="it"><div class="n">4</div><div class="t"><b>한계를 먼저 인정</b><span>"활동 데이터 쌓이면 정교해진다"를 명시 → 콜드스타트 질문 방어.</span></div></div>
+    <div class="try">👉 폰의 <b>? 버튼</b>을 눌러 5장을 넘겨보세요.</div>
+  </div>
+</div>
+
+<script>
+const chk='<svg viewBox="0 0 24 24" fill="none" stroke="#19C37D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+const REASONS=[
+  {type:'overview',ic:'🎯',title:'적합도 81점',src:'4개 항목의 평균 · 직접 계산',lv:'hi',lvt:'계산값',
+   bars:[['관심사 일치',80,0],['동네 근접도',88,0],['가치관 일치',80,0],['팀원 공통점',75,0]],
+   calc:'81 = (80 + 88 + 80 + 75) ÷ 4 — <b>확률이 아니라 아래 4개 항목의 평균</b>이에요. 가중치는 사용자 데이터가 쌓이면 학습할 예정.'},
+
+  {type:'chips',ic:'🏷️',title:'관심사·태그 일치',src:'회원님 프로필 ∩ 팀 태그',lv:'hi',lvt:'80%',
+   stat:['4/5','개 일치','회원님 관심사 5개 중 4개가 이 팀과 겹쳐요'],
+   evs:[['맛집탐방',1],['카페',1],['영화',1],['여행',1],['운동',0]],
+   why:'두 집합의 <b>교집합</b>으로 계산했어요. 화면의 칩을 직접 세면 그대로 4개예요 — 검증 가능합니다.',
+   score:'일치 4개 ÷ 내 관심사 5개 × 100',scoreVal:'80점'},
+
+  {type:'dist',ic:'📍',title:'동네 근접도',src:'회원님 ↔ 팀원 대중교통 거리',lv:'hi',lvt:'평균 15분',
+   stat:['약 15분','대중교통 평균','회원님(성북구) 기준 · 평균 2.5km · 4명 중 3명 20분 내'],
+   rows:[['멤버 A · 성북구(동일)','0.5km · 5분',100],['멤버 B · 동대문구','1.8km · 12분',92],['멤버 C · 종로구','2.7km · 18분',84],['멤버 D · 노원구','5.0km · 25분',76]],
+   why:'단순 거리(2.5km)보다 <b>대중교통 소요 시간</b>으로 보여줘 "얼마나 가까운지"를 바로 체감할 수 있어요. 가까울수록 높은 점수를 줍니다.',
+   score:'팀원별 거리 점수 평균 (100+92+84+76)÷4',scoreVal:'88점'},
+
+  {type:'rows',ic:'⚖️',title:'가치관 일치',src:'온보딩 밸런스 게임 응답',lv:'hi',lvt:'4/5',
+   stat:['4/5','문항 동일','회원님과 이 팀 다수의 선택이 일치'],
+   rows:[['모임 성격','친목 중심',1],['활동 강도','가볍게',1],['만남 빈도','주 1회',1],['비용','더치페이',1],['분위기','조용→활발',0]],
+   why:'가입할 때 답한 <b>밸런스 게임 5문항</b>을 팀 다수 응답과 비교했어요. 미리 수집한 값이라 사용자 없이도 즉시 계산돼요.',
+   score:'동일 응답 4 ÷ 5문항 × 100',scoreVal:'80점'},
+
+  {type:'rows',ic:'🧩',title:'팀원과의 공통점',src:'팀원 프로필 대조',lv:'mid',lvt:'3/4',
+   stat:['3/4','명과 공통점','팀원 4명 중 3명과 겹치는 점이 있어요'],
+   rows:[['같은 디자인 계열','2명',1],['공통 관심사 · 영화','1명',1],['동갑(22세)','3명',1],['같은 동아리','0명',0]],
+   caveat:'아직 실제 활동·유지 데이터는 없어, 프로필·취향 기반으로만 계산했어요. 사용자가 늘면 결과 지표가 더해집니다.',
+   why:'추상적 점수가 아니라 <b>실제 팀원과 겹치는 사실</b>이라 가장 와닿아요.',
+   score:'공통점 있는 멤버 3 ÷ 팀원 4명 × 100',scoreVal:'75점'},
+];
+let idx=0, dir=1;
+
+function strengthEl(lv,t){return `<div class="strength ${lv}">${t}<span class="d"><i></i><i></i><i></i></span></div>`}
+function statHero(s){return `<div class="stat-hero"><div class="num">${s[0]}</div><div class="col"><span class="lab">${s[1]}</span><span class="sub">${s[2]}</span></div></div>`}
+function evEl(label,on){return `<span class="ev ${on?'':'off'}">${on?chk:''}${label}</span>`}
+function scoreBox(r){return r.score?`<div class="calc">📊 이 항목 점수 = ${r.score} = <b>${r.scoreVal}</b></div>`:''}
+
+function renderReason(){
+  const r=REASONS[idx];
+  let inner='';
+  if(r.type==='overview'){
+    inner=statHero(['81','점 / 100','회원님 데이터로 직접 계산'])
+      +`<div class="ovbars">${r.bars.map(b=>`<div class="ovrow"><span class="k">${b[0]}</span><span class="track"><span class="fill" style="width:${b[1]}%"></span></span><span class="v">${b[1]}</span></div>`).join('')}</div>`
+      +`<div class="calc">${r.calc}</div>`;
+  }else if(r.type==='chips'){
+    inner=statHero(r.stat)+`<div class="evs">${r.evs.map(e=>evEl(e[0],e[1])).join('')}</div><div class="why-tx">${r.why}</div>`+scoreBox(r);
+  }else if(r.type==='dist'){
+    inner=statHero(r.stat)
+      +`<div class="rows">${r.rows.map(x=>`<div class="nr"><span class="lab">${x[0]}</span><span class="dkm">${x[1]}</span><span class="dsc">${x[2]}점</span></div>`).join('')}</div>`
+      +`<div class="why-tx">${r.why}</div>`+scoreBox(r);
+  }else if(r.type==='rows'){
+    inner=statHero(r.stat)
+      +`<div class="rows">${r.rows.map(x=>`<div class="nr"><span class="lab">${x[0]}</span><span class="me">${x[1]}</span>${x[2]?`<span class="mt">${chk}</span>`:'<span class="no">미일치</span>'}</div>`).join('')}</div>`
+      +`<div class="why-tx">${r.why}</div>`+scoreBox(r)
+      +(r.caveat?`<div class="caveat"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>${r.caveat}</div>`:'');
+  }
+  document.getElementById('reasonBox').innerHTML=`
+    <div class="reason" style="--dir:${dir>0?'14px':'-14px'}">
+      <div class="rhead"><div class="ic">${r.ic}</div>
+        <div class="ti"><b>${r.title}</b><div class="src">${r.src}</div></div>
+        ${strengthEl(r.lv,r.lvt)}
+      </div>${inner}</div>`;
+  document.getElementById('cur').textContent=idx+1;
+  document.getElementById('dots').innerHTML=REASONS.map((_,i)=>`<i class="${i===idx?'on':''}"></i>`).join('');
+  const next=document.getElementById('nextBtn');
+  if(idx===REASONS.length-1){
+    next.className='nav-btn cta';
+    next.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> 가입 신청하기';
+  }else{
+    next.className='nav-btn';
+    next.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+  }
+}
+function openWhy(){
+  document.getElementById('why').classList.add('open');
+  document.getElementById('bubble').classList.add('hide');
+  document.getElementById('qbtn').classList.remove('ping');
+  document.getElementById('cardinfo').style.opacity=0;
+  idx=0;dir=1;renderReason();
+}
+function closeWhy(){
+  document.getElementById('why').classList.remove('open');
+  document.getElementById('bubble').classList.remove('hide');
+  document.getElementById('cardinfo').style.opacity=1;
+}
+function prevReason(){dir=-1;idx=(idx-1+REASONS.length)%REASONS.length;renderReason();}
+function nextReason(){
+  if(idx===REASONS.length-1){closeWhy();setTimeout(()=>alert('가입 신청이 전송됐어요!\\n팀장이 수락하면 채팅방에 초대돼요.'),260);return;}
+  dir=1;idx=(idx+1)%REASONS.length;renderReason();
+}
+renderReason();
+</script>
+</body>
+</html>

@@ -1507,4 +1507,49 @@ class ChatViewModel(
         _selectedInvitation.value = null
         _selectedInvitationTeam.value = null
     }
+
+
+    fun uploadImageAndSendMessage(chatId: String, uri: android.net.Uri) {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            _isSending.value = true
+            try {
+                // 1. Storage에 사진 올리기
+                val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance().reference
+                val imageRef = storageRef.child("chat_images/${chatId}/${UUID.randomUUID()}.jpg")
+
+                imageRef.putFile(uri).await()
+                val downloadUrl = imageRef.downloadUrl.await().toString()
+
+                // 2. Firestore에 메시지 저장
+                val db = FirebaseFirestore.getInstance()
+                val now = com.google.firebase.Timestamp.now()
+                val userDoc = db.collection("users").document(userId).get().await()
+                val myName = userDoc.getString("name") ?: "알 수 없음"
+                val myProfile = userDoc.getString("profileImageUrl") ?: ""
+
+                val messageData = mapOf(
+                    "id" to UUID.randomUUID().toString(),
+                    "chatId" to chatId,
+                    "senderId" to userId,
+                    "senderName" to myName,
+                    "senderProfileImage" to myProfile,
+                    "content" to "사진을 보냈습니다.",
+                    "imageUrl" to downloadUrl, // ✨ 사진 주소 저장
+                    "type" to "image",         // ✨ 타입: image
+                    "createdAt" to now
+                )
+
+                db.collection("chats").document(chatId).collection("messages").add(messageData).await()
+                db.collection("chats").document(chatId).update(
+                    mapOf("lastMessage" to "사진을 보냈습니다.", "lastMessageAt" to now)
+                ).await()
+
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "사진 전송 실패: ${e.message}")
+            } finally {
+                _isSending.value = false
+            }
+        }
+    }
 }

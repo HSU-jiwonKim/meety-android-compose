@@ -127,8 +127,9 @@ class FirebaseFriendRepository : FriendRepository {
                 .get()
                 .addOnSuccessListener { doc ->
                     if (doc.exists()) {
-                        val images = doc.get("profileImages") as? List<*>
-                        val firstImage = images?.firstOrNull() as? String ?: ""
+                        val images = (doc.get("profileImages") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                        val mainImage = doc.getString("mainProfileImageUrl").orEmpty()
+                        val firstImage = if (mainImage.isNotBlank()) mainImage else images.firstOrNull().orEmpty()
 
                         resultList.add(
                             FriendItem(
@@ -136,6 +137,7 @@ class FirebaseFriendRepository : FriendRepository {
                                 name = doc.getString("name") ?: "",
                                 email = doc.getString("email") ?: "",
                                 profileImageUrl = firstImage,
+                                profileImages = images,
                                 department = doc.getString("department") ?: "",
                                 age = (doc.getLong("age") ?: 0L).toInt(),
                                 mbti = doc.getString("mbti") ?: "",

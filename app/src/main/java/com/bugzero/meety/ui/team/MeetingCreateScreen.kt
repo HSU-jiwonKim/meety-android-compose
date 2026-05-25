@@ -60,14 +60,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // 화면에서 반복해서 사용하는 색상값을 한 곳에 모아둔 부분
-private val ScreenBackgroundColor = Color(0xFFF8F1F8)
-private val MainPurpleColor = Color(0xFFA020F0)
-private val LightPurpleColor = Color(0xFFEEDBFF)
-private val DisabledPurpleColor = Color(0xFFC9A7E8)
+private val ScreenBackgroundColor = Color.White
+private val MainPurpleColor = Color(0xFF8A35F5)
+private val LightPurpleColor = Color(0xFFF1E6FF)
+private val DisabledPurpleColor = Color(0xFFCDB2F3)
 private val ErrorColor = Color(0xFFE53935)
-private val InputBackgroundColor = Color(0xFFF2F2F5)
+private val InputBackgroundColor = Color(0xFFF6F6F9)
 private val PlaceholderColor = Color(0xFF9A9AA3)
-private val BorderColor = Color(0xFFD5D6DE)
+private val BorderColor = Color(0xFFE8E8EF)
 
 // LazyColumn 안에서 특정 입력칸으로 이동할 때 사용하는 item 위치
 private const val TEAM_NAME_ITEM_INDEX = 1
@@ -150,8 +150,8 @@ fun MeetingCreateScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(top = 14.dp, bottom = 110.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 10.dp, bottom = 110.dp)
         ) {
             item {
                 ScreenTitle()
@@ -290,13 +290,24 @@ fun MeetingCreateScreen(
 // 화면 상단의 제목 영역
 @Composable
 private fun ScreenTitle() {
-    Text(
-        text = "팀 만들기",
-        modifier = Modifier.padding(horizontal = 20.dp),
-        color = MainPurpleColor,
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold
-    )
+    Column(
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = "팀 만들기",
+            color = Color(0xFF111827),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = "같이 활동할 팀 정보를 입력해주세요.",
+            color = Color(0xFF8A8F9C),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
 }
 
 // 팀 이름 입력 영역
@@ -310,12 +321,12 @@ private fun TeamNameSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(InputBackgroundColor)
                 .border(
                     width = if (isError) 1.dp else 0.dp,
                     color = if (isError) ErrorColor else Color.Transparent,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(18.dp)
                 )
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
@@ -362,7 +373,7 @@ private fun TeamDescriptionSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(InputBackgroundColor)
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
@@ -397,12 +408,13 @@ private fun TeamPhotoSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .height(150.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(InputBackgroundColor)
                 .border(
-                    width = 1.dp,
+                    width = 0.dp,
                     color = BorderColor,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(22.dp)
                 )
                 .clickable { onUploadPhotoClick() },
             contentAlignment = Alignment.Center
@@ -426,7 +438,7 @@ private fun SelectedTeamPhoto(
         contentDescription = "팀 대표 사진",
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp)),
+            .clip(RoundedCornerShape(22.dp)),
         contentScale = ContentScale.Crop
     )
 
@@ -459,7 +471,7 @@ private fun EmptyTeamPhotoPlaceholder() {
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = "사진을 업로드하세요",
+            text = "대표 사진 추가",
             color = Color(0xFF6D7483),
             style = MaterialTheme.typography.bodyLarge
         )
@@ -538,7 +550,7 @@ private fun CustomTagInputRow(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(InputBackgroundColor)
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
@@ -574,7 +586,7 @@ private fun CustomTagInputRow(
                     onAddCustomTag(normalizedTag)
                 }
             },
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(18.dp),
             color = LightPurpleColor
         ) {
             Row(
@@ -612,9 +624,9 @@ private fun CreateTeamButton(
         enabled = !isCreatingTeam && !isCreateButtonLocked,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 24.dp)
             .height(56.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MainPurpleColor,
             disabledContainerColor = DisabledPurpleColor
@@ -669,12 +681,12 @@ private fun WhiteCardSection(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        shape = RoundedCornerShape(20.dp),
+            .padding(horizontal = 24.dp),
+        shape = RoundedCornerShape(0.dp),
         color = Color.White,
-        shadowElevation = 2.dp
+        shadowElevation = 0.dp
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
@@ -694,7 +706,7 @@ private fun WhiteCardSection(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             content()
         }
@@ -721,7 +733,7 @@ private fun TagWrapLayout(
                         modifier = Modifier
                             .wrapContentHeight()
                             .clickable { onTagClick(tag) },
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(22.dp),
                         color = if (selected) LightPurpleColor else InputBackgroundColor
                     ) {
                         Text(
@@ -749,7 +761,7 @@ private fun SelectedTagList(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 rowTags.forEach { tag ->
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(22.dp),
                         color = Color(0xFFF7ECFF)
                     ) {
                         Row(

@@ -69,6 +69,14 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.text.style.TextAlign
 import coil.compose.AsyncImage
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.filled.Image
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatRoomScreen(
@@ -133,6 +141,31 @@ fun ChatRoomScreen(
     var showPlaceDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackScope = rememberCoroutineScope()
+    var fullImageUrl by remember { mutableStateOf<String?>(null) }
+    var showFullImage by remember { mutableStateOf<String?>(null) }
+
+
+    // ✨ 첨부 메뉴 & 투표 시트 상태
+    var showAttachmentMenu by remember { mutableStateOf(false) }
+    var showVoteSheet by remember { mutableStateOf(false) }
+
+
+    // ✨ 갤러리 열기 런처
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            viewModel.uploadImageAndSendMessage(chatId, uri) // ✨ 여기서 호출!
+            showAttachmentMenu = false
+        }
+    }
+
+    // ✨ 카메라 켜기 런처
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) {
+            // TODO: 나중에 ViewModel에서 Firebase Storage로 사진 업로드하는 로직 연결 예정!
+            snackScope.launch { snackbarHostState.showSnackbar("사진이 촬영되었습니다! (업로드 로직 필요)") }
+            showAttachmentMenu = false
+        }
+    }
 
     // 채팅방 진입 시 수신 통화 리스너 시작
     LaunchedEffect(chatId) {
@@ -142,9 +175,13 @@ fun ChatRoomScreen(
         onDispose { callViewModel.stopListeningForCalls(chatId) }
     }
 
+    // 파이어베이스에서 읽어온 진짜 채팅방 타입을 가져옵니다.
+    val currentChatType by viewModel.currentChatType.collectAsState()
+
     val chatType = if (chatId.startsWith("direct")) "direct" else if (chatId.contains("group")) "group" else "team"
     val isTeamChat = chatType == "team"
-    val isDirectChat = chatType == "direct"
+    // ✨ 이름이 direct로 시작하거나, 파이어베이스에 direct로 저장되어 있으면 무조건 1:1 방으로 인식!
+    val isDirectChat = currentChatType == "direct" || chatId.startsWith("direct")
 
     val isLeader = isTeamChat && participants.firstOrNull { it.isLeader }?.userId == currentUserId
 
@@ -197,15 +234,18 @@ fun ChatRoomScreen(
             isDirectChat = isDirectChat,
             onDismiss = { selectedParticipant = null; viewModel.clearUserProfile() },
 
-            // ✨ [새로 추가된 부분] 1:1 채팅 버튼을 눌렀을 때 실행될 행동!
             onDirectChatClick = { profile ->
                 viewModel.createOrGetDirectChat(
                     friend = profile,
                     onSuccess = { newChatId, newRoomName ->
-                        // 팝업 닫고 새로운 1:1 채팅방 화면으로 이동!
+                        // 1. 팝업 닫기
                         selectedParticipant = null
                         viewModel.clearUserProfile()
-                        onNavigateToChat(newChatId, newRoomName)
+
+                        // ✨ 2. [핵심] 현재 방(chatId)과 새로 가려는 방(newChatId)이 다를 때만 이동!
+                        if (chatId != newChatId) {
+                            onNavigateToChat(newChatId, newRoomName)
+                        }
                     },
                     onFailure = {
                         snackScope.launch { snackbarHostState.showSnackbar("1:1 채팅방 생성에 실패했습니다.") }
@@ -329,7 +369,10 @@ fun ChatRoomScreen(
                                 contentPadding = PaddingValues(top = 52.dp, bottom = 12.dp)
                             ) {
                                 val reversedMessages = messages.reversed()
-                                itemsIndexed(items = reversedMessages, key = { _, it -> it.id }) { index, message ->
+                                itemsIndexed(
+                                    items = reversedMessages,
+                                    key = { _, it -> it.id }
+                                ) { index, message ->
                                     MessageItem(
                                         message = message,
                                         timeText = viewModel.formatTime(message.createdAt),
@@ -339,9 +382,10 @@ fun ChatRoomScreen(
                                                 selectedParticipant = participant
                                                 viewModel.loadUserProfile(message.senderId)
                                             }
-                                        }
-
+                                        },
+                                        onImageClick = { url -> showFullImage = url }
                                     )
+
                                     val showDateSeparator = if (index == reversedMessages.lastIndex) {
                                         true
                                     } else {
@@ -386,10 +430,9 @@ fun ChatRoomScreen(
                                 )
                             }
                         }
+                        // (기존 MessageInputBar와 StickerPickerPanel이 있던 곳을 아래로 교체!)
                         Column(
-                            modifier = Modifier.windowInsetsPadding(
-                                WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)
-                            )
+                            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                         ) {
                             MessageInputBar(
                                 text = inputText,
@@ -401,17 +444,44 @@ fun ChatRoomScreen(
                                         inputText = ""
                                     }
                                 },
+                                // ✨ 플러스(첨부) 버튼 로직 연결
+                                onPlusClick = {
+                                    showAttachmentMenu = !showAttachmentMenu
+                                    if (showAttachmentMenu) { showStickerPicker = false; keyboardController?.hide() }
+                                },
+                                isAttachmentOpen = showAttachmentMenu,
+                                // ✨ [내 코드 복원] 이모티콘(스티커) 버튼 로직
                                 onEmojiClick = {
                                     showStickerPicker = !showStickerPicker
-                                    if (showStickerPicker) keyboardController?.hide()
+                                    if (showStickerPicker) { showAttachmentMenu = false; keyboardController?.hide() }
                                 },
                                 isStickerPickerOpen = showStickerPicker
                             )
-                            AnimatedVisibility(
-                                visible = showStickerPicker,
-                                enter = fadeIn(),
-                                exit = fadeOut()
-                            ) {
+
+                            // ✨ 첨부 메뉴 패널 열기
+                            AnimatedVisibility(visible = showAttachmentMenu, enter = fadeIn(), exit = fadeOut()) {
+                                AttachmentMenuPanel(
+                                    onPhotoClick = { galleryLauncher.launch("image/*") }, // 갤러리 열기
+                                    onCameraClick = { cameraLauncher.launch(null) },      // 카메라 열기
+                                    onPlaceClick = {
+                                        showAttachmentMenu = false
+                                        showPlaceDialog = true
+                                        if (placeRecommendations.isEmpty() && !isLoadingPlaces) viewModel.recommendMeetingPlaces(chatId)
+                                    },
+                                    onScheduleClick = {
+                                        showAttachmentMenu = false
+                                        val memberIds = participants.map { it.userId }
+                                        onScheduleSyncClick(memberIds)
+                                    },
+                                    onVoteClick = {
+                                        showAttachmentMenu = false
+                                        showVoteSheet = true
+                                    }
+                                )
+                            }
+
+                            // ✨ [내 코드 복원] 스티커(이모티콘) 피커 패널
+                            AnimatedVisibility(visible = showStickerPicker, enter = fadeIn(), exit = fadeOut()) {
                                 StickerPickerPanel(
                                     onSendSticker = { stickerId ->
                                         viewModel.sendSticker(chatId, stickerId)
@@ -560,7 +630,27 @@ fun ChatRoomScreen(
             onDismiss = { showAutoMatchingSheet = false }
         )
     }
-}
+
+    // ChatRoomScreen 함수의 제일 마지막 괄호 } 바로 직전에 추가!
+    // ChatRoomScreen 함수의 마지막 부분입니다.
+    if (showVoteSheet) {
+        VoteCreationSheet(
+            onDismiss = { showVoteSheet = false },
+            onCreateVote = { title, options, isMultiple, isAnonymous ->
+                // ✨ 에러 원인 해결: viewModel.createVote 삭제하고 알림창만 띄움!
+                snackScope.launch { snackbarHostState.showSnackbar("투표 기능은 DB 연결 후 활성화됩니다!") }
+                showVoteSheet = false
+            }
+        )
+    }
+
+    // ✨ 사진 확대 다이얼로그 호출
+    showFullImage?.let { url ->
+        FullScreenImageDialog(imageUrl = url, onDismiss = { showFullImage = null })
+    }
+} // ⬅️ 여기가 ChatRoomScreen의 진짜 마지막 괄호입니다!!!
+
+
 
 // ... 아래의 서랍, ParticipantRow, ReceivedLikeSheet, MessageInputBar, MessageItem, Dialog, ScrollToBottomButton 등은 기존과 동일
 
@@ -732,15 +822,35 @@ private fun MessageInputBar(
     isSending: Boolean,
     onTextChange: (String) -> Unit,
     onSendClick: () -> Unit,
-    onEmojiClick: () -> Unit = {},
-    isStickerPickerOpen: Boolean = false
+    onPlusClick: () -> Unit, // ✨ 이름 변경!
+    isAttachmentOpen: Boolean = false, // ✨ 이름 변경!
+    onEmojiClick: () -> Unit = {},        // ✨ [내 코드 복원] 이모티콘(스티커) 버튼
+    isStickerPickerOpen: Boolean = false  // ✨ [내 코드 복원] 스티커 패널 열림 상태
 ) {
-    // bottom inset 은 바깥 Column 에서 처리하므로 여기서는 제거
     Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // ✨ [수정됨] 카카오톡 스타일 원형 플러스 버튼
+            IconButton(onClick = onPlusClick) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .border(1.dp, if (isAttachmentOpen) Color(0xFF8B5CF6) else Color(0xFFD1D5DB), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        // 열려있을 땐 X표시, 닫혀있을 땐 +표시
+                        imageVector = if (isAttachmentOpen) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = "첨부",
+                        tint = if (isAttachmentOpen) Color(0xFF8B5CF6) else Color(0xFF6B7280),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // ✨ [내 코드 복원] 이모티콘(스티커) 버튼
             IconButton(onClick = onEmojiClick) {
                 Icon(
                     imageVector = Icons.Filled.EmojiEmotions,
@@ -748,6 +858,7 @@ private fun MessageInputBar(
                     tint = if (isStickerPickerOpen) Color(0xFF8B5CF6) else Color(0xFF6B7280)
                 )
             }
+
             TextField(
                 value = text,
                 onValueChange = onTextChange,
@@ -989,8 +1100,22 @@ private fun StickerMessage(
 }
 
 @Composable
-private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: () -> Unit = {}) {
-    // 통화 로그 메시지 — 카카오톡 스타일 카드
+private fun MessageItem(
+    message: ChatMessage,
+    timeText: String,
+    onProfileClick: () -> Unit = {},
+    onImageClick: (String) -> Unit
+) {
+    if (message.type == "image") {
+        ImageMessage(
+            message = message,
+            timeText = timeText,
+            onProfileClick = onProfileClick,
+            onImageClick = onImageClick
+        )
+        return
+    }
+    // 통화 로그 메시지 — 카카오톡 스타일 카드a
     if (message.type == "call_log") {
         CallLogMessage(message = message, timeText = timeText)
         return
@@ -1117,6 +1242,7 @@ private fun MessageItem(message: ChatMessage, timeText: String, onProfileClick: 
         }
     }
 }
+
 
 @Composable
 private fun ParticipantProfileDialog(
@@ -2281,6 +2407,222 @@ private fun AutoMatchingSheet(
                     )
                 }
             }
+        }
+    }
+}
+@Composable
+private fun AttachmentMenuPanel(
+    onPhotoClick: () -> Unit,
+    onCameraClick: () -> Unit,
+    onPlaceClick: () -> Unit,
+    onScheduleClick: () -> Unit,
+    onVoteClick: () -> Unit
+) {
+    val items = listOf(
+        Triple("사진", Icons.Default.Image, Color(0xFF10B981)), // 초록색
+        Triple("카메라", Icons.Default.CameraAlt, Color(0xFF3B82F6)), // 파란색
+        Triple("장소추천", Icons.Default.Place, Color(0xFF8B5CF6)), // 보라색
+        Triple("공강추천", Icons.Default.CalendarMonth, Color(0xFFEC4899)), // 핑크색
+        Triple("투표", Icons.Default.HowToVote, Color(0xFFF59E0B)) // 주황색
+    )
+
+    Surface(
+        color = Color.White,
+        modifier = Modifier.fillMaxWidth().height(260.dp)
+    ) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            modifier = Modifier.padding(top = 24.dp, start = 16.dp, end = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(items) { item ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable {
+                        when (item.first) {
+                            "사진" -> onPhotoClick()
+                            "카메라" -> onCameraClick()
+                            "장소추천" -> onPlaceClick()
+                            "공강추천" -> onScheduleClick()
+                            "투표" -> onVoteClick()
+                        }
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier.size(52.dp).clip(CircleShape).background(item.third),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(item.second, contentDescription = item.first, tint = Color.White, modifier = Modifier.size(26.dp))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(item.first, fontSize = 12.sp, color = Color(0xFF4B5563))
+                }
+            }
+        }
+    }
+}
+
+// ✨ [추가 부품 2] 카카오톡 스타일 투표 만들기 화면
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VoteCreationSheet(
+    onDismiss: () -> Unit,
+    onCreateVote: (title: String, options: List<String>, isMultiple: Boolean, isAnonymous: Boolean) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var options by remember { mutableStateOf(listOf("", "")) } // 기본 2개 항목
+    var isMultipleChoice by remember { mutableStateOf(false) }
+    var isAnonymous by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFFF9FAFB),
+        modifier = Modifier.fillMaxHeight(0.9f) // 화면의 90% 높이까지 올라옴
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 상단바
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "닫기") }
+                Text("글 작성하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                TextButton(
+                    onClick = {
+                        val validOptions = options.filter { it.isNotBlank() }
+                        if (title.isNotBlank() && validOptions.size >= 2) {
+                            onCreateVote(title, validOptions, isMultipleChoice, isAnonymous)
+                        }
+                    }
+                ) { Text("완료", color = Color.Black, fontWeight = FontWeight.Bold) }
+            }
+
+            HorizontalDivider()
+
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(rememberScrollState())) {
+                Text("멤버들과 공유하고 싶은 소식을 남겨보세요.", color = Color.Gray, fontSize = 14.sp)
+                Spacer(Modifier.height(16.dp))
+
+                // 투표 카드 영역
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        TextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            placeholder = { Text("투표 제목", color = Color.LightGray) },
+                            colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color(0xFFE5E7EB), unfocusedIndicatorColor = Color(0xFFE5E7EB)),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        // 항목 입력 리스트
+                        options.forEachIndexed { index, text ->
+                            TextField(
+                                value = text,
+                                onValueChange = { newText ->
+                                    val newOptions = options.toMutableList()
+                                    newOptions[index] = newText
+                                    options = newOptions
+                                },
+                                placeholder = { Text("항목 입력", color = Color.LightGray) },
+                                colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color(0xFFE5E7EB), unfocusedIndicatorColor = Color(0xFFE5E7EB)),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(
+                            onClick = { options = options + "" },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("+ 항목 추가", color = Color.Gray) }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // 옵션 체크박스
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = isMultipleChoice, onCheckedChange = { isMultipleChoice = it })
+                            Text("복수선택", fontSize = 14.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = isAnonymous, onCheckedChange = { isAnonymous = it })
+                            Text("익명투표", fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ⬇️ 이 코드를 복사해서 파일 맨 아래에 있는 기존의 ImageMessage와 FullScreenImageDialog 함수 자리에 덮어쓰세요!
+
+@Composable
+fun ImageMessage(
+    message: ChatMessage,
+    timeText: String,
+    onProfileClick: () -> Unit = {},
+    onImageClick: (String) -> Unit
+) {
+    val isMe = message.isMe
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
+    ) {
+        if (!isMe) {
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFE5E7EB)).clickable { onProfileClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (message.senderProfileImage.isNotBlank()) {
+                    AsyncImage(model = message.senderProfileImage, contentDescription = "프로필", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                } else {
+                    Text(text = message.senderName.take(1).ifEmpty { "👤" }, fontSize = 16.sp, color = Color.DarkGray, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+
+        Column(horizontalAlignment = if (isMe) Alignment.End else Alignment.Start) {
+            if (!isMe && message.senderName.isNotBlank()) {
+                Text(text = message.senderName, fontSize = 13.sp, color = Color(0xFF4B5563), modifier = Modifier.padding(bottom = 4.dp, start = 4.dp))
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                if (isMe) Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(end = 4.dp, bottom = 2.dp))
+
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 220.dp)
+                        .heightIn(max = 300.dp)
+                        .clip(RoundedCornerShape(topStart = if (isMe) 16.dp else 4.dp, topEnd = if (isMe) 4.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp))
+                        .background(Color(0xFFF3F4F6))
+                ) {
+                    AsyncImage(
+                        model = message.imageUrl,
+                        contentDescription = "전송된 사진",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clickable { onImageClick(message.imageUrl) }
+                    )
+                }
+
+                if (!isMe) Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun FullScreenImageDialog(imageUrl: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+            AsyncImage(model = imageUrl, contentDescription = "확대된 사진", modifier = Modifier.fillMaxWidth())
         }
     }
 }

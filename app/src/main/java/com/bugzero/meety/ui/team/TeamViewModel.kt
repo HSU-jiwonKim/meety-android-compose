@@ -28,6 +28,7 @@ data class FriendItem(
     val name: String = "",
     val email: String = "",
     val profileImageUrl: String = "",
+    val profileImages: List<String> = emptyList(),
     val department: String = "",
     val age: Int = 0,
     val mbti: String = "",

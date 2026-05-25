@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meety · 추천 근거 설계</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+:root{
+  --brand-1:#7B5CFF; --brand-2:#FF5C8A;
+  --grad:linear-gradient(135deg,#7B5CFF 0%,#A24BFF 45%,#FF5C8A 100%);
+  --grad-soft:linear-gradient(135deg,#EFE9FF 0%,#FFE8F1 100%);
+  --ink:#17161D; --ink-2:#56535F; --ink-3:#9B98A6; --ink-4:#C4C2CD;
+  --bg:#F4F4F8; --surface:#fff; --surface-2:#FAFAFD; --line:#ECEAF1; --line-2:#F1EFF5;
+  --violet-soft:#F2EEFF; --pink-soft:#FFECF3; --ok:#19C37D; --amber:#F5A623;
+  --sh-sm:0 1px 2px rgba(23,22,29,.04),0 2px 8px rgba(23,22,29,.04);
+  --sh-md:0 4px 14px rgba(23,22,29,.06),0 8px 30px rgba(23,22,29,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:radial-gradient(900px 600px at 12% -5%,#EEE7FF 0%,transparent 55%),
+    radial-gradient(900px 600px at 95% 8%,#FFE6EF 0%,transparent 50%),#EDEBF4;
+  color:var(--ink);-webkit-font-smoothing:antialiased;padding:40px 20px 80px;min-height:100vh}
+
+.page-head{max-width:1240px;margin:0 auto 16px;text-align:center}
+.brand-pill{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);
+  padding:7px 14px 7px 8px;border-radius:999px;box-shadow:var(--sh-sm);font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:16px}
+.brand-pill .logo{width:26px;height:26px;border-radius:8px;background:var(--grad);display:grid;place-items:center}
+.brand-pill .logo svg{width:15px;height:15px}
+.page-head h1{font-size:31px;font-weight:800;letter-spacing:-.02em;line-height:1.25}
+.page-head h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.page-head p{margin-top:12px;color:var(--ink-2);font-size:15px;line-height:1.6;max-width:620px;margin:12px auto 0}
+
+.flow{max-width:1240px;margin:40px auto 0;display:flex;justify-content:center;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.step{width:300px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center}
+.step-tag{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:var(--brand-1);
+  background:var(--surface);border:1px solid var(--line);padding:7px 14px;border-radius:999px;margin-bottom:16px;box-shadow:var(--sh-sm)}
+.step-tag .n{width:20px;height:20px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;font-size:11px}
+
+.phone{width:300px;height:640px;background:#0b0b10;border-radius:40px;padding:9px;
+  box-shadow:0 30px 60px -22px rgba(40,30,90,.5);position:relative}
+.screen{width:100%;height:100%;border-radius:32px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:100px;height:24px;background:#0b0b10;border-radius:0 0 14px 14px;z-index:60}
+.statusbar{height:40px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 3px;font-size:12px;font-weight:700;flex:0 0 auto;z-index:5}
+.statusbar .r{display:flex;gap:5px}.statusbar svg{width:14px;height:14px}
+.body{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:none}
+.body::-webkit-scrollbar{display:none}
+.scrollhint{text-align:center;font-size:11px;color:var(--ink-4);font-weight:600;padding:6px 0 14px}
+.cap{width:300px;margin-top:16px;text-align:center}
+.cap b{font-size:14.5px;font-weight:800;display:block;margin-bottom:5px}
+.cap span{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.arrow{align-self:center;margin-top:300px;color:var(--ink-4);flex:0 0 auto}.arrow svg{width:30px;height:30px}
+
+/* shared */
+.appbar{display:flex;align-items:center;gap:10px;padding:8px 16px 10px}
+.appbar .back{width:34px;height:34px;border-radius:11px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;flex:0 0 auto}
+.appbar .back svg{width:18px;height:18px;stroke:var(--ink)}
+.appbar h2{font-size:17px;font-weight:800}
+.appbar .title{display:flex;align-items:center;gap:8px}
+.appbar .logo{width:28px;height:28px;border-radius:9px;background:var(--grad);display:grid;place-items:center}
+.appbar .logo svg{width:16px;height:16px}
+.appbar .wm{font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.appbar .sp{flex:1}
+.iconbtn{width:34px;height:34px;border-radius:11px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center}
+.iconbtn svg{width:17px;height:17px;stroke:var(--ink)}
+.g1{background:linear-gradient(150deg,#9D7BFF,#7B5CFF 60%,#5B3FE0)}
+.g2{background:linear-gradient(150deg,#7DE0CF,#26A69A)}
+.g3{background:linear-gradient(150deg,#FF9DC0,#EC407A)}
+
+/* ===== STEP 1: home recommend card ===== */
+.rc{margin:6px 16px;border-radius:24px;overflow:hidden;box-shadow:var(--sh-md);background:var(--surface);border:1px solid var(--line-2)}
+.rc .photo{height:230px;position:relative}
+.rc .photo .scrim{position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.66))}
+.rc .photo .fit{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.96);border-radius:14px;padding:8px 11px;text-align:center;box-shadow:0 6px 16px rgba(0,0,0,.18)}
+.rc .photo .fit b{font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;display:block;line-height:1}
+.rc .photo .fit span{font-size:9.5px;font-weight:700;color:var(--ink-3)}
+.rc .photo .recruit{position:absolute;top:14px;left:14px;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.36);backdrop-filter:blur(6px);color:#fff;font-size:11px;font-weight:700;padding:6px 11px;border-radius:999px}
+.rc .photo .recruit .pulse{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.6)}70%{box-shadow:0 0 0 7px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+.rc .photo .nm{position:absolute;left:18px;bottom:34px;color:#fff;font-size:22px;font-weight:800}
+.rc .photo .meta{position:absolute;left:18px;bottom:16px;color:rgba(255,255,255,.92);font-size:12.5px;font-weight:600}
+.rc .reasons{padding:14px 16px}
+.rc .reasons .h{font-size:12px;font-weight:800;color:var(--ink-3);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.reason-line{display:flex;align-items:center;gap:10px;padding:7px 0}
+.reason-line .ic{width:30px;height:30px;border-radius:9px;background:var(--violet-soft);display:grid;place-items:center;font-size:15px;flex:0 0 auto}
+.reason-line .tx{font-size:13px;font-weight:600;color:var(--ink);flex:1}
+.reason-line .tx b{font-weight:800;color:var(--brand-1)}
+.reason-line .mt{font-size:11px;font-weight:800;color:var(--ok)}
+.why-btn{margin:4px 16px 0;border:1.5px solid var(--brand-1);color:var(--brand-1);border-radius:14px;padding:12px;
+  text-align:center;font-size:13.5px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--violet-soft)}
+.why-btn svg{width:16px;height:16px;stroke:var(--brand-1)}
+.rc-actions{display:flex;gap:10px;padding:12px 16px 16px;align-items:center;justify-content:center}
+.rc-act{border-radius:50%;display:grid;place-items:center;box-shadow:var(--sh-md);background:var(--surface)}
+.rc-act.sm{width:50px;height:50px}.rc-act.lg{width:62px;height:62px}
+.rc-act svg{width:24px;height:24px}
+.rc-act.pass svg{stroke:var(--ink-3)}
+.rc-act.like{background:var(--grad);box-shadow:0 10px 22px rgba(255,77,125,.4)}
+.rc-act.like svg{fill:#fff;stroke:#fff}
+
+/* ===== STEP 2: reason detail ===== */
+.hero{margin:4px 16px 0;border-radius:22px;height:124px;position:relative;overflow:hidden}
+.hero .scrim{position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(0,0,0,.6))}
+.hero .nm{position:absolute;left:16px;bottom:30px;color:#fff;font-size:19px;font-weight:800}
+.hero .mt{position:absolute;left:16px;bottom:12px;color:rgba(255,255,255,.92);font-size:12px;font-weight:600}
+.hero .tag{position:absolute;top:12px;right:12px;background:rgba(255,255,255,.95);color:#6D49E0;font-size:10.5px;font-weight:800;padding:5px 10px;border-radius:999px}
+
+.fit-card{margin:14px 16px 0;background:var(--surface);border:1px solid var(--line-2);border-radius:20px;padding:18px;box-shadow:var(--sh-sm);display:flex;align-items:center;gap:16px}
+.donut{width:74px;height:74px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;position:relative;
+  background:conic-gradient(#7B5CFF 0% 46%,#A24BFF 46% 78%,#FF5C8A 78% 92%,#ECEAF1 92% 100%)}
+.donut .in{width:56px;height:56px;border-radius:50%;background:var(--surface);display:grid;place-items:center;flex-direction:column}
+.donut .in b{font-size:19px;font-weight:800;line-height:1}
+.donut .in span{font-size:9px;font-weight:700;color:var(--ink-3)}
+.fit-card .t b{font-size:15px;font-weight:800;display:block}
+.fit-card .t p{font-size:12.5px;color:var(--ink-2);margin-top:5px;line-height:1.5}
+
+.sec-h{font-size:13px;font-weight:800;color:var(--ink-3);padding:18px 18px 8px}
+.rcard{margin:0 16px 11px;background:var(--surface);border:1px solid var(--line-2);border-radius:18px;padding:15px;box-shadow:var(--sh-sm)}
+.rcard .top{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.rcard .top .ic{width:34px;height:34px;border-radius:11px;background:var(--grad-soft);display:grid;place-items:center;font-size:17px;flex:0 0 auto}
+.rcard .top .ti{flex:1}
+.rcard .top .ti b{font-size:14px;font-weight:800;display:block}
+.rcard .top .ti .src{font-size:11px;color:var(--ink-3);font-weight:600;margin-top:1px}
+.strength{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:999px}
+.strength.hi{background:#E7F8F0;color:#12A866}.strength.mid{background:#FFF3DE;color:#C8860D}
+.strength .d{display:flex;gap:2px}.strength .d i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.35}
+.strength.hi .d i:nth-child(-n+3){opacity:1}.strength.mid .d i:nth-child(-n+2){opacity:1}
+.evs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.ev{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:6px 11px;border-radius:999px;background:var(--violet-soft);color:#6D49E0}
+.ev svg{width:13px;height:13px;stroke:#19C37D;stroke-width:3}
+.ev.off{background:var(--surface-2);color:var(--ink-4);border:1px solid var(--line)}
+.rcard .why{font-size:12.5px;color:var(--ink-2);line-height:1.5;background:var(--surface-2);border-radius:11px;padding:10px 12px}
+.rcard .why b{color:var(--ink);font-weight:700}
+
+.transparency{margin:6px 16px 0;background:var(--grad-soft);border:1px solid #EADFFF;border-radius:16px;padding:15px}
+.transparency .h{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;margin-bottom:6px}
+.transparency .h svg{width:16px;height:16px;stroke:var(--brand-1)}
+.transparency p{font-size:12px;color:var(--ink-2);line-height:1.55}
+.fb{display:flex;align-items:center;gap:8px;margin-top:12px}
+.fb span{font-size:12px;font-weight:700;color:var(--ink-2);flex:1}
+.fb .b{width:36px;height:34px;border-radius:11px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:15px}
+
+.cta-bar{padding:14px 16px 18px;background:linear-gradient(180deg,transparent,var(--bg) 26%)}
+.cta{background:var(--grad);color:#fff;border-radius:16px;padding:15px;text-align:center;font-size:15px;font-weight:800;box-shadow:0 12px 26px rgba(123,92,255,.34)}
+.cta-sub{text-align:center;font-size:11.5px;color:var(--ink-3);font-weight:600;margin-top:9px;display:flex;align-items:center;justify-content:center;gap:5px}
+.cta-sub svg{width:13px;height:13px;stroke:var(--ink-3)}
+
+/* ===== STEP 3: applied state ===== */
+.applied{padding:8px 18px 0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.applied .check{width:88px;height:88px;border-radius:50%;background:var(--grad-soft);display:grid;place-items:center;margin:18px 0 16px;position:relative}
+.applied .check .c2{width:62px;height:62px;border-radius:50%;background:var(--grad);display:grid;place-items:center;box-shadow:0 10px 24px rgba(123,92,255,.34)}
+.applied .check .c2 svg{width:30px;height:30px;stroke:#fff;stroke-width:3}
+.applied h3{font-size:21px;font-weight:800}
+.applied .p{font-size:13px;color:var(--ink-2);margin-top:8px;line-height:1.55}
+.applied .teamchip{display:inline-flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:9px 14px;margin-top:18px;box-shadow:var(--sh-sm)}
+.applied .teamchip .pic{width:34px;height:34px;border-radius:10px}
+.applied .teamchip b{font-size:13.5px;font-weight:800}
+.timeline{width:100%;margin:24px 4px 0;text-align:left}
+.tl{display:flex;gap:13px;position:relative;padding-bottom:20px}
+.tl:last-child{padding-bottom:0}
+.tl .dot{width:26px;height:26px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;z-index:2}
+.tl .dot.done{background:var(--grad)}.tl .dot.done svg{width:14px;height:14px;stroke:#fff;stroke-width:3}
+.tl .dot.now{background:#FFF3DE;border:2px solid var(--amber)}.tl .dot.now .p{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:bl 1.2s infinite}
+@keyframes bl{50%{opacity:.3}}
+.tl .dot.wait{background:var(--surface-2);border:2px solid var(--line)}.tl .dot.wait .p{width:7px;height:7px;border-radius:50%;background:var(--ink-4)}
+.tl .ln{position:absolute;left:12px;top:26px;bottom:0;width:2px;background:var(--line)}
+.tl:last-child .ln{display:none}
+.tl .tx b{font-size:13.5px;font-weight:800;display:block}
+.tl .tx span{font-size:12px;color:var(--ink-3);font-weight:600}
+.tl.cur .tx b{color:var(--amber)}
+.applied .browse{margin-top:26px;font-size:13px;font-weight:800;color:var(--brand-1)}
+
+/* principles */
+.principles{max-width:1100px;margin:54px auto 0}
+.principles h2{text-align:center;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.principles .sub{text-align:center;color:var(--ink-2);font-size:14px;margin-top:8px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:26px}
+.pcard{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--sh-sm)}
+.pcard .ic{width:44px;height:44px;border-radius:13px;background:var(--grad-soft);display:grid;place-items:center;font-size:22px;margin-bottom:13px}
+.pcard h4{font-size:15.5px;font-weight:800;margin-bottom:8px}
+.pcard p{font-size:13.5px;color:var(--ink-2);line-height:1.55}
+.pcard p b{color:var(--ink);font-weight:700}
+.foot{max-width:1100px;margin:34px auto 0;text-align:center;font-size:12.5px;color:var(--ink-3);line-height:1.7}
+@media(max-width:680px){.arrow{display:none}.page-head h1{font-size:24px}}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="brand-pill"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.8 2 5.5 5.2 5.1c2-.3 3.6.8 4.8 2.4 1.2-1.6 2.8-2.7 4.8-2.4 3.2.4 4.6 3.7 3.2 6.6C19.5 16.4 12 21 12 21z"/></svg></span>Meety · 추천 근거 설계</div>
+  <h1>왜 이 팀이 <span class="g">나에게 맞는지</span> 납득되게 보여주기</h1>
+  <p>개인이 팀에 가입하는 구조에서, 추천은 "왜 추천됐는지"가 설명될 때 신뢰받습니다. 회원님의 활동·프로필을 출처로 한 근거를 항목별로 보여주고, 가입 신청까지 자연스럽게 이어줍니다.</p>
+</header>
+
+<div class="flow" id="flow"></div>
+
+<section class="principles">
+  <h2>설명가능한 추천의 4원칙</h2>
+  <p class="sub">"근거 있고 납득 가능한" 추천을 만드는 기준</p>
+  <div class="pgrid">
+    <div class="pcard"><div class="ic">🎯</div><h4>한 줄 요약 먼저</h4><p>카드에서부터 <b>"선호 태그 3개 일치"</b>처럼 핵심 이유를 먼저 보여줘, 점수(92%)가 무엇 때문인지 즉시 이해되게 합니다.</p></div>
+    <div class="pcard"><div class="ic">🧾</div><h4>출처를 밝힌다</h4><p>각 근거에 <b>"회원님의 좋아요 기록", "회원님 프로필"</b> 같은 출처를 표기. 막연한 추천이 아니라 데이터 기반임을 보여줍니다.</p></div>
+    <div class="pcard"><div class="ic">⚖️</div><h4>맞는 것/아닌 것 모두</h4><p>일치 항목은 ✓로 강조하고 <b>안 맞는 항목은 흐리게</b> 함께 표시. 과장 없이 솔직해야 점수를 신뢰합니다.</p></div>
+    <div class="pcard"><div class="ic">🔁</div><h4>통제권을 준다</h4><p><b>"이 추천 어떤가요? 👍/👎"</b> 피드백으로 추천이 나아진다는 걸 알려, 사용자가 알고리즘을 길들이는 느낌을 줍니다.</p></div>
+  </div>
+</section>
+
+<p class="foot">설명가능 추천 흐름 미리보기 (반응형 HTML 목업) · 실제로는 FeedViewModel의 태그·MBTI 선호 점수와 프로필 데이터를 근거 문장으로 변환해 표시하면 됩니다. 가운데 화면은 위아래로 스크롤됩니다.</p>
+
+<script>
+const I={
+  heart:'<path d="M12 21s-7.5-4.6-10-9.3C.6 8.8 2 5.5 5.2 5.1c2-.3 3.6.8 4.8 2.4 1.2-1.6 2.8-2.7 4.8-2.4 3.2.4 4.6 3.7 3.2 6.6C19.5 16.4 12 21 12 21z"/>',
+  bell:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  close:'<path d="M18 6 6 18M6 6l12 12"/>',
+  back:'<path d="M15 18l-6-6 6-6"/>',
+  arrowR:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  lock:'<rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  chat:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'
+};
+function svg(n,o=''){return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${o}>${I[n]}</svg>`}
+const sb=`<div class="statusbar"><span>9:41</span><span class="r">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 13h2v4H2zM6 10h2v7H6zM10 7h2v10h-2zM14 4h2v13h-2z"/></svg>
+  <svg viewBox="0 0 26 24" fill="none"><rect x="1" y="6" width="20" height="12" rx="3" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="8" width="15" height="8" rx="1.5" fill="currentColor"/></svg>
+</span></div>`;
+const chk=svg('check','stroke="#19C37D"');
+
+/* STEP 1 */
+function step1(){return `
+  <div class="appbar"><div class="title"><span class="logo">${svg('heart','fill="#fff" stroke="none"')}</span><span class="wm">Meety</span></div><div class="sp"></div><div class="iconbtn">${svg('bell')}</div></div>
+  <div class="rc">
+    <div class="photo g1">
+      <div class="scrim"></div>
+      <div class="recruit"><span class="pulse"></span>모집중 · 1자리</div>
+      <div class="fit"><b>92%</b><span>나와 맞음</span></div>
+      <div class="nm">한성 맛집원정대</div>
+      <div class="meta">한성대 · 멤버 4명 · 평균 22세</div>
+    </div>
+    <div class="reasons">
+      <div class="h">${svg('spark','stroke="none" fill="#7B5CFF"')} 회원님에게 추천한 이유</div>
+      ${rline('🍽️','선호하는 <b>맛집·카페</b> 태그가 겹쳐요','+3')}
+      ${rline('🧬','회원님 <b>ENFP</b>와 잘 맞는 분위기','궁합 ↑')}
+      ${rline('🎬','프로필 관심사 <b>3개 일치</b>','3/4')}
+    </div>
+    <div class="why-btn">${svg('spark','stroke="none" fill="#7B5CFF"')} 왜 추천됐는지 자세히 보기</div>
+    <div class="rc-actions">
+      <div class="rc-act sm pass">${svg('close')}</div>
+      <div class="rc-act lg like">${svg('heart','fill="#fff" stroke="#fff"')}</div>
+    </div>
+  </div>
+`}
+function rline(ic,tx,mt){return `<div class="reason-line"><div class="ic">${ic}</div><div class="tx">${tx}</div><div class="mt">${mt}</div></div>`}
+
+/* STEP 2 */
+function step2(){return `
+  <div class="appbar"><div class="back">${svg('back')}</div><h2>추천 근거</h2></div>
+  <div class="hero g1"><div class="scrim"></div><div class="tag">모집중</div><div class="nm">한성 맛집원정대</div><div class="mt">한성대 · 멤버 4명 · 평균 22세</div></div>
+  <div class="fit-card">
+    <div class="donut"><div class="in"><b>92%</b><span>잘 맞음</span></div></div>
+    <div class="t"><b>회원님과 잘 맞는 팀이에요</b><p>활발한 분위기와 <b>맛집·카페 취향</b>이 회원님과 특히 잘 맞아요.</p></div>
+  </div>
+
+  <div class="sec-h">맞는 점을 항목별로 봤어요</div>
+
+  ${rcard('🏷️','선호하는 팀 분위기','회원님의 좋아요 기록 기반','hi','매우 일치',
+    `${ev('맛집탐방',1)}${ev('카페좋아',1)}${ev('활발한',1)}${ev('게임러버',0)}`,
+    '회원님은 최근 <b>‘맛집탐방’ 팀에 7번</b> 좋아요했어요. 이 팀의 핵심 태그 3개가 그 취향과 겹쳐요.')}
+
+  ${rcard('🧬','성격(MBTI) 궁합','회원님 프로필 · ENFP','hi','좋은 조합',
+    `${ev('ENFP·나',1)}${ev('ENFJ',1)}${ev('ESFP',1)}${ev('INFP',1)}`,
+    '팀에 <b>외향·직관(E·N) 성향이 많아</b> 회원님 ENFP와 에너지가 잘 통하는 편이에요.')}
+
+  ${rcard('💬','공통 관심사','회원님 프로필 기반','hi','3개 일치',
+    `${ev('카페',1)}${ev('영화',1)}${ev('여행',1)}${ev('운동',0)}`,
+    '프로필에 적은 관심사 4개 중 <b>3개가 팀 활동과 겹쳐요.</b>')}
+
+  ${rcard('🎓','기본 조건','학적·위치 정보','mid','대체로 맞음',
+    `${ev('같은 한성대',1)}${ev('가까운 계열',1)}${ev('동갑대',1)}${ev('성북구 근처',1)}`,
+    '같은 학교에 <b>활동 캠퍼스가 가깝고</b> 또래 위주라 모이기 편해요.')}
+
+  <div class="transparency">
+    <div class="h">${svg('lock')} 이 추천은 이렇게 만들었어요</div>
+    <p>회원님의 <b>좋아요·관심 없음 기록</b>과 <b>프로필(관심사·MBTI)</b>을 분석했어요. 카드를 넘길수록 더 정확해져요.</p>
+    <div class="fb"><span>이 추천, 잘 맞나요?</span><div class="b">👍</div><div class="b">👎</div></div>
+  </div>
+
+  <div class="cta-bar">
+    <div class="cta">이 팀에 가입 신청하기</div>
+    <div class="cta-sub">${svg('lock')} 팀장이 수락하면 채팅방에 초대돼요</div>
+  </div>
+`}
+function rcard(ic,title,src,lv,lvtxt,evs,why){
+  const dots='<i></i><i></i><i></i>';
+  return `<div class="rcard">
+    <div class="top"><div class="ic">${ic}</div><div class="ti"><b>${title}</b><div class="src">${src}</div></div>
+      <div class="strength ${lv}">${lvtxt}<span class="d">${dots}</span></div></div>
+    <div class="evs">${evs}</div>
+    <div class="why">${why}</div>
+  </div>`}
+function ev(label,on){return `<span class="ev ${on?'':'off'}">${on?chk:''}${label}</span>`}
+
+/* STEP 3 */
+function step3(){return `
+  <div class="appbar"><div class="back">${svg('back')}</div><h2>가입 신청</h2></div>
+  <div class="applied">
+    <div class="check"><div class="c2">${svg('check','stroke="#fff"')}</div></div>
+    <h3>가입 신청 완료!</h3>
+    <div class="p">팀장이 회원님의 프로필을 확인하고 있어요.<br>수락하면 채팅방으로 바로 초대돼요.</div>
+    <div class="teamchip"><div class="pic g1"></div><b>한성 맛집원정대</b></div>
+    <div class="timeline">
+      ${tl('done','가입 신청 보냄','방금 · 추천 근거 92% 일치')}
+      ${tl('now','팀장이 확인 중','보통 24시간 안에 응답해요',true)}
+      ${tl('wait','채팅방 초대','수락되면 알림으로 알려드려요')}
+    </div>
+    <div class="browse">다른 추천 팀 둘러보기 →</div>
+  </div>
+`}
+function tl(state,title,sub,cur){
+  let dot;
+  if(state==='done') dot=`<div class="dot done">${svg('check','stroke="#fff"')}</div>`;
+  else if(state==='now') dot=`<div class="dot now"><span class="p"></span></div>`;
+  else dot=`<div class="dot wait"><span class="p"></span></div>`;
+  return `<div class="tl ${cur?'cur':''}">${dot}<div class="ln"></div><div class="tx"><b>${title}</b><span>${sub}</span></div></div>`}
+
+const STEPS=[
+  {n:1,tag:'홈 추천 카드',render:step1,capT:'핵심 이유를 먼저',capS:'92% 점수 + "왜 추천했는지" 3줄 요약을 카드에서 바로'},
+  {n:2,tag:'추천 근거 상세',render:step2,capT:'항목별 근거 + 출처',capS:'태그·MBTI·관심사·조건을 ✓로, 출처와 함께 납득되게 (스크롤)'},
+  {n:3,tag:'가입 신청',render:step3,capT:'구조에 맞는 다음 단계',capS:'좋아요→팀장 수락→채팅 초대 흐름을 진행상태로'},
+];
+const flow=document.getElementById('flow');
+flow.innerHTML=STEPS.map((s,i)=>`
+  <div class="step">
+    <div class="step-tag"><span class="n">${s.n}</span>${s.tag}</div>
+    <div class="phone"><div class="notch"></div><div class="screen">${sb}<div class="body">${s.render()}${s.n===2?'<div class="scrollhint">▲ 위아래로 스크롤해 모든 근거 보기</div>':''}</div></div></div>
+    <div class="cap"><b>${s.capT}</b><span>${s.capS}</span></div>
+  </div>
+  ${i<STEPS.length-1?`<div class="arrow">${svg('arrowR','stroke="#C4C2CD"')}</div>`:''}
+`).join('');
+</script>
+</body>
+</html>

@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.draw.drawBehind
@@ -59,6 +62,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,13 +83,17 @@ data class UserProfileUiState(
     val department: String,
     val height: Int,
     val location: String,
+    val mbti: String,
     val bio: String,
     val interests: List<String>,
     val foodLikes: List<String>,
     val foodDislikes: List<String>,
     val profileImages: List<String>,
-    val schedule: Map<String, List<String>>
+    val mainProfileImageUrl: String = "",
+    val schedule: Map<String, List<String>> = emptyMap()
 )
+
+private enum class MyProfileTab { PHOTOS, INFO }
 
 private val scheduleDays = listOf("월", "화", "수", "목", "금")
 private val scheduleTimes = listOf(
@@ -120,15 +133,23 @@ fun MyPageScreen(
         }
     }
 
+    val mainImagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.onAddMainPhotoClick(uri)
+        }
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TeamCommonTopBar(
-                onSearchClick = onSearchClick,
-                onNotificationClick = onNotificationClick
+            MyProfileTopBar(
+                onEditProfileClick = onEditProfileClick,
+                onLogoutClick = onLogoutClick
             )
         },
-        containerColor = Color(0xFFF8F1F8)
+        containerColor = Color.White
     ) { innerPadding ->
         MyPageBody(
             uiState = uiState,
@@ -137,6 +158,9 @@ fun MyPageScreen(
             onScheduleClick = onScheduleClick,
             onAddPhotoClick = {
                 imagePickerLauncher.launch("image/*")
+            },
+            onPickMainPhotoFromGalleryClick = {
+                mainImagePickerLauncher.launch("image/*")
             },
             onLogoutClick = onLogoutClick,
             modifier = Modifier.padding(innerPadding)
@@ -151,11 +175,13 @@ fun MyPageBody(
     onEditProfileClick: () -> Unit,
     onScheduleClick: () -> Unit = {},
     onAddPhotoClick: () -> Unit,
+    onPickMainPhotoFromGalleryClick: () -> Unit,
     onLogoutClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedImageUrl by remember { mutableStateOf<String?>(null) }
     var showMainImageDialog by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(MyProfileTab.PHOTOS) }
 
     selectedImageUrl?.let { imageUrl ->
         LargeImageDialog(
@@ -171,6 +197,10 @@ fun MyPageBody(
             onSelect = { imageUrl ->
                 showMainImageDialog = false
                 viewModel.changeMainProfileImage(imageUrl)
+            },
+            onPickFromGallery = {
+                showMainImageDialog = false
+                onPickMainPhotoFromGalleryClick()
             }
         )
     }
@@ -183,7 +213,7 @@ fun MyPageBody(
             ProfileHeaderSection(
                 uiState = uiState,
                 onImageClick = {
-                    val imageUrl = uiState.profileImages.firstOrNull().orEmpty()
+                    val imageUrl = if (uiState.mainProfileImageUrl.isNotBlank()) uiState.mainProfileImageUrl else uiState.profileImages.firstOrNull().orEmpty()
                     if (imageUrl.isNotBlank()) {
                         selectedImageUrl = imageUrl
                     }
@@ -195,48 +225,136 @@ fun MyPageBody(
         }
 
         item {
-            SectionCard(title = "관심사") {
-                TagWrapSection(
-                    tags = uiState.interests,
-                    chipColor = Color(0xFFF3E7FF),
-                    textColor = Color(0xFF8E24AA)
-                )
-            }
-        }
-
-        item {
-            SectionCard(title = "자기소개") {
-                Text(
-                    text = uiState.bio,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF444444)
-                )
-            }
-        }
-
-        item {
-            PhotoSection(
-                imageUrls = uiState.profileImages,
-                onAddPhotoClick = onAddPhotoClick,
-                onPhotoClick = { imageUrl ->
-                    selectedImageUrl = imageUrl
-                },
-                onDeletePhotoClick = { imageUrl ->
-                    viewModel.deleteProfileImage(imageUrl)
-                },
-                onSetMainPhotoClick = { imageUrl ->
-                    viewModel.changeMainProfileImage(imageUrl)
-                }
+            MyProfileTabRow(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
             )
         }
 
-        item { ScheduleSection(schedule = uiState.schedule, onScheduleClick = onScheduleClick) }
-        item { FoodPreferenceSection(likes = uiState.foodLikes, dislikes = uiState.foodDislikes) }
-        item { EditProfileButton(onClick = onEditProfileClick) }
-        item { LogoutButton(onClick = onLogoutClick) }
+        if (selectedTab == MyProfileTab.PHOTOS) {
+            item {
+                PhotoSection(
+                    imageUrls = uiState.profileImages,
+                    onAddPhotoClick = onAddPhotoClick,
+                    onPhotoClick = { imageUrl ->
+                        selectedImageUrl = imageUrl
+                    },
+                    onDeletePhotoClick = { imageUrl ->
+                        viewModel.deleteProfileImage(imageUrl)
+                    },
+                    onSetMainPhotoClick = { imageUrl ->
+                        viewModel.changeMainProfileImage(imageUrl)
+                    }
+                )
+            }
+        } else {
+            item { MyProfileInfoSection(uiState = uiState) }
+            item { ScheduleSection(schedule = uiState.schedule, onScheduleClick = onScheduleClick) }
+        }
         item { Spacer(modifier = Modifier.height(20.dp)) }
     }
 }
+
+@Composable
+private fun MyProfileTopBar(
+    onEditProfileClick: () -> Unit,
+    onLogoutClick: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFFB44FD3), Color(0xFFEC4899))),
+                        RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Meety",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFD946C7)
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Box {
+            IconButton(onClick = { expanded = true }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "프로필 메뉴",
+                    tint = Color(0xFF4B4B4B)
+                )
+            }
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                containerColor = Color(0xFFF7F7F7),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                DropdownMenuItem(
+                    text = { Text("프로필 수정하기") },
+                    onClick = {
+                        expanded = false
+                        onEditProfileClick()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("로그아웃", color = Color(0xFFE53935)) },
+                    onClick = {
+                        expanded = false
+                        onLogoutClick()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MyProfileTabRow(
+    selectedTab: MyProfileTab,
+    onTabSelected: (MyProfileTab) -> Unit
+) {
+    TabRow(
+        selectedTabIndex = if (selectedTab == MyProfileTab.PHOTOS) 0 else 1,
+        containerColor = Color.White,
+        contentColor = Color(0xFF111111),
+        modifier = Modifier.padding(horizontal = 20.dp)
+    ) {
+        Tab(
+            selected = selectedTab == MyProfileTab.PHOTOS,
+            onClick = { onTabSelected(MyProfileTab.PHOTOS) },
+            text = { Text("사진", fontWeight = if (selectedTab == MyProfileTab.PHOTOS) FontWeight.Bold else FontWeight.Medium) }
+        )
+        Tab(
+            selected = selectedTab == MyProfileTab.INFO,
+            onClick = { onTabSelected(MyProfileTab.INFO) },
+            text = { Text("정보", fontWeight = if (selectedTab == MyProfileTab.INFO) FontWeight.Bold else FontWeight.Medium) }
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProfileHeaderSection(
@@ -244,89 +362,71 @@ private fun ProfileHeaderSection(
     onImageClick: () -> Unit,
     onChangeMainImageClick: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFFB842F5), Color(0xFFFF4FA3))
-                        )
-                    )
-            )
-
-            Spacer(modifier = Modifier.height(54.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Spacer(modifier = Modifier.height(42.dp))
-                    Text(text = uiState.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "${uiState.age}세", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF666666))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    InfoRow(icon = { Icon(Icons.Default.School, contentDescription = "학교", tint = Color(0xFF9C27B0)) }, text = "${uiState.school} · ${uiState.department}")
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InfoRow(icon = { Icon(Icons.Default.Straighten, contentDescription = "키", tint = Color(0xFF9C27B0)) }, text = "${uiState.height}cm")
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InfoRow(icon = { Icon(Icons.Default.LocationOn, contentDescription = "지역", tint = Color(0xFF9C27B0)) }, text = uiState.location)
-                }
-            }
-        }
-
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Box(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 92.dp)
-                .size(116.dp)
+                .size(112.dp)
                 .clip(CircleShape)
-                .background(Color.White)
-                .border(4.dp, Color.White, CircleShape)
+                .background(Color(0xFFF2F3F5))
                 .combinedClickable(
                     onClick = onImageClick,
                     onLongClick = onChangeMainImageClick
                 ),
             contentAlignment = Alignment.Center
         ) {
-            val profileImageUrl = uiState.profileImages.firstOrNull().orEmpty()
+            val profileImageUrl = if (uiState.mainProfileImageUrl.isNotBlank()) uiState.mainProfileImageUrl else uiState.profileImages.firstOrNull().orEmpty()
 
             if (profileImageUrl.isNotBlank()) {
                 AsyncImage(
                     model = profileImageUrl,
                     contentDescription = "프로필 이미지",
-                    modifier = Modifier
-                        .size(108.dp)
-                        .clip(CircleShape),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Box(
-                    modifier = Modifier
-                        .size(108.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFE8D6F7)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "프로필 이미지 없음",
-                        tint = Color(0xFF8E24AA),
-                        modifier = Modifier.size(44.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "프로필 이미지 없음",
+                    tint = Color(0xFF9CA3AF),
+                    modifier = Modifier.size(46.dp)
+                )
             }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = uiState.name,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF222222)
+            )
+
+            if (uiState.age > 0) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "${uiState.age}세",
+                    fontSize = 14.sp,
+                    color = Color(0xFF666666)
+                )
+            }
+        }
+
+        if (uiState.bio.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = uiState.bio,
+                fontSize = 14.sp,
+                color = Color(0xFF666666),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
         }
     }
 }
@@ -344,7 +444,7 @@ private fun SectionCard(
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
@@ -382,6 +482,76 @@ private fun TagChip(text: String, chipColor: Color, textColor: Color) {
 }
 
 
+
+@Composable
+private fun MyProfileInfoSection(uiState: UserProfileUiState) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (uiState.department.isNotBlank()) ProfileInfoRow("학과", uiState.department)
+        if (uiState.height > 0) ProfileInfoRow("키", "${uiState.height}cm")
+        if (uiState.location.isNotBlank()) ProfileInfoRow("거주지", uiState.location)
+        if (uiState.mbti.isNotBlank()) ProfileInfoRow("MBTI", uiState.mbti)
+
+        if (uiState.interests.isNotEmpty()) {
+            Divider(color = Color(0xFFF0F0F0))
+            Text("관심사", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF888888))
+            TagWrapSection(
+                tags = uiState.interests,
+                chipColor = Color(0xFFF3E7FF),
+                textColor = Color(0xFF8E24AA)
+            )
+        }
+
+        if (uiState.foodLikes.isNotEmpty() || uiState.foodDislikes.isNotEmpty()) {
+            Divider(color = Color(0xFFF0F0F0))
+            FoodPreferenceInlineSection(likes = uiState.foodLikes, dislikes = uiState.foodDislikes)
+        }
+    }
+}
+
+@Composable
+private fun ProfileInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            color = Color(0xFF9CA3AF),
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            color = Color(0xFF222222),
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun FoodPreferenceInlineSection(likes: List<String>, dislikes: List<String>) {
+    if (likes.isNotEmpty()) {
+        Text(text = "좋아하는 음식", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF888888))
+        TagWrapSection(tags = likes, chipColor = Color(0xFFE6F7E8), textColor = Color(0xFF2E7D32))
+    }
+
+    if (dislikes.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(text = "싫어하는 음식", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF888888))
+        TagWrapSection(tags = dislikes, chipColor = Color(0xFFFFE7E7), textColor = Color(0xFFC62828))
+    }
+}
 
 @Composable
 private fun ScheduleSection(
@@ -547,33 +717,36 @@ private fun PhotoSection(
         if (photos.size < 9) add("ADD_BUTTON")
     }
 
-    SectionCard(title = "사진") {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items.chunked(3).forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    rowItems.forEach { item ->
-                        if (item == "ADD_BUTTON") {
-                            AddPhotoItem(
-                                onClick = onAddPhotoClick,
-                                modifier = Modifier.weight(1f)
-                            )
-                        } else {
-                            PhotoItem(
-                                imageUrl = item,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onPhotoClick(item) },
-                                onDeleteClick = { onDeletePhotoClick(item) },
-                                onSetMainClick = { onSetMainPhotoClick(item) }
-                            )
-                        }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items.chunked(3).forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowItems.forEach { item ->
+                    if (item == "ADD_BUTTON") {
+                        AddPhotoItem(
+                            onClick = onAddPhotoClick,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        PhotoItem(
+                            imageUrl = item,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onPhotoClick(item) },
+                            onDeleteClick = { onDeletePhotoClick(item) },
+                            onSetMainClick = { onSetMainPhotoClick(item) }
+                        )
                     }
+                }
 
-                    repeat(3 - rowItems.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+                repeat(3 - rowItems.size) {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -677,9 +850,7 @@ private fun AddPhotoItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(text = "+", style = MaterialTheme.typography.headlineMedium, color = Color(0xFF8E24AA), fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "사진 추가", style = MaterialTheme.typography.bodySmall, color = Color(0xFF8E24AA))
+            Text(text = "+", style = MaterialTheme.typography.headlineLarge, color = Color(0xFF8E24AA), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -738,7 +909,8 @@ private fun LargeImageDialog(
 private fun SelectMainProfileImageDialog(
     imageUrls: List<String>,
     onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onPickFromGallery: () -> Unit
 ) {
     val photos = imageUrls.filter { it.isNotBlank() }
     var selectedImageUrl by remember { mutableStateOf<String?>(null) }
@@ -754,6 +926,11 @@ private fun SelectMainProfileImageDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PhotoActionMenuItem(
+                    text = "내 갤러리에서 선택",
+                    onClick = onPickFromGallery
+                )
+
                 photos.chunked(3).forEach { rowItems ->
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)

@@ -220,6 +220,38 @@ class UserRepository {
     }
 
     // =====================
+    // 밸런스 게임 결과 저장
+    // =====================
+    /**
+     * 회원가입 단계 밸런스 게임 답변 저장.
+     *
+     * users/{uid}.balanceProfile = {
+     *   answers: { axis: -1 | +1, ... },
+     *   completedAt: Long
+     * }
+     *
+     * 추후 피드 팀 추천 매칭의 근거 자료로 사용된다.
+     */
+    fun saveBalanceProfile(
+        answers: Map<String, Int>,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val userId = auth.currentUser?.uid ?: run {
+            onFailure("로그인이 필요합니다")
+            return
+        }
+        val balanceProfile = mapOf(
+            "answers" to answers,
+            "completedAt" to System.currentTimeMillis()
+        )
+        db.collection("users").document(userId)
+            .update("balanceProfile", balanceProfile)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onFailure("밸런스 게임 저장에 실패했습니다") }
+    }
+
+    // =====================
     // 학생증 업로드
     // =====================
     fun requestStudentIdVerification(

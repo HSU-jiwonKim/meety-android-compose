@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meety · 팀 상세</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+:root{
+  --brand-1:#7B5CFF;--brand-2:#FF5C8A;
+  --grad:linear-gradient(135deg,#7B5CFF 0%,#A24BFF 45%,#FF5C8A 100%);
+  --ink:#17161D;--ink-2:#56535F;--ink-3:#9B98A6;--ink-4:#C4C2CD;
+  --bg:#F4F4F8;--surface:#fff;--surface-2:#FAFAFD;--line:#ECEAF1;--line-2:#F1EFF5;
+  --violet-soft:#F2EEFF;--ok:#19C37D;--amber:#F5A623;
+  --sh-sm:0 1px 2px rgba(23,22,29,.04),0 2px 8px rgba(23,22,29,.05);
+  --sh-md:0 4px 14px rgba(23,22,29,.06),0 10px 30px rgba(23,22,29,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Pretendard',-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;
+  background:radial-gradient(900px 600px at 12% -5%,#EEE7FF 0,transparent 55%),
+    radial-gradient(900px 600px at 95% 8%,#FFE6EF 0,transparent 50%),#EDEBF4;
+  padding:40px 20px 70px;min-height:100vh}
+.page-head{max-width:1000px;margin:0 auto 12px;text-align:center}
+.page-head h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.page-head h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.page-head p{margin:10px auto 0;color:var(--ink-2);font-size:14px;line-height:1.6;max-width:560px}
+.stage{max-width:1000px;margin:28px auto 0;display:flex;justify-content:center;align-items:flex-start;gap:46px;flex-wrap:wrap}
+
+.phone{width:362px;height:792px;flex:0 0 auto;background:#0b0b10;border-radius:44px;padding:10px;
+  box-shadow:0 40px 80px -24px rgba(40,30,90,.5);position:relative}
+.screen{width:100%;height:100%;border-radius:35px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:112px;height:28px;background:#0b0b10;border-radius:0 0 16px 16px;z-index:60}
+
+.dhead{position:absolute;top:44px;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;z-index:40}
+.dhead .hbtn{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.92);display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.16)}
+.dhead .hbtn svg{width:19px;height:19px;stroke:var(--ink);fill:none}
+
+.body{flex:1;overflow-y:auto;scrollbar-width:none;padding-bottom:14px}
+.body::-webkit-scrollbar{display:none}
+
+/* hero */
+.hero{position:relative}
+.banner{height:150px;background:linear-gradient(150deg,#9D7BFF,#7B5CFF 60%,#5B3FE0);position:relative}
+.banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.18))}
+.recruit{position:absolute;top:54px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.34);
+  backdrop-filter:blur(6px);color:#fff;font-size:11.5px;font-weight:800;padding:6px 12px;border-radius:999px}
+.recruit .p{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.6)}70%{box-shadow:0 0 0 7px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+.herocard{background:var(--surface);margin:-46px 16px 0;border-radius:24px;box-shadow:var(--sh-md);position:relative;
+  padding:54px 18px 20px;text-align:center}
+.avatar{position:absolute;top:-46px;left:50%;transform:translateX(-50%);width:90px;height:90px;border-radius:50%;
+  border:4px solid #fff;background:linear-gradient(150deg,#9D7BFF,#7B5CFF 60%,#5B3FE0);display:grid;place-items:center;
+  color:#fff;font-size:34px;font-weight:800;box-shadow:0 8px 20px rgba(80,40,160,.3)}
+.heroname{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.herometa{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pill{font-size:12px;font-weight:700;color:var(--brand-1);background:var(--violet-soft);padding:4px 11px;border-radius:999px}
+.pill.g{color:var(--ink-2);background:var(--line-2)}
+.herodesc{font-size:13.5px;color:var(--ink-2);line-height:1.6;margin-top:14px;padding:0 6px}
+.herotags{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.tag{font-size:11.5px;font-weight:700;color:var(--brand-1);background:var(--violet-soft);padding:5px 11px;border-radius:999px}
+
+/* section card */
+.sec{background:var(--surface);margin:12px 16px 0;border-radius:20px;box-shadow:var(--sh-sm);padding:16px 16px 17px}
+.sec-h{display:flex;align-items:center;gap:7px;margin-bottom:13px}
+.sec-h .si{width:26px;height:26px;border-radius:8px;background:var(--violet-soft);display:grid;place-items:center;font-size:14px}
+.sec-h b{font-size:15px;font-weight:800}
+.sec-h .more{margin-left:auto;font-size:11.5px;font-weight:800;color:var(--brand-1);cursor:pointer}
+
+/* 적합도 */
+.fitTop{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.fitRing{width:72px;height:72px;flex:0 0 auto;position:relative;display:grid;place-items:center}
+.fitRing svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.fitRing .n{font-size:23px;font-weight:800;line-height:1}
+.fitRing .s{font-size:9.5px;font-weight:800;color:var(--ink-3);margin-top:1px}
+.fitTop .ft{flex:1}
+.fitTop .ft b{font-size:14px;font-weight:800}
+.fitTop .ft p{font-size:12px;color:var(--ink-2);line-height:1.5;margin-top:3px}
+.bar{margin-top:11px}
+.bar .bl{display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:5px}
+.bar .bl .v{color:var(--brand-1);font-weight:800}
+.bar .track{height:7px;background:#EEEAF6;border-radius:4px;overflow:hidden}
+.bar .fill{height:100%;border-radius:4px;background:var(--grad);width:0;transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.bar .ex{font-size:11px;color:var(--ink-3);margin-top:4px;line-height:1.5}
+
+/* AI 추천 이유 */
+.ai{background:linear-gradient(135deg,#F4EFFF,#FFEFF6);border:1px solid #EEE6FF}
+.ai .sec-h b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ai p{font-size:13px;color:var(--ink-2);line-height:1.6}
+
+/* 가치관 */
+.valrow{display:flex;align-items:center;gap:10px}
+.valbig{font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.valrow .vt{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.valtags{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.vtag{font-size:11px;font-weight:700;color:var(--ink-2);background:var(--line-2);padding:5px 10px;border-radius:999px}
+.vtag.hit{color:#fff;background:var(--grad)}
+
+/* members */
+.mem{display:flex;gap:13px;padding:13px 0;border-top:1px solid var(--line)}
+.mem:first-of-type{border-top:0;padding-top:2px}
+.mava{width:50px;height:50px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;color:#fff;font-size:19px;font-weight:800}
+.mc1{background:linear-gradient(150deg,#9D7BFF,#7B5CFF)}
+.mc2{background:linear-gradient(150deg,#FF8FB1,#FF5C8A)}
+.mc3{background:linear-gradient(150deg,#6FE0C6,#19C37D)}
+.mc4{background:linear-gradient(150deg,#FFC06B,#F5A623)}
+.minfo{flex:1;min-width:0}
+.mtop{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mtop .mn{font-size:14.5px;font-weight:800}
+.mtop .age{font-size:11.5px;color:var(--ink-3);font-weight:600}
+.mtop .mbti{font-size:10.5px;font-weight:800;color:var(--brand-1);background:var(--violet-soft);padding:2px 7px;border-radius:6px}
+.mtop .lead{font-size:10px;font-weight:800;color:#fff;background:var(--grad);padding:2px 8px;border-radius:999px}
+.mdept{font-size:12px;color:var(--ink-2);margin-top:3px}
+.mtags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.mtag{font-size:10.5px;font-weight:700;color:var(--ink-2);background:var(--line-2);padding:3px 9px;border-radius:999px}
+.mtag.match{color:var(--brand-1);background:var(--violet-soft)}
+
+/* bottom bar */
+.bottombar{flex:0 0 auto;background:var(--surface);border-top:1px solid var(--line);padding:12px 16px 16px}
+.banner-state{display:none;align-items:center;gap:8px;background:var(--violet-soft);border-radius:12px;padding:10px 12px;margin-bottom:10px;
+  font-size:12.5px;font-weight:700;color:var(--brand-1);line-height:1.4}
+.banner-state.show{display:flex}
+.banner-state svg{width:17px;height:17px;stroke:var(--brand-1);fill:none;flex:0 0 auto}
+.actions{display:flex;gap:10px}
+.btn{height:52px;border-radius:15px;border:0;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;transition:.16s}
+.btn.pass{flex:0 0 34%;background:var(--surface);border:1.6px solid var(--line);color:var(--ink-2)}
+.btn.like{flex:1;background:var(--grad);color:#fff;box-shadow:0 12px 24px -10px rgba(123,92,255,.7)}
+.btn.like:active{transform:scale(.99)}
+.btn.cancel{flex:1;background:var(--surface);border:1.6px solid var(--line);color:var(--ink-2)}
+
+.toast{position:absolute;left:18px;right:18px;bottom:96px;background:var(--ink);color:#fff;border-radius:14px;
+  padding:13px 15px;font-size:12.5px;line-height:1.55;box-shadow:0 12px 30px rgba(0,0,0,.3);z-index:50;
+  opacity:0;transform:translateY(10px);pointer-events:none;transition:.25s}
+.toast.show{opacity:1;transform:none}.toast b{color:#C9B8FF}
+
+.notes{flex:0 1 320px;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--sh-md);max-width:340px}
+.notes h3{font-size:15px;font-weight:800;margin-bottom:4px}
+.notes .lead{font-size:12.5px;color:var(--ink-2);line-height:1.6;margin-bottom:14px}
+.note{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line)}
+.note:first-of-type{border-top:0}
+.note .ic{flex:0 0 32px;height:32px;border-radius:10px;background:var(--violet-soft);display:grid;place-items:center;font-size:15px}
+.note .tx b{display:block;font-size:13px;font-weight:700;margin-bottom:2px}
+.note .tx span{font-size:12px;color:var(--ink-2);line-height:1.5}
+@media(max-width:560px){.phone{width:334px;height:736px}}
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>팀 <span class="g">상세</span> 화면</h1>
+    <p>목록에서 팀을 누르면 열리는 화면이에요. ‘왜 이 팀인지’ 근거를 상세 안에서 충분히 보여주고, 좋아요를 보내면 팀장 수락 대기로 이어져요.</p>
+  </div>
+
+  <div class="stage">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="dhead">
+          <div class="hbtn"><svg viewBox="0 0 24 24" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg></div>
+          <div class="hbtn"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5"/></svg></div>
+        </div>
+
+        <div class="body">
+          <div class="hero">
+            <div class="banner">
+              <div class="recruit"><span class="p"></span>모집중 · 4/6</div>
+            </div>
+            <div class="herocard">
+              <div class="avatar">알</div>
+              <div class="heroname">알고리즘 스터디</div>
+              <div class="herometa">
+                <span class="pill">공대 연합</span>
+                <span class="pill g">👥 4명</span>
+                <span class="pill g">📍 성북구</span>
+              </div>
+              <div class="herodesc">백준 골드 달성을 목표로 주 2회 모각코해요. 같이 꾸준히 문제 풀고 회고할 팀원을 찾고 있어요!</div>
+              <div class="herotags">
+                <span class="tag">#코딩</span><span class="tag">#스터디</span><span class="tag">#저녁모임</span><span class="tag">#성북구</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 적합도 근거 -->
+          <div class="sec">
+            <div class="sec-h"><span class="si">🎯</span><b>회원님과의 적합도</b><span class="more" id="moreWhy">자세히 ›</span></div>
+            <div class="fitTop">
+              <div class="fitRing" id="fitRing"></div>
+              <div class="ft"><b>네 가지 근거를 평균한 점수예요</b><p>관심사·동네 근접도·가치관·팀원 공통점을 각각 계산해 평균했어요. 추측이 아니라 회원님 프로필로 직접 구한 값이에요.</p></div>
+            </div>
+            <div class="bar"><div class="bl"><span>관심사 일치</span><span class="v">80점</span></div><div class="track"><div class="fill" data-w="80"></div></div><div class="ex">내 관심사 5개 중 4개 일치 (코딩·카페·영화·여행) → 4÷5×100</div></div>
+            <div class="bar"><div class="bl"><span>동네 근접도</span><span class="v">88점</span></div><div class="track"><div class="fill" data-w="88"></div></div><div class="ex">성북구 기준 팀원 평균 대중교통 12분 · 4명 중 3명 20분 이내</div></div>
+            <div class="bar"><div class="bl"><span>가치관 일치</span><span class="v">80점</span></div><div class="track"><div class="fill" data-w="80"></div></div><div class="ex">밸런스 게임 5문항 중 4개 동일 응답 → 4÷5×100</div></div>
+            <div class="bar"><div class="bl"><span>팀원 공통점</span><span class="v">75점</span></div><div class="track"><div class="fill" data-w="75"></div></div><div class="ex">팀원 4명 중 3명과 관심사/학과 공통점 존재 → 3÷4×100</div></div>
+          </div>
+
+          <!-- AI 추천 이유 -->
+          <div class="sec ai">
+            <div class="sec-h"><span class="si">✨</span><b>AI 추천 이유</b></div>
+            <p>회원님이 좋아요한 팀들과 비슷하게 <b>코딩·저녁 모임</b> 성향이 강하고, 가까운 동네(성북구)라 모이기 좋아요. 차분히 몰입하는 가치관도 잘 맞아요.</p>
+          </div>
+
+          <!-- 팀 가치관 -->
+          <div class="sec">
+            <div class="sec-h"><span class="si">🧭</span><b>팀 가치관 비교</b></div>
+            <div class="valrow">
+              <span class="valbig">4/5</span>
+              <span class="vt">밸런스 게임 문항 중 회원님과 <b>4개가 일치</b>해요. 팀원들의 답을 모은 ‘팀 가치관’과 비교한 결과예요.</span>
+            </div>
+            <div class="valtags">
+              <span class="vtag hit">목표 위주 ✓</span><span class="vtag hit">몰입형 ✓</span><span class="vtag hit">차분 ✓</span><span class="vtag hit">계획형 ✓</span><span class="vtag">만남 빈도 ✗</span>
+            </div>
+          </div>
+
+          <!-- 팀원 소개 -->
+          <div class="sec">
+            <div class="sec-h"><span class="si">👥</span><b>팀원 소개</b></div>
+            <div class="mem">
+              <div class="mava mc1">지</div>
+              <div class="minfo">
+                <div class="mtop"><span class="mn">지훈</span><span class="age">24세</span><span class="mbti">INTJ</span><span class="lead">팀장</span></div>
+                <div class="mdept">컴퓨터공학과</div>
+                <div class="mtags"><span class="mtag match">코딩</span><span class="mtag match">카페</span><span class="mtag">독서</span></div>
+              </div>
+            </div>
+            <div class="mem">
+              <div class="mava mc2">수</div>
+              <div class="minfo">
+                <div class="mtop"><span class="mn">수민</span><span class="age">22세</span><span class="mbti">ENFP</span></div>
+                <div class="mdept">소프트웨어학과</div>
+                <div class="mtags"><span class="mtag match">코딩</span><span class="mtag match">영화</span><span class="mtag">게임</span></div>
+              </div>
+            </div>
+            <div class="mem">
+              <div class="mava mc3">현</div>
+              <div class="minfo">
+                <div class="mtop"><span class="mn">현우</span><span class="age">23세</span><span class="mbti">ISTP</span></div>
+                <div class="mdept">전자공학과</div>
+                <div class="mtags"><span class="mtag match">코딩</span><span class="mtag match">여행</span><span class="mtag">운동</span></div>
+              </div>
+            </div>
+            <div class="mem">
+              <div class="mava mc4">예</div>
+              <div class="minfo">
+                <div class="mtop"><span class="mn">예린</span><span class="age">22세</span><span class="mbti">INFJ</span></div>
+                <div class="mdept">산업디자인학과</div>
+                <div class="mtags"><span class="mtag">그림</span><span class="mtag match">카페</span><span class="mtag">음악</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MBTI -->
+          <div class="sec" style="margin-bottom:6px">
+            <div class="sec-h"><span class="si">🧩</span><b>팀 MBTI 분포</b></div>
+            <div class="herotags" style="justify-content:flex-start;margin-top:0">
+              <span class="tag">INTJ</span><span class="tag">ENFP</span><span class="tag">ISTP</span><span class="tag">INFJ</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+
+        <div class="bottombar">
+          <div class="banner-state" id="stateBanner">
+            <svg viewBox="0 0 24 24"><path d="M12 21s-6.7-4.3-9.3-8.4C.9 9.6 2.3 6 5.6 6c2 0 3.3 1.2 4.4 2.6C11.1 7.2 12.4 6 14.4 6c3.3 0 4.7 3.6 2.9 6.6C18.7 16.7 12 21 12 21z"/></svg>
+            <span>좋아요를 보냈어요! 팀장이 수락하면 채팅방으로 초대돼요.</span>
+          </div>
+          <div class="actions" id="actions">
+            <button class="btn pass" id="passBtn">패스</button>
+            <button class="btn like" id="likeBtn">💜 좋아요 보내기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h3>이 화면 포인트</h3>
+      <p class="lead">목록의 적합도 점수를 상세에서 ‘왜 그 점수인지’까지 풀어서 보여줘요.</p>
+      <div class="note"><div class="ic">🎯</div><div class="tx"><b>근거 4종 분해</b><span>관심사·동네 근접도·가치관·팀원 공통점을 막대로 나눠 보여주고, 각 점수의 계산식까지 한 줄로 설명해요.</span></div></div>
+      <div class="note"><div class="ic">🧭</div><div class="tx"><b>팀 가치관 비교</b><span>밸런스 게임 답변이 팀과 몇 개 맞는지(4/5) 직접 비교. 회원가입 때 모은 데이터가 여기서 쓰여요.</span></div></div>
+      <div class="note"><div class="ic">👥</div><div class="tx"><b>팀원 소개 + 공통 관심사 강조</b><span>팀장 배지, 멤버별 MBTI·학과, 나와 겹치는 관심사는 보라색으로 표시.</span></div></div>
+      <div class="note"><div class="ic">💜</div><div class="tx"><b>좋아요 → 팀장 수락 대기</b><span>개인이 팀에 지원하는 구조라, 좋아요를 보내면 ‘팀장 수락 시 채팅 초대’ 안내로 이어져요. (버튼을 눌러보세요)</span></div></div>
+    </div>
+  </div>
+
+<script>
+  // 적합도 ring
+  (function(){
+    var s=81,r=32,c=2*Math.PI*r,off=c*(1-s/100);
+    document.getElementById('fitRing').innerHTML=
+      '<svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="32" fill="none" stroke="#EEEAF6" stroke-width="6"/>'+
+      '<circle cx="36" cy="36" r="32" fill="none" stroke="#7B5CFF" stroke-width="6" stroke-linecap="round" '+
+      'stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'"/></svg>'+
+      '<div style="display:flex;flex-direction:column;align-items:center;z-index:1"><span class="n">81</span><span class="s">적합도</span></div>';
+  })();
+
+  // animate bars on load
+  setTimeout(function(){
+    document.querySelectorAll('.bar .fill').forEach(function(f){f.style.width=f.dataset.w+'%';});
+  },150);
+
+  var toast=document.getElementById('toast');var tt=null;
+  function showToast(html){toast.innerHTML=html;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},2800);}
+
+  document.getElementById('moreWhy').addEventListener('click',function(){
+    showToast('<b>근거 자세히 보기</b><br>관심사·동네·가치관·팀원 공통점을 카드로 넘겨보는 ? 화면으로 연결돼요.');
+  });
+
+  // like → 팀장 수락 대기 상태
+  var liked=false;
+  var actions=document.getElementById('actions');
+  var banner=document.getElementById('stateBanner');
+  document.getElementById('likeBtn')?.addEventListener('click',like);
+  document.getElementById('passBtn').addEventListener('click',function(){
+    showToast('이 팀을 패스했어요. 피드에서 다시 보이지 않아요.');
+  });
+  function like(){
+    liked=true;
+    banner.classList.add('show');
+    actions.innerHTML='<button class="btn cancel" id="cancelBtn">좋아요 취소</button>';
+    document.getElementById('cancelBtn').addEventListener('click',function(){
+      liked=false;banner.classList.remove('show');
+      actions.innerHTML='<button class="btn pass" id="passBtn">패스</button><button class="btn like" id="likeBtn">💜 좋아요 보내기</button>';
+      document.getElementById('likeBtn').addEventListener('click',like);
+      document.getElementById('passBtn').addEventListener('click',function(){showToast('이 팀을 패스했어요.');});
+    });
+    showToast('<b>지훈</b> 팀장에게 좋아요가 전달됐어요 💜<br>수락하면 채팅방으로 초대돼요.');
+  }
+</script>
+</body>
+</html>

@@ -27,18 +27,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -88,11 +97,20 @@ private enum class MyTeamTab {
     FRIENDS, ADD_FRIEND
 }
 
+private enum class FriendScreenMode {
+    LIST, ADD_FRIEND, PROFILE_DETAIL
+}
+
+private enum class FriendProfileTab {
+    PHOTOS, INFO
+}
+
 data class FriendUiState(
     val id: String,
     val name: String,
     val email: String = "",
     val profileImageUrl: String = "",
+    val profileImages: List<String> = emptyList(),
     val department: String = "",
     val age: Int = 0,
     val mbti: String = "",
@@ -108,6 +126,7 @@ data class ProfilePreviewUiState(
     val id: String = "",
     val name: String = "",
     val profileImageUrl: String = "",
+    val profileImages: List<String> = emptyList(),
     val department: String = "",
     val age: Int = 0,
     val mbti: String = "",
@@ -137,7 +156,7 @@ fun MyTeamScreen(
     // NavGraph에서 route에 맞게 연결하면 됨
     onCallStarted: (chatId: String, callType: String) -> Unit = { _, _ -> }
 ) {
-    var selectedTab by remember { mutableStateOf(MyTeamTab.FRIENDS) }
+    var screenMode by remember { mutableStateOf(FriendScreenMode.LIST) }
     var friendEmail by remember { mutableStateOf("") }
     var selectedProfile by remember { mutableStateOf<ProfilePreviewUiState?>(null) }
     var friendSearchQuery by remember { mutableStateOf("") }
@@ -160,6 +179,7 @@ fun MyTeamScreen(
             name = if (it.name.isBlank()) "이름 없음" else it.name,
             email = it.email,
             profileImageUrl = it.profileImageUrl,
+            profileImages = it.profileImages,
             department = it.department,
             age = it.age,
             mbti = it.mbti,
@@ -253,109 +273,69 @@ fun MyTeamScreen(
         }
     }
 
-    selectedProfile?.let { profile ->
-        ProfilePreviewDialog(
-            profile = profile,
-            onDismiss = { selectedProfile = null },
-            onVoiceCallClick = {
-                selectedProfile = null
-                startProfileCall(
-                    targetUserId = profile.id,
-                    callType = "voice"
-                )
-            },
-            onVideoCallClick = {
-                selectedProfile = null
-                startProfileCall(
-                    targetUserId = profile.id,
-                    callType = "video"
-                )
-            }
-        )
-    }
-
     Scaffold(
         topBar = {
-            TeamCommonTopBar(
-                onSearchClick = onSearchClick,
-                onNotificationClick = onNotificationClick
-            )
-        },
-        containerColor = Color(0xFFF8F1F8)
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 18.dp,
-                bottom = 120.dp
-            )
-        ) {
-            item {
-                MyTeamTabRow(
-                    selectedTab = selectedTab,
-                    friendCount = friendList.size,
-                    onTabSelected = {
-                        selectedTab = it
-                        if (it != MyTeamTab.FRIENDS) {
-                            friendSearchQuery = ""
-                        }
+            when (screenMode) {
+                FriendScreenMode.LIST -> FriendListTopBar(
+                    onAddFriendClick = { screenMode = FriendScreenMode.ADD_FRIEND }
+                )
+                FriendScreenMode.ADD_FRIEND -> FriendPageTopBar(
+                    title = "친구 추가",
+                    onBackClick = {
+                        screenMode = FriendScreenMode.LIST
+                        friendEmail = ""
+                        viewModel.clearFriendAddMessage()
+                    }
+                )
+                FriendScreenMode.PROFILE_DETAIL -> FriendPageTopBar(
+                    title = selectedProfile?.name ?: "프로필",
+                    onBackClick = {
+                        selectedProfile = null
+                        screenMode = FriendScreenMode.LIST
                     }
                 )
             }
-
-            if (selectedTab == MyTeamTab.FRIENDS) {
-                item {
-                    FriendSearchSection(
-                        query = friendSearchQuery,
-                        onQueryChange = { friendSearchQuery = it }
+        },
+        containerColor = Color.White
+    ) { innerPadding ->
+        when (screenMode) {
+            FriendScreenMode.LIST -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 18.dp,
+                        bottom = 120.dp
                     )
-                }
-            }
+                ) {
+                    item {
+                        FriendSearchSection(
+                            query = friendSearchQuery,
+                            onQueryChange = { friendSearchQuery = it }
+                        )
+                    }
 
-            if (isLoading) {
-                item {
-                    LoadingCard()
-                }
-            }
+                    if (isLoading) {
+                        item { LoadingCard() }
+                    }
 
-            when (selectedTab) {
-                MyTeamTab.FRIENDS -> {
                     if (friendList.isEmpty() && !isLoading) {
-                        item {
-                            EmptyFriendCard(text = "아직 친구가 없습니다.")
-                        }
+                        item { EmptyFriendCard(text = "아직 친구가 없습니다.") }
                     } else if (filteredFriendList.isEmpty() && !isLoading) {
-                        item {
-                            EmptyFriendCard(text = "검색 결과가 없습니다.")
-                        }
+                        item { EmptyFriendCard(text = "검색 결과가 없습니다.") }
                     } else {
                         if (favoriteFriendList.isNotEmpty()) {
-                            item {
-                                SectionTitle(text = "즐겨찾기")
-                            }
-
+                            item { SectionTitle(text = "즐겨찾기") }
                             items(favoriteFriendList) { friend ->
                                 FriendListItem(
                                     friend = friend,
                                     onProfileClick = {
-                                        selectedProfile = ProfilePreviewUiState(
-                                            id = friend.id,
-                                            name = friend.name,
-                                            profileImageUrl = friend.profileImageUrl,
-                                            department = friend.department,
-                                            age = friend.age,
-                                            mbti = friend.mbti,
-                                            bio = friend.bio,
-                                            location = friend.location,
-                                            height = friend.height,
-                                            interests = friend.interests,
-                                            foodLikes = friend.foodLikes
-                                        )
+                                        selectedProfile = friend.toProfilePreview()
+                                        screenMode = FriendScreenMode.PROFILE_DETAIL
                                     },
                                     onFavoriteClick = { viewModel.toggleFavoriteFriend(friend.id, friend.isFavorite) },
                                     onChatClick = { startFriendChat(friend) },
@@ -364,9 +344,7 @@ fun MyTeamScreen(
                             }
 
                             if (normalFriendList.isNotEmpty()) {
-                                item {
-                                    SectionTitle(text = "친구")
-                                }
+                                item { SectionTitle(text = "친구") }
                             }
                         }
 
@@ -374,19 +352,8 @@ fun MyTeamScreen(
                             FriendListItem(
                                 friend = friend,
                                 onProfileClick = {
-                                    selectedProfile = ProfilePreviewUiState(
-                                        id = friend.id,
-                                        name = friend.name,
-                                        profileImageUrl = friend.profileImageUrl,
-                                        department = friend.department,
-                                        age = friend.age,
-                                        mbti = friend.mbti,
-                                        bio = friend.bio,
-                                        location = friend.location,
-                                        height = friend.height,
-                                        interests = friend.interests,
-                                        foodLikes = friend.foodLikes
-                                    )
+                                    selectedProfile = friend.toProfilePreview()
+                                    screenMode = FriendScreenMode.PROFILE_DETAIL
                                 },
                                 onFavoriteClick = { viewModel.toggleFavoriteFriend(friend.id, friend.isFavorite) },
                                 onChatClick = { startFriendChat(friend) },
@@ -395,28 +362,441 @@ fun MyTeamScreen(
                         }
                     }
                 }
+            }
 
-                MyTeamTab.ADD_FRIEND -> {
-                    item {
-                        AddFriendGuideCard()
+            FriendScreenMode.ADD_FRIEND -> {
+                AddFriendPage(
+                    modifier = Modifier.padding(innerPadding),
+                    email = friendEmail,
+                    message = friendAddMessage,
+                    onEmailChange = {
+                        friendEmail = it
+                        viewModel.clearFriendAddMessage()
+                    },
+                    onAddClick = { viewModel.addFriendByEmail(friendEmail) }
+                )
+            }
+
+            FriendScreenMode.PROFILE_DETAIL -> {
+                selectedProfile?.let { profile ->
+                    FriendProfileDetailPage(
+                        modifier = Modifier.padding(innerPadding),
+                        profile = profile,
+                        onVoiceCallClick = {
+                            startProfileCall(
+                                targetUserId = profile.id,
+                                callType = "voice"
+                            )
+                        },
+                        onVideoCallClick = {
+                            startProfileCall(
+                                targetUserId = profile.id,
+                                callType = "video"
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun FriendUiState.toProfilePreview(): ProfilePreviewUiState {
+    return ProfilePreviewUiState(
+        id = id,
+        name = name,
+        profileImageUrl = profileImageUrl,
+        profileImages = profileImages,
+        department = department,
+        age = age,
+        mbti = mbti,
+        bio = bio,
+        location = location,
+        height = height,
+        interests = interests,
+        foodLikes = foodLikes
+    )
+}
+
+
+@Composable
+private fun FriendListTopBar(
+    onAddFriendClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            listOf(Color(0xFFB44FD3), Color(0xFFEC4899))
+                        ),
+                        RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = "Meety",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFD946C7)
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        IconButton(onClick = onAddFriendClick) {
+            Icon(
+                imageVector = Icons.Default.PersonAdd,
+                contentDescription = "친구 추가",
+                tint = Color(0xFF111111),
+                modifier = Modifier.size(27.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FriendPageTopBar(
+    title: String,
+    onBackClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "뒤로가기",
+                tint = Color(0xFF111111)
+            )
+        }
+
+        Text(
+            text = title,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF111111)
+        )
+    }
+}
+
+@Composable
+private fun AddFriendPage(
+    modifier: Modifier = Modifier,
+    email: String,
+    message: String,
+    onEmailChange: (String) -> Unit,
+    onAddClick: () -> Unit
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.White),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 18.dp,
+            bottom = 120.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item { AddFriendGuideCard() }
+        item { SectionTitle(text = "한성대 이메일로 친구 추가") }
+        item {
+            AddFriendInputCard(
+                email = email,
+                message = message,
+                onEmailChange = onEmailChange,
+                onAddClick = onAddClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun FriendProfileDetailPage(
+    modifier: Modifier = Modifier,
+    profile: ProfilePreviewUiState,
+    onVoiceCallClick: () -> Unit,
+    onVideoCallClick: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(FriendProfileTab.PHOTOS) }
+    var selectedImageUrl by remember { mutableStateOf<String?>(null) }
+    val images = if (profile.profileImages.isNotEmpty()) profile.profileImages else listOf(profile.profileImageUrl).filter { it.isNotBlank() }
+
+    selectedImageUrl?.let { imageUrl ->
+        FriendLargeImageDialog(
+            imageUrl = imageUrl,
+            onDismiss = { selectedImageUrl = null }
+        )
+    }
+
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.White),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            end = 20.dp,
+            top = 16.dp,
+            bottom = 120.dp
+        ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            FriendProfileHeader(profile = profile)
+        }
+
+        item {
+            FriendProfileTabRow(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
+        }
+
+        if (selectedTab == FriendProfileTab.PHOTOS) {
+            item {
+                FriendPhotoGrid(
+                    imageUrls = images,
+                    onPhotoClick = { imageUrl -> selectedImageUrl = imageUrl }
+                )
+            }
+        } else {
+            item { FriendInfoSection(profile = profile) }
+        }
+    }
+}
+
+@Composable
+private fun FriendProfileHeader(
+    profile: ProfilePreviewUiState
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        val colorIndex = (profile.id.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
+        val avatarColors = FeedConstants.CardColorPalette[colorIndex]
+
+        Box(
+            modifier = Modifier
+                .size(104.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFF2F3F5)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (profile.profileImageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = profile.profileImageUrl,
+                    contentDescription = "${profile.name} 프로필 사진",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(avatarColors)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = profile.name.firstOrNull()?.toString() ?: "?",
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = profile.name,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Gray900
+            )
+
+            if (profile.age > 0) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "${profile.age}세",
+                    fontSize = 14.sp,
+                    color = Gray500
+                )
+            }
+        }
+
+        if (profile.bio.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = profile.bio,
+                fontSize = 14.sp,
+                color = Color(0xFF666666),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FriendProfileTabRow(
+    selectedTab: FriendProfileTab,
+    onTabSelected: (FriendProfileTab) -> Unit
+) {
+    TabRow(
+        selectedTabIndex = if (selectedTab == FriendProfileTab.PHOTOS) 0 else 1,
+        containerColor = Color.White,
+        contentColor = Color(0xFF111111)
+    ) {
+        Tab(
+            selected = selectedTab == FriendProfileTab.PHOTOS,
+            onClick = { onTabSelected(FriendProfileTab.PHOTOS) },
+            text = { Text("사진", fontWeight = if (selectedTab == FriendProfileTab.PHOTOS) FontWeight.Bold else FontWeight.Medium) }
+        )
+        Tab(
+            selected = selectedTab == FriendProfileTab.INFO,
+            onClick = { onTabSelected(FriendProfileTab.INFO) },
+            text = { Text("정보", fontWeight = if (selectedTab == FriendProfileTab.INFO) FontWeight.Bold else FontWeight.Medium) }
+        )
+    }
+}
+
+@Composable
+private fun FriendPhotoGrid(
+    imageUrls: List<String>,
+    onPhotoClick: (String) -> Unit
+) {
+    if (imageUrls.isEmpty()) {
+        EmptyFriendCard(text = "등록된 사진이 없습니다.")
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        imageUrls.chunked(3).forEach { rowImages ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowImages.forEach { imageUrl ->
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = "친구 사진",
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onPhotoClick(imageUrl) },
+                        contentScale = ContentScale.Crop
+                    )
+                }
+
+                repeat(3 - rowImages.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendLargeImageDialog(
+    imageUrl: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) {
+                    onDismiss()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "친구 사진 크게 보기",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp)),
+                contentScale = ContentScale.Fit
+            )
+        }
+    }
+}
+
+@Composable
+private fun FriendInfoSection(profile: ProfilePreviewUiState) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (profile.department.isNotBlank()) MemberInfoRow("학과", profile.department)
+        if (profile.height > 0) MemberInfoRow("키", "${profile.height}cm")
+        if (profile.location.isNotBlank()) MemberInfoRow("거주지", profile.location)
+        if (profile.mbti.isNotBlank()) MemberInfoRow("MBTI", profile.mbti)
+        if (profile.interests.isNotEmpty()) {
+            HorizontalDivider(color = Gray200)
+            Text("관심사", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gray500)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                profile.interests.forEach { interest ->
+                    Box(
+                        modifier = Modifier
+                            .background(FeedConstants.LightPurpleBg, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(text = interest, fontSize = 12.sp, color = Purple)
                     }
+                }
+            }
+        }
 
-                    item {
-                        SectionTitle(text = "한성대 이메일로 친구 추가")
-                    }
-
-                    item {
-                        AddFriendInputCard(
-                            email = friendEmail,
-                            message = friendAddMessage,
-                            onEmailChange = {
-                                friendEmail = it
-                                viewModel.clearFriendAddMessage()
-                            },
-                            onAddClick = {
-                                viewModel.addFriendByEmail(friendEmail)
-                            }
-                        )
+        if (profile.foodLikes.isNotEmpty()) {
+            HorizontalDivider(color = Gray200)
+            Text("좋아하는 음식", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Gray500)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                profile.foodLikes.forEach { food ->
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFDCFCE7), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(text = food, fontSize = 12.sp, color = Color(0xFF16A34A))
                     }
                 }
             }
@@ -556,84 +936,26 @@ private fun FriendListItem(
     onChatClick: () -> Unit,
     onRemoveClick: () -> Unit
 ) {
-    var showActionDialog by remember { mutableStateOf(false) }
+    var showActionMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-
-    if (showActionDialog) {
-        AlertDialog(
-            onDismissRequest = { showActionDialog = false },
-            containerColor = Color(0xFFF7F7F7),
-            title = {
-                Text(
-                    text = friend.name,
-                    color = Color.Black,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    FriendActionMenuItem(
-                        text = if (friend.isFavorite) "즐겨찾기 해제" else "즐겨찾기",
-                        onClick = {
-                            showActionDialog = false
-                            onFavoriteClick()
-                        }
-                    )
-
-                    FriendActionMenuItem(
-                        text = "채팅",
-                        onClick = {
-                            showActionDialog = false
-                            onChatClick()
-                        }
-                    )
-
-                    FriendActionMenuItem(
-                        text = "친구 삭제",
-                        onClick = {
-                            showActionDialog = false
-                            showDeleteDialog = true
-                        }
-                    )
-                }
-            },
-            confirmButton = {},
-            dismissButton = {}
-        )
-    }
 
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            containerColor = Color(0xFFF7F7F7),
-            title = {
-                Text(
-                    text = "친구 삭제",
-                    color = Color.Black
-                )
-            },
-            text = {
-                Text(
-                    text = "${friend.name}님을 친구 목록에서 삭제할까요?",
-                    color = Color.Black
-                )
-            },
+            containerColor = Color.White,
+            title = { Text(text = "친구 삭제", color = Color.Black) },
+            text = { Text(text = "${friend.name}님을 친구 목록에서 삭제할까요?", color = Color.Black) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeleteDialog = false
                         onRemoveClick()
                     }
-                ) {
-                    Text(text = "삭제", color = Color.Black)
-                }
+                ) { Text(text = "삭제", color = Color.Black) }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text(
-                        text = "취소",
-                        color = Color.Black
-                    )
+                    Text(text = "취소", color = Color.Black)
                 }
             }
         )
@@ -643,25 +965,24 @@ private fun FriendListItem(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = {},
-                onLongClick = { showActionDialog = true }
+                onClick = onProfileClick,
+                onLongClick = { showActionMenu = true }
             ),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 4.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .size(54.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFF2F3F5))
-                    .clickable { onProfileClick() },
+                    .background(Color(0xFFF2F3F5)),
                 contentAlignment = Alignment.Center
             ) {
                 if (friend.profileImageUrl.isNotBlank()) {
@@ -683,7 +1004,7 @@ private fun FriendListItem(
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -693,15 +1014,57 @@ private fun FriendListItem(
                     color = Color(0xFF111111)
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                if (friend.bio.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = friend.bio,
+                        fontSize = 13.sp,
+                        color = Color(0xFF777777),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
 
-                Text(
-                    text = if (friend.bio.isNotBlank()) friend.bio else "아직 자기소개가 없습니다.",
-                    fontSize = 13.sp,
-                    color = Color(0xFF777777),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            IconButton(onClick = onChatClick) {
+                Icon(
+                    imageVector = Icons.Default.ChatBubble,
+                    contentDescription = "채팅",
+                    tint = Color(0xFF9CA3AF),
+                    modifier = Modifier.size(23.dp)
                 )
+            }
+
+            Box {
+                IconButton(onClick = { showActionMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "친구 메뉴",
+                        tint = Color(0xFF9CA3AF)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showActionMenu,
+                    onDismissRequest = { showActionMenu = false },
+                    containerColor = Color(0xFFF7F7F7),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(if (friend.isFavorite) "즐겨찾기 해제" else "즐겨찾기") },
+                        onClick = {
+                            showActionMenu = false
+                            onFavoriteClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("친구 삭제", color = Color(0xFFE53935)) },
+                        onClick = {
+                            showActionMenu = false
+                            showDeleteDialog = true
+                        }
+                    )
+                }
             }
         }
     }
@@ -746,7 +1109,7 @@ private fun AddFriendGuideCard() {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
@@ -778,7 +1141,7 @@ private fun AddFriendInputCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             OutlinedTextField(
@@ -838,7 +1201,7 @@ private fun EmptyFriendCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Box(
             modifier = Modifier
@@ -862,7 +1225,7 @@ private fun LoadingCard() {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier

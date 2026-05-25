@@ -42,6 +42,13 @@ sealed class ProfileSaveState {
     data class Error(val message: String) : ProfileSaveState()
 }
 
+sealed class BalanceSaveState {
+    object Idle : BalanceSaveState()
+    object Loading : BalanceSaveState()
+    object Success : BalanceSaveState()
+    data class Error(val message: String) : BalanceSaveState()
+}
+
 sealed class VerificationCheckState {
     object Idle : VerificationCheckState()
     object Loading : VerificationCheckState()
@@ -205,6 +212,23 @@ class AuthViewModel : ViewModel() {
     }
 
     fun resetProfileSaveState() { _profileSaveState.value = ProfileSaveState.Idle }
+
+    // =====================
+    // BalanceGameScreen 용 (회원가입 밸런스 게임)
+    // =====================
+    private val _balanceSaveState = MutableStateFlow<BalanceSaveState>(BalanceSaveState.Idle)
+    val balanceSaveState: StateFlow<BalanceSaveState> = _balanceSaveState
+
+    fun saveBalanceProfile(answers: Map<String, Int>) {
+        _balanceSaveState.value = BalanceSaveState.Loading
+        userRepository.saveBalanceProfile(
+            answers = answers,
+            onSuccess = { _balanceSaveState.value = BalanceSaveState.Success },
+            onFailure = { _balanceSaveState.value = BalanceSaveState.Error(it) }
+        )
+    }
+
+    fun resetBalanceSaveState() { _balanceSaveState.value = BalanceSaveState.Idle }
 
     // =====================
     // StudentIdUploadScreen 용

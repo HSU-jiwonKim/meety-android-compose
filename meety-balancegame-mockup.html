@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meety · 밸런스 게임 온보딩</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+:root{
+  --brand-1:#7B5CFF; --brand-2:#FF5C8A;
+  --grad:linear-gradient(135deg,#7B5CFF 0%,#A24BFF 45%,#FF5C8A 100%);
+  --grad-soft:linear-gradient(135deg,#EFE9FF 0%,#FFE8F1 100%);
+  --violet:#7B5CFF; --violet-soft:#F0EBFF;
+  --pink:#FF5C8A; --pink-soft:#FFE9F1;
+  --ink:#17161D; --ink-2:#56535F; --ink-3:#9B98A6; --ink-4:#C4C2CD;
+  --bg:#F4F4F8; --surface:#fff; --line:#ECEAF1; --line-2:#F1EFF5; --ok:#19C37D;
+  --sh-sm:0 1px 2px rgba(23,22,29,.04),0 2px 8px rgba(23,22,29,.04);
+  --sh-md:0 4px 14px rgba(23,22,29,.06),0 8px 30px rgba(23,22,29,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:radial-gradient(900px 600px at 12% -5%,#EEE7FF 0%,transparent 55%),
+    radial-gradient(900px 600px at 95% 8%,#FFE6EF 0%,transparent 50%),#EDEBF4;
+  color:var(--ink);-webkit-font-smoothing:antialiased;padding:40px 20px 80px;min-height:100vh}
+.page-head{max-width:1000px;margin:0 auto 14px;text-align:center}
+.brand-pill{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);
+  padding:7px 14px 7px 8px;border-radius:999px;box-shadow:var(--sh-sm);font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:16px}
+.brand-pill .logo{width:26px;height:26px;border-radius:8px;background:var(--grad);display:grid;place-items:center}
+.brand-pill .logo svg{width:15px;height:15px}
+.page-head h1{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.25}
+.page-head h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.page-head p{margin-top:12px;color:var(--ink-2);font-size:15px;line-height:1.6;max-width:560px;margin:12px auto 0}
+.stage{max-width:1000px;margin:34px auto 0;display:flex;justify-content:center;align-items:center;gap:48px;flex-wrap:wrap}
+
+.phone{width:362px;height:770px;flex:0 0 auto;background:#0b0b10;border-radius:44px;padding:10px;box-shadow:0 40px 80px -24px rgba(40,30,90,.5);position:relative}
+.screen{width:100%;height:100%;border-radius:35px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:112px;height:28px;background:#0b0b10;border-radius:0 0 16px 16px;z-index:60}
+.statusbar{height:44px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 4px;font-size:12.5px;font-weight:700;flex:0 0 auto}
+.statusbar .r{display:flex;gap:5px}.statusbar svg{width:15px;height:15px}
+
+/* onboarding top */
+.obar{display:flex;align-items:center;gap:10px;padding:6px 18px 10px}
+.obar .back{width:34px;height:34px;border-radius:11px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;cursor:pointer}
+.obar .back svg{width:18px;height:18px;stroke:var(--ink)}
+.obar .steps{flex:1;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--ink-3);justify-content:center}
+.obar .steps b{color:var(--brand-1)}
+.obar .skip{font-size:12.5px;font-weight:700;color:var(--ink-3);cursor:pointer}
+.pbar{height:6px;margin:0 18px;border-radius:999px;background:var(--line-2);overflow:hidden}
+.pbar .fill{height:100%;border-radius:999px;background:var(--grad);transition:width .35s cubic-bezier(.2,.8,.2,1);width:0}
+
+.body{flex:1;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.view{flex:1;display:flex;flex-direction:column;animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* intro */
+.intro{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 28px}
+.intro .ill{width:130px;height:130px;border-radius:36px;background:var(--grad);display:grid;place-items:center;font-size:60px;box-shadow:0 18px 40px rgba(123,92,255,.34);margin-bottom:26px;transform:rotate(-4deg)}
+.intro h2{font-size:25px;font-weight:800;letter-spacing:-.02em;line-height:1.3}
+.intro p{font-size:14px;color:var(--ink-2);line-height:1.6;margin-top:12px}
+.intro .meta{font-size:12.5px;color:var(--ink-3);font-weight:700;margin-top:18px;display:flex;align-items:center;gap:7px}
+.intro .meta svg{width:15px;height:15px;stroke:var(--brand-1)}
+
+/* question */
+.q{flex:1;display:flex;flex-direction:column;padding:6px 18px 0}
+.q .counter{font-size:12px;font-weight:800;color:var(--brand-1);text-align:center}
+.q .qtext{font-size:21px;font-weight:800;letter-spacing:-.02em;text-align:center;margin-top:8px;line-height:1.35}
+.arena{flex:1;position:relative;display:flex;flex-direction:column;gap:14px;padding:18px 0 10px}
+.opt{flex:1;border-radius:22px;border:2px solid transparent;display:flex;align-items:center;gap:15px;padding:0 22px;cursor:pointer;
+  transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;overflow:hidden}
+.opt.a{background:var(--violet-soft)}.opt.b{background:var(--pink-soft)}
+.opt:active{transform:scale(.98)}
+.opt .em{font-size:42px;flex:0 0 auto}
+.opt .tx b{font-size:18px;font-weight:800;display:block}
+.opt .tx span{font-size:12.5px;color:var(--ink-2);font-weight:600;margin-top:3px;display:block}
+.opt .pick{position:absolute;top:14px;right:16px;width:24px;height:24px;border-radius:50%;border:2px solid var(--ink-4);background:#fff;display:grid;place-items:center;opacity:.5;transition:.15s}
+.opt .pick svg{width:14px;height:14px;stroke:#fff;stroke-width:3;opacity:0}
+.opt.a.sel{border-color:var(--violet);box-shadow:0 10px 24px rgba(123,92,255,.28)}
+.opt.b.sel{border-color:var(--pink);box-shadow:0 10px 24px rgba(255,92,138,.28)}
+.opt.sel .pick{opacity:1;border-color:transparent;background:var(--grad)}
+.opt.sel .pick svg{opacity:1}
+.vs{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;width:46px;height:46px;border-radius:50%;
+  background:#fff;display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--brand-1);box-shadow:0 6px 16px rgba(0,0,0,.14);border:1px solid var(--line)}
+.qhint{text-align:center;font-size:11.5px;color:var(--ink-4);font-weight:600;padding-bottom:14px}
+
+/* done */
+.done{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:8px 24px 0;overflow-y:auto;scrollbar-width:none}
+.done::-webkit-scrollbar{display:none}
+.done .ring{width:84px;height:84px;border-radius:50%;background:var(--grad-soft);display:grid;place-items:center;margin:14px 0 14px}
+.done .ring .c{width:60px;height:60px;border-radius:50%;background:var(--grad);display:grid;place-items:center;box-shadow:0 10px 24px rgba(123,92,255,.34)}
+.done .ring .c svg{width:30px;height:30px;stroke:#fff;stroke-width:3}
+.done h2{font-size:22px;font-weight:800}
+.done .type{font-size:14px;font-weight:800;color:var(--brand-1);margin-top:8px}
+.done .picks{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:18px 0 4px}
+.done .picks .c{font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:999px;background:var(--violet-soft);color:#6D49E0}
+.linkbox{background:var(--surface);border:1px solid var(--line-2);border-radius:16px;padding:15px;margin:18px 0 0;text-align:left;box-shadow:var(--sh-sm)}
+.linkbox .h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;margin-bottom:6px}
+.linkbox .h svg{width:16px;height:16px;stroke:var(--brand-1)}
+.linkbox p{font-size:12px;color:var(--ink-2);line-height:1.55}
+.linkbox p b{color:var(--ink);font-weight:700}
+
+.cta-bar{padding:14px 18px 18px}
+.cta{background:var(--grad);color:#fff;border-radius:16px;padding:16px;text-align:center;font-size:15px;font-weight:800;box-shadow:0 12px 26px rgba(123,92,255,.34);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.cta svg{width:18px;height:18px;stroke:#fff}
+.cta.ghost{background:var(--surface);color:var(--ink-2);border:1px solid var(--line);box-shadow:var(--sh-sm)}
+
+.aside{max-width:300px}
+.aside h3{font-size:17px;font-weight:800;margin-bottom:6px}
+.aside .lead{font-size:12.5px;color:var(--ink-2);margin-bottom:16px;line-height:1.5}
+.aside .flow{display:flex;flex-direction:column;gap:0;margin-bottom:16px}
+.aside .fr{display:flex;gap:11px;position:relative;padding-bottom:16px}
+.aside .fr:last-child{padding-bottom:0}
+.aside .fr .dot{width:24px;height:24px;border-radius:8px;background:var(--grad);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;flex:0 0 auto;z-index:2}
+.aside .fr .dot.now{background:#FFF3DE;color:#C8860D;border:2px solid var(--amber,#F5A623)}
+.aside .fr .ln{position:absolute;left:11px;top:24px;bottom:0;width:2px;background:var(--line)}
+.aside .fr:last-child .ln{display:none}
+.aside .fr .t b{font-size:13px;font-weight:800;display:block}
+.aside .fr .t span{font-size:12px;color:var(--ink-2)}
+.aside .fr.cur .t b{color:#C8860D}
+.try{font-size:12.5px;color:var(--brand-1);font-weight:800;background:var(--violet-soft);border-radius:12px;padding:11px 14px;line-height:1.5}
+@media(max-width:840px){.aside{max-width:362px}}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="brand-pill"><span class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 21s-7.5-4.6-10-9.3C.6 8.8 2 5.5 5.2 5.1c2-.3 3.6.8 4.8 2.4 1.2-1.6 2.8-2.7 4.8-2.4 3.2.4 4.6 3.7 3.2 6.6C19.5 16.4 12 21 12 21z"/></svg></span>Meety · 가입 온보딩 · 밸런스 게임</div>
+  <h1>가입할 때 <span class="g">취향을 먼저</span> 알려주세요</h1>
+  <p>양자택일 6문항이면 끝. 이 답변이 나중에 "잘 맞는 팀"을 추천하는 가치관 근거로 쓰여요. 폰에서 직접 골라보세요.</p>
+</header>
+
+<div class="stage">
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="r">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 13h2v4H2zM6 10h2v7H6zM10 7h2v10h-2zM14 4h2v13h-2z"/></svg>
+        <svg viewBox="0 0 26 24" fill="none"><rect x="1" y="6" width="20" height="12" rx="3" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="8" width="15" height="8" rx="1.5" fill="currentColor"/></svg>
+      </span></div>
+      <div class="obar">
+        <div class="back" id="backBtn" onclick="goBack()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+        <div class="steps">프로필 ✓ · <b>밸런스 게임</b> · 인증</div>
+        <div class="skip" id="skipBtn" onclick="skipAll()">건너뛰기</div>
+      </div>
+      <div class="pbar"><div class="fill" id="pfill"></div></div>
+      <div class="body" id="body"></div>
+    </div>
+  </div>
+
+  <div class="aside">
+    <h3>전체 흐름에서 여기예요</h3>
+    <div class="lead">밸런스 게임은 가입 온보딩에서 딱 한 번. 그 답이 추천 단계에서 재사용돼요.</div>
+    <div class="flow">
+      <div class="fr"><div class="dot">✓</div><div class="ln"></div><div class="t"><b>회원가입 · 프로필</b><span>기본 정보 입력</span></div></div>
+      <div class="fr cur"><div class="dot now">●</div><div class="ln"></div><div class="t"><b>밸런스 게임</b><span>가치관 6문항 → 저장</span></div></div>
+      <div class="fr"><div class="dot">3</div><div class="ln"></div><div class="t"><b>학생증 인증</b><span>한성대 재학 확인</span></div></div>
+      <div class="fr"><div class="dot">4</div><div class="ln"></div><div class="t"><b>팀 추천(피드)</b><span>내 답 ↔ 팀 가치관 비교</span></div></div>
+    </div>
+    <div class="try">👉 폰에서 <b>한쪽을 탭</b>하면 다음 문항으로 넘어가요. 마지막에 추천과 어떻게 연결되는지 보여줘요.</div>
+  </div>
+</div>
+
+<script>
+const QUESTIONS=[
+  {q:'모임은 어떤 쪽이 더 좋아요?',
+   a:{em:'🍻',b:'친목 위주',s:'수다 떨고 친해지는 게 좋아',tag:'친목형'},
+   b:{em:'🎯',b:'목표 위주',s:'같이 뭔가 이뤄내는 게 좋아',tag:'목표형'}},
+  {q:'활동 강도는 어느 정도?',
+   a:{em:'🌿',b:'가볍게',s:'부담 없이 즐겨요',tag:'가볍게'},
+   b:{em:'🔥',b:'몰입해서',s:'할 거면 제대로',tag:'몰입형'}},
+  {q:'얼마나 자주 만날까요?',
+   a:{em:'📅',b:'자주',s:'주 1회 이상',tag:'자주 만남'},
+   b:{em:'🌙',b:'가끔',s:'월 1~2번 정도',tag:'가끔 만남'}},
+  {q:'비용은 어떻게 하는 게 편해요?',
+   a:{em:'🧾',b:'깔끔하게 더치',s:'1/n이 편해',tag:'더치페이'},
+   b:{em:'💸',b:'분위기 따라',s:'가끔 쏘기도 해',tag:'유연한 비용'}},
+  {q:'모임 분위기는?',
+   a:{em:'☕',b:'차분하게',s:'조용한 게 좋아',tag:'차분한'},
+   b:{em:'🎉',b:'활발하게',s:'왁자지껄 좋아',tag:'활발한'}},
+  {q:'약속 잡는 스타일은?',
+   a:{em:'⚡',b:'즉흥적으로',s:'갑자기 번개도 OK',tag:'즉흥형'},
+   b:{em:'🗓️',b:'미리 계획',s:'날짜 정해두는 게 좋아',tag:'계획형'}},
+];
+const TOTAL=QUESTIONS.length;
+let step=-1;          // -1 intro, 0..TOTAL-1 questions, TOTAL done
+let answers=new Array(TOTAL).fill(null);
+let picked=null;      // transient highlight side
+
+const body=document.getElementById('body');
+function progress(){
+  let p;
+  if(step<0) p=0; else if(step>=TOTAL) p=100; else p=(step/TOTAL)*100;
+  document.getElementById('pfill').style.width=p+'%';
+  document.getElementById('backBtn').style.visibility = step<=-1?'hidden':'visible';
+  document.getElementById('skipBtn').style.visibility = step>=TOTAL?'hidden':'visible';
+}
+function render(){
+  progress();
+  if(step===-1) body.innerHTML=introView();
+  else if(step>=TOTAL) body.innerHTML=doneView();
+  else body.innerHTML=questionView(step);
+}
+function introView(){return `
+  <div class="view intro">
+    <div class="ill">🎲</div>
+    <h2>밸런스 게임으로<br>시작해요</h2>
+    <p>둘 중 더 끌리는 쪽을 고르면 돼요.<br>정답은 없어요 — 회원님 취향이 정답이에요!</p>
+    <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> 6문항 · 약 30초</div>
+  </div>
+  <div class="cta-bar"><div class="cta" onclick="next()">시작하기</div></div>
+`}
+function questionView(i){
+  const Q=QUESTIONS[i];
+  const selA=picked==='a'?'sel':'', selB=picked==='b'?'sel':'';
+  return `
+  <div class="view q">
+    <div class="counter">Q${i+1} / ${TOTAL}</div>
+    <div class="qtext">${Q.q}</div>
+    <div class="arena">
+      <div class="opt a ${selA}" onclick="choose('a')">
+        <div class="em">${Q.a.em}</div>
+        <div class="tx"><b>${Q.a.b}</b><span>${Q.a.s}</span></div>
+        <div class="pick">${ck}</div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="opt b ${selB}" onclick="choose('b')">
+        <div class="em">${Q.b.em}</div>
+        <div class="tx"><b>${Q.b.b}</b><span>${Q.b.s}</span></div>
+        <div class="pick">${ck}</div>
+      </div>
+    </div>
+    <div class="qhint">더 끌리는 쪽을 탭하세요</div>
+  </div>`;
+}
+function doneView(){
+  const chips=answers.map((s,i)=>QUESTIONS[i][s||'a'].tag);
+  const type=`${answers[0]==='a'?'친목':'목표'}·${answers[4]==='b'?'활발':'차분'}형`;
+  return `
+  <div class="view">
+    <div class="done">
+      <div class="ring"><div class="c">${ckBig}</div></div>
+      <h2>취향 분석 끝!</h2>
+      <div class="type">"${type}" 스타일이네요</div>
+      <div class="picks">${chips.map(c=>`<span class="c">${c}</span>`).join('')}</div>
+      <div class="linkbox">
+        <div class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="#7B5CFF" stroke="none"/></svg> 이 답변은 이렇게 쓰여요</div>
+        <p>인증이 끝나면 피드에서, 회원님 답변과 <b>팀원들의 답변을 모은 팀 가치관</b>을 비교해 "가치관 일치" 근거로 보여드려요. (예: 5문항 중 4개 일치)</p>
+      </div>
+    </div>
+  </div>
+  <div class="cta-bar"><div class="cta" onclick="finish()">학생증 인증하러 가기 <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div></div>
+`}
+const ck='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const ckBig='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+function next(){step++;picked=null;render();}
+function goBack(){if(step>-1){step--;picked=null;render();}}
+function choose(side){
+  picked=side;
+  render();                       // show highlight
+  setTimeout(()=>{ answers[step]=side; picked=null; step++; render(); },360);
+}
+function skipAll(){step=TOTAL; render();}
+function finish(){alert('밸런스 게임 완료!\\n다음은 학생증 인증 단계로 넘어가요.');}
+render();
+</script>
+</body>
+</html>
