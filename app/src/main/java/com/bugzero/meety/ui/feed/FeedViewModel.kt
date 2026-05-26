@@ -59,6 +59,7 @@ class FeedViewModel(
                 _uiState.update {
                     it.copy(
                         userPreferences = emptyMap(),
+                        userTagScores   = emptyMap(),
                         likedTeamIds    = emptySet(),
                         passedTeamIds   = emptySet(),
                         currentIndex    = 0,
@@ -126,6 +127,7 @@ class FeedViewModel(
                 _uiState.update {
                     it.copy(
                         userPreferences = pref.tagScores + pref.mbtiScores,
+                        userTagScores   = pref.tagScores,
                         likedTeamIds    = pref.likedTeamIds.toSet(),
                         passedTeamIds   = pref.passedTeamIds.toSet()
                     )

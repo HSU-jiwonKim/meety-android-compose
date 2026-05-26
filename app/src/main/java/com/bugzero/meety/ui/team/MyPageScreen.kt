@@ -3,6 +3,13 @@ package com.bugzero.meety.ui.team
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,8 +17,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +64,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import com.bugzero.meety.ui.auth.InfoRow
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -145,6 +155,7 @@ fun MyPageScreen(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             MyProfileTopBar(
+                handleName = uiState.name.ifBlank { "프로필" },
                 onEditProfileClick = onEditProfileClick,
                 onLogoutClick = onLogoutClick
             )
@@ -220,7 +231,10 @@ fun MyPageBody(
                 },
                 onChangeMainImageClick = {
                     showMainImageDialog = true
-                }
+                },
+                onEditProfileClick = onEditProfileClick,
+                onScheduleClick = onScheduleClick,
+                onAddPhotoClick = onAddPhotoClick
             )
         }
 
@@ -257,6 +271,7 @@ fun MyPageBody(
 
 @Composable
 private fun MyProfileTopBar(
+    handleName: String,
     onEditProfileClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
@@ -272,26 +287,22 @@ private fun MyProfileTopBar(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .background(
-                        Brush.linearGradient(listOf(Color(0xFFB44FD3), Color(0xFFEC4899))),
-                        RoundedCornerShape(12.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
+                    .size(7.dp)
+                    .background(Color(0xFF19C37D), CircleShape)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
             Text(
-                text = "Meety",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFD946C7)
+                text = handleName,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.2).sp,
+                color = Color(0xFF17161D)
+            )
+            Icon(
+                imageVector = Icons.Default.ExpandMore,
+                contentDescription = null,
+                tint = Color(0xFF17161D),
+                modifier = Modifier.size(18.dp)
             )
         }
 
@@ -300,9 +311,9 @@ private fun MyProfileTopBar(
         Box {
             IconButton(onClick = { expanded = true }) {
                 Icon(
-                    imageVector = Icons.Default.MoreVert,
+                    imageVector = Icons.Default.Menu,
                     contentDescription = "프로필 메뉴",
-                    tint = Color(0xFF4B4B4B)
+                    tint = Color(0xFF17161D)
                 )
             }
 
@@ -339,95 +350,226 @@ private fun MyProfileTabRow(
     TabRow(
         selectedTabIndex = if (selectedTab == MyProfileTab.PHOTOS) 0 else 1,
         containerColor = Color.White,
-        contentColor = Color(0xFF111111),
-        modifier = Modifier.padding(horizontal = 20.dp)
+        contentColor = Color(0xFF17161D),
+        modifier = Modifier.padding(top = 4.dp)
     ) {
         Tab(
             selected = selectedTab == MyProfileTab.PHOTOS,
             onClick = { onTabSelected(MyProfileTab.PHOTOS) },
-            text = { Text("사진", fontWeight = if (selectedTab == MyProfileTab.PHOTOS) FontWeight.Bold else FontWeight.Medium) }
+            icon = {
+                Icon(
+                    Icons.Outlined.GridView,
+                    contentDescription = "사진",
+                    tint = if (selectedTab == MyProfileTab.PHOTOS) Color(0xFF17161D) else Color(0xFFC4C2CD)
+                )
+            }
         )
         Tab(
             selected = selectedTab == MyProfileTab.INFO,
             onClick = { onTabSelected(MyProfileTab.INFO) },
-            text = { Text("정보", fontWeight = if (selectedTab == MyProfileTab.INFO) FontWeight.Bold else FontWeight.Medium) }
+            icon = {
+                Icon(
+                    Icons.Outlined.CalendarMonth,
+                    contentDescription = "정보·시간표",
+                    tint = if (selectedTab == MyProfileTab.INFO) Color(0xFF17161D) else Color(0xFFC4C2CD)
+                )
+            }
         )
     }
 }
+
+private val IgGradient = Brush.linearGradient(
+    0f to Color(0xFF7B5CFF), 0.45f to Color(0xFFA24BFF), 1f to Color(0xFFFF5C8A)
+)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProfileHeaderSection(
     uiState: UserProfileUiState,
     onImageClick: () -> Unit,
-    onChangeMainImageClick: () -> Unit
+    onChangeMainImageClick: () -> Unit,
+    onEditProfileClick: () -> Unit = {},
+    onScheduleClick: () -> Unit = {},
+    onAddPhotoClick: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ── ig-top: 스토리 링 아바타 + 통계 ──
+        Row(
             modifier = Modifier
-                .size(112.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFF2F3F5))
-                .combinedClickable(
-                    onClick = onImageClick,
-                    onLongClick = onChangeMainImageClick
-                ),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(start = 22.dp, end = 22.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val profileImageUrl = if (uiState.mainProfileImageUrl.isNotBlank()) uiState.mainProfileImageUrl else uiState.profileImages.firstOrNull().orEmpty()
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .background(IgGradient, CircleShape)
+                    .padding(3.dp)
+                    .combinedClickable(onClick = onImageClick, onLongClick = onChangeMainImageClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val profileImageUrl = if (uiState.mainProfileImageUrl.isNotBlank()) uiState.mainProfileImageUrl
+                        else uiState.profileImages.firstOrNull().orEmpty()
+                    if (profileImageUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = profileImageUrl,
+                            contentDescription = "프로필 이미지",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                .background(Brush.linearGradient(listOf(Color(0xFFF2EEFF), Color(0xFFFFECF3)))),
+                            contentAlignment = Alignment.Center
+                        ) { Text("🙋", fontSize = 34.sp) }
+                    }
+                }
+            }
 
-            if (profileImageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = profileImageUrl,
-                    contentDescription = "프로필 이미지",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "프로필 이미지 없음",
-                    tint = Color(0xFF9CA3AF),
-                    modifier = Modifier.size(46.dp)
-                )
+            Row(
+                modifier = Modifier.weight(1f).padding(start = 24.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                ProfileStat(uiState.profileImages.size.toString(), "사진")
+                ProfileStat(uiState.interests.size.toString(), "관심사")
+                ProfileStat(uiState.foodLikes.size.toString(), "취향")
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = uiState.name,
-                fontSize = 23.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF222222)
-            )
-
-            if (uiState.age > 0) {
-                Spacer(modifier = Modifier.width(8.dp))
+        // ── ig-bio ──
+        Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(uiState.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF17161D))
+                if (uiState.mbti.isNotBlank()) {
+                    Spacer(Modifier.width(7.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFF2EEFF), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 9.dp, vertical = 3.dp)
+                    ) {
+                        Text(uiState.mbti, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6D49E0))
+                    }
+                }
+            }
+            val deptLine = buildString {
+                append("🎓 ")
+                if (uiState.department.isNotBlank()) append(uiState.department)
+                if (uiState.age > 0) { if (length > 2) append(" · "); append("${uiState.age}세") }
+                if (uiState.school.isNotBlank()) { if (length > 2) append(" · "); append(uiState.school) }
+            }
+            Spacer(Modifier.height(3.dp))
+            Text(deptLine, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF56535F))
+            if (uiState.bio.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(uiState.bio, fontSize = 13.sp, color = Color(0xFF17161D), lineHeight = 20.sp)
+            }
+            if (uiState.interests.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "${uiState.age}세",
-                    fontSize = 14.sp,
-                    color = Color(0xFF666666)
+                    uiState.interests.joinToString(" ") { "#$it" },
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF7B5CFF),
+                    lineHeight = 20.sp
                 )
             }
         }
 
-        if (uiState.bio.isNotBlank()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = uiState.bio,
-                fontSize = 14.sp,
-                color = Color(0xFF666666),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+        // ── ig-actions ──
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(IntrinsicSize.Min),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(IgGradient)
+                    .clickable(onClick = onEditProfileClick)
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("프로필 수정", fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .border(1.dp, Color(0xFFECEAF1), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onScheduleClick)
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("시간표 공유", fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF17161D))
+            }
+            // + 버튼
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .border(1.dp, Color(0xFFECEAF1), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onAddPhotoClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "사진 추가",
+                    tint = Color(0xFF17161D),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
+
+        // ── ig-highlights (관심사 원형) ──
+        if (uiState.interests.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 22.dp, end = 22.dp, top = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                uiState.interests.take(8).forEachIndexed { idx, interest ->
+                    val emojis = listOf("💜", "🍝", "✈️", "🎧", "☕", "🎬", "📚", "🌸")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(64.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(62.dp)
+                                .background(if (idx == 0) IgGradient else Brush.linearGradient(listOf(Color(0xFFE7E4EF), Color(0xFFD9D6E3))), CircleShape)
+                                .padding(2.5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize().clip(CircleShape).background(Color.White),
+                                contentAlignment = Alignment.Center
+                            ) { Text(emojis[idx % emojis.size], fontSize = 23.sp) }
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text(interest, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF56535F), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileStat(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF17161D))
+        Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = Color(0xFF56535F))
     }
 }
 
@@ -712,10 +854,7 @@ private fun PhotoSection(
     onSetMainPhotoClick: (String) -> Unit
 ) {
     val photos = imageUrls.filter { it.isNotBlank() }
-    val items = mutableListOf<String>().apply {
-        addAll(photos)
-        if (photos.size < 9) add("ADD_BUTTON")
-    }
+    val items = photos
 
     Column(
         modifier = Modifier

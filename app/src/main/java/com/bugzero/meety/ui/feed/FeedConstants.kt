@@ -11,30 +11,32 @@ import androidx.compose.ui.graphics.Color
  */
 object FeedConstants {
 
-    // ── 브랜드 그라데이션 ──
+    // ── 브랜드 그라데이션 (보라 → 마젠타 → 핑크) ──
     val GradientPurplePink = Brush.linearGradient(
-        listOf(Color(0xFFB44FD3), Color(0xFFEC4899))
+        0f to Color(0xFF7B5CFF),
+        0.45f to Color(0xFFA24BFF),
+        1f to Color(0xFFFF5C8A)
     )
-    val GradientStart = Color(0xFFB44FD3)
-    val GradientEnd = Color(0xFFEC4899)
+    val GradientStart = Color(0xFF7B5CFF)
+    val GradientEnd = Color(0xFFFF5C8A)
 
-    // ── 카드 배경 색상 팔레트 ──
+    // ── 카드 배경 색상 팔레트 (목업 g1/g2/g3 + 파랑) ──
     val CardColorPalette = listOf(
-        listOf(Color(0xFFB39DDB), Color(0xFF7E57C2)), // 보라
-        listOf(Color(0xFF80CBC4), Color(0xFF26A69A)), // 민트
-        listOf(Color(0xFFF48FB1), Color(0xFFEC407A)), // 핑크
+        listOf(Color(0xFF9D7BFF), Color(0xFF5B3FE0)), // 보라
+        listOf(Color(0xFF7DE0CF), Color(0xFF26A69A)), // 민트
+        listOf(Color(0xFFFF9DC0), Color(0xFFEC407A)), // 핑크
         listOf(Color(0xFF90CAF9), Color(0xFF1E88E5))  // 파랑
     )
 
     // ── 공통 색상 ──
-    val BackgroundGray = Color(0xFFF9FAFB)
-    val IconGray = Color(0xFF4B4B4B)
-    val AccentPink = Color(0xFFEC4899)
-    val PassRed = Color(0xFFFF4B6E)
+    val BackgroundGray = Color(0xFFF4F4F8)
+    val IconGray = Color(0xFF56535F)
+    val AccentPink = Color(0xFFFF5C8A)
+    val PassRed = Color(0xFFFF4D7D)
     val ErrorRed = Color(0xFFEF4444)
-    val LightPurpleBg = Color(0xFFEDE9FE)
-    val PurpleBorder = Color(0xFFD1B8E8)
-    val AiCardBg = Color(0xFFF5F3FF)
+    val LightPurpleBg = Color(0xFFF2EEFF)
+    val PurpleBorder = Color(0xFFE0D7FF)
+    val AiCardBg = Color(0xFFF2EEFF)
 
     // ── 스와이프 관련 수치 ──
     /** 이 값(px) 이상 드래그하면 Like/Pass로 처리 */

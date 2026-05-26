@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -12,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -21,6 +23,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.bugzero.meety.ui.feed.FeedConstants
 import com.bugzero.meety.ui.team.Team
 import com.bugzero.meety.ui.theme.Purple
+import com.bugzero.meety.ui.theme.VioletText
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -36,37 +40,58 @@ import kotlin.math.sqrt
 /**
  * 틴더 스타일의 스와이프 카드
  *
- * [개선] detectDragGestures → awaitEachGesture 커스텀 제스처 처리기
- *   - 수평 드래그: 스와이프 (Like/Pass)
- *   - 수직 드래그: 스크롤로 전달 (카드 내 LazyColumn과 충돌 없음)
- *   - 탭: 상세보기 (드래그와 별도로 처리)
- *   - 임계값 진입 시 햅틱 피드백
+ * whyOpen / onWhyOpen 은 부모(RecommendContent)가 관리한다.
+ * MatchReasonSheet가 액션 버튼 영역까지 덮으려면 SwipeCard 밖에서 렌더해야 하기 때문.
  */
 @Composable
 fun SwipeCard(
     team: Team,
     onLike: () -> Unit,
     onPass: () -> Unit,
-    onInfo: () -> Unit
+    onInfo: () -> Unit,
+    userTopTags: List<String> = emptyList(),
+    actionCount: Int = 0,
+    // ? 버튼 상태는 부모가 관리
+    whyOpen: Boolean = false,
+    onWhyOpen: () -> Unit = {}
 ) {
     val offsetXAnim    = remember(team.teamId) { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()
     val haptic         = LocalHapticFeedback.current
     val density        = LocalDensity.current
-
-    // 8dp를 px로 변환 — 이 이상 움직여야 드래그로 판단
-    val touchSlopPx = with(density) { 8.dp.toPx() }
+    val touchSlopPx    = with(density) { 8.dp.toPx() }
 
     val rotation     = offsetXAnim.value / FeedConstants.ROTATION_DIVISOR
     val overlayAlpha = (abs(offsetXAnim.value) / (FeedConstants.SWIPE_THRESHOLD * 0.6f)).coerceIn(0f, 1f)
     val isLiking     = offsetXAnim.value > 30f
     val isPassing    = offsetXAnim.value < -30f
-
-    // 임계값을 넘었는지 추적해 햅틱을 한 번만 발생시킨다
-    var hapticFired by remember(team.teamId) { mutableStateOf(false) }
+    var hapticFired  by remember(team.teamId) { mutableStateOf(false) }
 
     val colorIndex = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
     val bgColors   = FeedConstants.CardColorPalette[colorIndex]
+
+    // 매칭 점수 (좌상단 배지용)
+    val fitScore = remember(team.teamId, userTopTags, actionCount) {
+        calculateFitScore(userTopTags, team.tags, actionCount)
+    }
+
+    // ── 무한 애니메이션: ping 링 + 말풍선 floaty ──
+    val infTrans = rememberInfiniteTransition(label = "qbtn_anim")
+    val pingScale by infTrans.animateFloat(
+        initialValue  = 1f, targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Restart),
+        label         = "pingScale"
+    )
+    val pingAlpha by infTrans.animateFloat(
+        initialValue  = 0.6f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Restart),
+        label         = "pingAlpha"
+    )
+    val floatOffset by infTrans.animateFloat(
+        initialValue  = 0f, targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label         = "floatOffset"
+    )
 
     Box(
         modifier = Modifier
@@ -77,29 +102,22 @@ fun SwipeCard(
             .clip(RoundedCornerShape(24.dp))
             .background(Color.White)
             .pointerInput(team.teamId) {
-                // awaitEachGesture: 각 포인터 다운마다 독립적인 제스처 세션
                 awaitPointerEventScope {
                     while (true) {
-                        // 1) 첫 손가락 내려올 때까지 대기
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        var totalDx = 0f
-                        var totalDy = 0f
-                        var isDragging = false
-                        var isVertical = false
+                        var totalDx = 0f; var totalDy = 0f
+                        var isDragging = false; var isVertical = false
                         hapticFired = false
 
-                        // 2) 손가락이 올라올 때까지 이벤트 루프
                         loop@ while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id }
-                                ?: break@loop
+                            val event  = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break@loop
 
                             when (event.type) {
                                 PointerEventType.Move -> {
                                     val dx = change.position.x - change.previousPosition.x
                                     val dy = change.position.y - change.previousPosition.y
-                                    totalDx += dx
-                                    totalDy += dy
+                                    totalDx += dx; totalDy += dy
 
                                     if (!isDragging) {
                                         val dist = sqrt(totalDx * totalDx + totalDy * totalDy)
@@ -108,64 +126,38 @@ fun SwipeCard(
                                             isVertical = abs(totalDy) > abs(totalDx)
                                         }
                                     }
-
                                     if (isDragging && !isVertical) {
                                         change.consume()
-
-                                        // 임계값 통과 시 햅틱 (한 번만)
                                         val nextVal = offsetXAnim.value + dx
-                                        val crossedThreshold =
-                                            (nextVal > FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value <= FeedConstants.SWIPE_THRESHOLD) ||
-                                                    (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
-
-                                        if (crossedThreshold && !hapticFired) {
+                                        val crossed =
+                                            (nextVal >  FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value <=  FeedConstants.SWIPE_THRESHOLD) ||
+                                            (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
+                                        if (crossed && !hapticFired) {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             hapticFired = true
                                         }
-
-                                        coroutineScope.launch {
-                                            offsetXAnim.snapTo(offsetXAnim.value + dx)
-                                        }
+                                        coroutineScope.launch { offsetXAnim.snapTo(offsetXAnim.value + dx) }
                                     }
                                 }
-
                                 PointerEventType.Release -> {
                                     if (isDragging && !isVertical) {
-                                        // 드래그 종료 — 임계값에 따라 날아가거나 원위치
                                         coroutineScope.launch {
                                             when {
-                                                offsetXAnim.value > FeedConstants.SWIPE_THRESHOLD -> {
-                                                    offsetXAnim.animateTo(
-                                                        3000f,
-                                                        animationSpec = tween(300, easing = FastOutLinearInEasing)
-                                                    )
-                                                    onLike()
+                                                offsetXAnim.value >  FeedConstants.SWIPE_THRESHOLD -> {
+                                                    offsetXAnim.animateTo(3000f, tween(300, easing = FastOutLinearInEasing)); onLike()
                                                 }
                                                 offsetXAnim.value < -FeedConstants.SWIPE_THRESHOLD -> {
-                                                    offsetXAnim.animateTo(
-                                                        -3000f,
-                                                        animationSpec = tween(300, easing = FastOutLinearInEasing)
-                                                    )
-                                                    onPass()
+                                                    offsetXAnim.animateTo(-3000f, tween(300, easing = FastOutLinearInEasing)); onPass()
                                                 }
-                                                else -> {
-                                                    offsetXAnim.animateTo(
-                                                        0f,
-                                                        animationSpec = spring(
-                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                            stiffness    = Spring.StiffnessMedium
-                                                        )
-                                                    )
-                                                }
+                                                else -> offsetXAnim.animateTo(0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
                                             }
                                         }
-                                    } else if (!isDragging) {
-                                        // 드래그가 아니었으면 탭 → 상세보기
+                                    } else if (!isDragging && !down.isConsumed) {
+                                        // 탭 → 상세보기 (? 버튼이 소비한 이벤트는 무시)
                                         onInfo()
                                     }
                                     break@loop
                                 }
-
                                 else -> break@loop
                             }
                         }
@@ -173,7 +165,7 @@ fun SwipeCard(
                 }
             }
     ) {
-        // ── 배경: 이미지 있으면 이미지, 없으면 그라데이션 ──
+        // ── 배경 ──
         if (team.teamProfileImage.isNotBlank()) {
             coil.compose.AsyncImage(
                 model              = team.teamProfileImage,
@@ -182,59 +174,65 @@ fun SwipeCard(
                 contentScale       = androidx.compose.ui.layout.ContentScale.Crop
             )
         } else {
-            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
         }
 
-        // ── 하단 어둡게 ──
+        // ── 하단 어둠 그라데이션 ──
         Box(
-            modifier = Modifier.fillMaxSize().background(
+            Modifier.fillMaxSize().background(
                 Brush.verticalGradient(0.4f to Color.Transparent, 1.0f to Color.Black.copy(alpha = 0.7f))
             )
         )
 
-        // ── LIKE 오버레이 ──
+        // ── LIKE / PASS 오버레이 ──
         if (isLiking) {
             Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 24.dp, top = 28.dp)
+                Modifier
+                    .align(Alignment.TopStart).padding(start = 24.dp, top = 28.dp)
                     .alpha(overlayAlpha)
                     .border(2.5.dp, Color(0xFF4CAF50), RoundedCornerShape(8.dp))
                     .background(Color(0xFF4CAF50).copy(alpha = 0.12f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text("LIKE", color = Color(0xFF4CAF50), fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 2.sp)
-            }
+            ) { Text("LIKE", color = Color(0xFF4CAF50), fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 2.sp) }
         }
-
-        // ── PASS 오버레이 ──
         if (isPassing) {
             Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 24.dp, top = 28.dp)
+                Modifier
+                    .align(Alignment.TopEnd).padding(end = 24.dp, top = 28.dp)
                     .alpha(overlayAlpha)
                     .border(2.5.dp, FeedConstants.PassRed, RoundedCornerShape(8.dp))
                     .background(FeedConstants.PassRed.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text("PASS", color = FeedConstants.PassRed, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 2.sp)
-            }
+            ) { Text("PASS", color = FeedConstants.PassRed, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 2.sp) }
         }
 
-        // ── "탭하여 자세히 보기" 힌트 ──
+        // ── 좌상단: "지금 활동중" 대신 매칭 점수 배지 ──
         if (!isLiking && !isPassing) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 16.dp, top = 16.dp)
-                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .align(Alignment.TopStart)
+                    .padding(start = 14.dp, top = 14.dp)
+                    .shadow(4.dp, RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.White.copy(alpha = 0.95f))
+                    .padding(horizontal = 11.dp, vertical = 6.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("👆", fontSize = 13.sp)
+                    Text(
+                        text  = "$fitScore",
+                        style = TextStyle(
+                            brush      = FeedConstants.GradientPurplePink,
+                            fontSize   = 15.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    )
                     Spacer(Modifier.width(4.dp))
-                    Text("탭하여 자세히 보기", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        "매칭",
+                        fontSize   = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color      = Color(0xFF56535F)
+                    )
                 }
             }
         }
@@ -243,32 +241,122 @@ fun SwipeCard(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(team.teamName, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .background(Purple.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("${team.memberIds.size}명", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                Text(
+                    team.teamName, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.4).sp, color = Color.White
+                )
+                team.mbtiTags.firstOrNull()?.takeIf { it.isNotBlank() }?.let { mbti ->
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier
+                            .background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) { Text(mbti, fontSize = 12.sp, color = VioletText, fontWeight = FontWeight.Bold) }
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text(team.description, fontSize = 16.sp, color = Color.LightGray, maxLines = 2)
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                team.tags.take(3).forEach { tag ->
-                    Box(
-                        modifier = Modifier
-                            .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text("#$tag", color = Color.White, fontSize = 13.sp)
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "멤버 ${team.memberIds.size}명" +
+                    (team.description.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.92f), maxLines = 1
+            )
+            if (team.tags.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    team.tags.take(3).forEach { tag ->
+                        Box(
+                            Modifier
+                                .background(Color.White.copy(alpha = 0.18f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 11.dp, vertical = 6.dp)
+                        ) { Text(tag, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     }
                 }
+            }
+        }
+
+        // ── ? 버튼 + 말풍선 (스와이프/시트 열림 중엔 숨김) ──
+        if (!isLiking && !isPassing && !whyOpen) {
+
+            // ① ? 버튼: 46dp 컨테이너에 ping 링(뒤) + 버튼(앞)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 10.dp, end = 10.dp)
+                    .size(46.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // ping: 확장되며 사라지는 흰 테두리 원
+                Box(
+                    Modifier
+                        .size(46.dp)
+                        .scale(pingScale)
+                        .alpha(pingAlpha)
+                        .border(2.dp, Color.White, CircleShape)
+                )
+                // 실제 버튼
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .shadow(6.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.94f))
+                        .pointerInput(team.teamId) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    down.consume()
+                                    var released = false
+                                    loop@ while (true) {
+                                        val ev = awaitPointerEvent()
+                                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break@loop
+                                        ch.consume()
+                                        if (ev.type == PointerEventType.Release) { released = true; break@loop }
+                                        if (ev.type != PointerEventType.Move) break@loop
+                                    }
+                                    if (released) onWhyOpen()
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("?", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+
+            // ② 말풍선: floaty 위아래 + 꼬리(회전 사각형)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 58.dp, end = 14.dp)
+                    .offset(y = floatOffset.dp)
+            ) {
+                // 본체
+                Box(
+                    modifier = Modifier
+                        .padding(top = 7.dp)
+                        .shadow(8.dp, RoundedCornerShape(13.dp))
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color.White)
+                        .padding(horizontal = 13.dp, vertical = 9.dp)
+                ) {
+                    Text(
+                        "왜 이 팀이 매칭 되었나요?",
+                        color = Color(0xFF17161D), fontSize = 12.5.sp, fontWeight = FontWeight.Bold
+                    )
+                }
+                // 꼬리: 45° 회전 흰 사각형 → 말풍선 위에 z-order로 겹쳐 삼각형처럼 보임
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 13.dp)
+                        .size(12.dp)
+                        .rotate(45f)
+                        .background(Color.White)
+                )
             }
         }
     }

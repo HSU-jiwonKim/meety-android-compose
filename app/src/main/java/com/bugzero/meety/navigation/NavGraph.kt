@@ -1,11 +1,22 @@
 package com.bugzero.meety.navigation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.bugzero.meety.ui.theme.Brand1
+import com.bugzero.meety.ui.theme.Ink4
+import com.bugzero.meety.ui.theme.Line2
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,79 +140,17 @@ fun NavGraph(
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
-                    bottomNavItems.forEach { item ->
-                        val isSelected = when (item.type) {
-                            "home"   -> currentRoute == Routes.FEED
-                            "chat"   -> currentRoute == Routes.CHAT_LIST
-                            "plus"   -> currentRoute == Routes.MEETING_CREATE
-                            "heart"  -> currentRoute == Routes.MY_TEAM
-                            "person" -> currentRoute == Routes.MY_PAGE
-                            "admin"  -> currentRoute == Routes.ADMIN
-                            else -> false
+                MeetyBottomBar(
+                    items = bottomNavItems,
+                    currentRoute = currentRoute,
+                    onNavigate = { route ->
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        val isPlus = item.type == "plus"
-                        val isAdminItem = item.type == "admin"
-
-                        NavigationBarItem(
-                            icon = {
-                                when {
-                                    isPlus -> Box(
-                                        modifier = Modifier.size(44.dp).background(
-                                            if (isSelected) Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFEC4899)))
-                                            else Brush.linearGradient(listOf(Color(0xFFEDE9FE), Color(0xFFFCE7F3))),
-                                            RoundedCornerShape(14.dp)
-                                        ), contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = item.label,
-                                            tint = if (isSelected) Color.White else Color(0xFF7C3AED),
-                                            modifier = Modifier.size(22.dp))
-                                    }
-                                    isAdminItem -> Box(
-                                        modifier = Modifier.size(44.dp).background(
-                                            if (isSelected) Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFEC4899)))
-                                            else Brush.linearGradient(listOf(Color(0xFFF5F3FF), Color(0xFFFDF2F8))),
-                                            RoundedCornerShape(14.dp)
-                                        ), contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Shield, contentDescription = item.label,
-                                            tint = if (isSelected) Color.White else Color(0xFF7C3AED),
-                                            modifier = Modifier.size(22.dp))
-                                    }
-                                    else -> Icon(
-                                        when (item.type) {
-                                            "home"  -> Icons.Default.Home
-                                            "chat"  -> Icons.Default.ChatBubble
-                                            "heart" -> Icons.Default.Favorite
-                                            else    -> Icons.Default.Person
-                                        },
-                                        contentDescription = item.label,
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
-                            },
-                            label = {
-                                Text(item.label, fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                            },
-                            selected = isSelected,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFF7C3AED),
-                                selectedTextColor = Color(0xFF7C3AED),
-                                unselectedIconColor = Color(0xFF9CA3AF),
-                                unselectedTextColor = Color(0xFF9CA3AF),
-                                indicatorColor = Color.Transparent
-                            )
-                        )
                     }
-                }
+                )
             }
         }
     ) { innerPadding ->
@@ -612,6 +561,98 @@ fun NavGraph(
                     currentUserId = currentUserId,
                     onCallEnded   = { navController.popBackStack() }
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 목업 .tabbar — 글래스 플로팅 하단 바 + 중앙 FAB(팀 만들기)
+ */
+@Composable
+private fun MeetyBottomBar(
+    items: List<NavItem>,
+    currentRoute: String?,
+    onNavigate: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.94f))
+            .padding(top = 8.dp, bottom = 18.dp, start = 8.dp, end = 8.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.SpaceAround
+    ) {
+        items.forEach { item ->
+            val isSelected = when (item.type) {
+                "home"   -> currentRoute == Routes.FEED
+                "chat"   -> currentRoute == Routes.CHAT_LIST
+                "plus"   -> currentRoute == Routes.MEETING_CREATE
+                "heart"  -> currentRoute == Routes.MY_TEAM
+                "person" -> currentRoute == Routes.MY_PAGE
+                "admin"  -> currentRoute == Routes.ADMIN
+                else     -> false
+            }
+
+            if (item.type == "plus") {
+                // ── 중앙 FAB ──
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onNavigate(item.route) },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .offset(y = (-10).dp)
+                            .size(54.dp)
+                            .shadow(12.dp, RoundedCornerShape(18.dp), spotColor = Color(0xFF7B5CFF))
+                            .background(
+                                Brush.linearGradient(
+                                    0f to Color(0xFF7B5CFF),
+                                    0.45f to Color(0xFFA24BFF),
+                                    1f to Color(0xFFFF5C8A)
+                                ),
+                                RoundedCornerShape(18.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = item.label, tint = Color.White, modifier = Modifier.size(26.dp))
+                    }
+                    Text(
+                        item.label,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) Brand1 else Ink4,
+                        modifier = Modifier.offset(y = (-8).dp)
+                    )
+                }
+            } else {
+                val icon: ImageVector = when (item.type) {
+                    "home"  -> Icons.Outlined.Home
+                    "chat"  -> Icons.Outlined.ChatBubbleOutline
+                    "heart" -> Icons.Outlined.Group
+                    "admin" -> Icons.Default.Shield
+                    else    -> Icons.Outlined.Person
+                }
+                val tint = if (isSelected) Brand1 else Ink4
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onNavigate(item.route) }
+                        .padding(top = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(icon, contentDescription = item.label, tint = tint, modifier = Modifier.size(25.dp))
+                    Text(item.label, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = tint)
+                }
             }
         }
     }

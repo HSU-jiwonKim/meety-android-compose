@@ -16,15 +16,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -60,14 +65,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // 화면에서 반복해서 사용하는 색상값을 한 곳에 모아둔 부분
-private val ScreenBackgroundColor = Color.White
-private val MainPurpleColor = Color(0xFF8A35F5)
-private val LightPurpleColor = Color(0xFFF1E6FF)
-private val DisabledPurpleColor = Color(0xFFCDB2F3)
-private val ErrorColor = Color(0xFFE53935)
-private val InputBackgroundColor = Color(0xFFF6F6F9)
-private val PlaceholderColor = Color(0xFF9A9AA3)
-private val BorderColor = Color(0xFFE8E8EF)
+private val ScreenBackgroundColor = Color(0xFFF4F4F8) // 친구 탭과 동일한 배경색
+private val MainPurpleColor = Color(0xFF7B5CFF)
+private val LightPurpleColor = Color(0xFFF2EEFF)
+private val DisabledPurpleColor = Color(0xFFDAD7E2)
+private val ErrorColor = Color(0xFFFF4D7D)
+private val InputBackgroundColor = Color(0xFFF6F4FB)
+private val PlaceholderColor = Color(0xFF9B98A6)
+private val BorderColor = Color(0xFFECEAF1)
+
+// 시그니처 그라데이션 (보라 → 마젠타 → 핑크)
+private val CreateGradient = androidx.compose.ui.graphics.Brush.linearGradient(
+    0f to Color(0xFF7B5CFF), 0.45f to Color(0xFFA24BFF), 1f to Color(0xFFFF5C8A)
+)
+private val GradientSoft = androidx.compose.ui.graphics.Brush.linearGradient(
+    listOf(Color(0xFFEFE9FF), Color(0xFFFFE8F1))
+)
 
 // LazyColumn 안에서 특정 입력칸으로 이동할 때 사용하는 item 위치
 private const val TEAM_NAME_ITEM_INDEX = 1
@@ -137,12 +150,6 @@ fun MeetingCreateScreen(
     }
 
     Scaffold(
-        topBar = {
-            TeamCommonTopBar(
-                onSearchClick = onSearchClick,
-                onNotificationClick = onNotificationClick
-            )
-        },
         containerColor = ScreenBackgroundColor
     ) { innerPadding ->
         LazyColumn(
@@ -151,7 +158,7 @@ fun MeetingCreateScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 110.dp)
+            contentPadding = PaddingValues(top = 0.dp, bottom = 110.dp)
         ) {
             item {
                 ScreenTitle()
@@ -291,21 +298,20 @@ fun MeetingCreateScreen(
 @Composable
 private fun ScreenTitle() {
     Column(
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp)
     ) {
         Text(
             text = "팀 만들기",
-            color = Color(0xFF111827),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
+            fontSize = 23.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.4).sp,
+            color = Color(0xFF17161D)
         )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
         Text(
             text = "같이 활동할 팀 정보를 입력해주세요.",
-            color = Color(0xFF8A8F9C),
-            style = MaterialTheme.typography.bodyMedium
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF9B98A6)
         )
     }
 }
@@ -317,18 +323,22 @@ private fun TeamNameSection(
     isError: Boolean,
     onTeamNameChange: (String) -> Unit
 ) {
-    WhiteCardSection(title = "팀 이름") {
+    WhiteCardSection(
+        title = "팀 이름",
+        required = true,
+        titleRightText = "${teamName.length} / 20"
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(15.dp))
                 .background(InputBackgroundColor)
                 .border(
                     width = if (isError) 1.dp else 0.dp,
                     color = if (isError) ErrorColor else Color.Transparent,
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(15.dp)
                 )
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = 15.dp, vertical = 14.dp)
         ) {
             BasicTextField(
                 value = teamName,
@@ -369,13 +379,18 @@ private fun TeamDescriptionSection(
     teamDescription: String,
     onTeamDescriptionChange: (String) -> Unit
 ) {
-    WhiteCardSection(title = "팀 소개") {
+    WhiteCardSection(
+        title = "팀 소개",
+        required = true,
+        titleRightText = "${teamDescription.length} / 60"
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .heightIn(min = 74.dp)
+                .clip(RoundedCornerShape(15.dp))
                 .background(InputBackgroundColor)
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = 15.dp, vertical = 14.dp)
         ) {
             BasicTextField(
                 value = teamDescription,
@@ -408,13 +423,11 @@ private fun TeamPhotoSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(InputBackgroundColor)
-                .border(
-                    width = 0.dp,
-                    color = BorderColor,
-                    shape = RoundedCornerShape(22.dp)
+                .height(170.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .then(
+                    if (selectedPhotoUri == null) Modifier.background(GradientSoft)
+                    else Modifier.background(InputBackgroundColor)
                 )
                 .clickable { onUploadPhotoClick() },
             contentAlignment = Alignment.Center
@@ -461,19 +474,36 @@ private fun SelectedTeamPhoto(
 @Composable
 private fun EmptyTeamPhotoPlaceholder() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(
-            imageVector = Icons.Default.CameraAlt,
-            contentDescription = "사진 업로드",
-            tint = Color(0xFF9AA1AE),
-            modifier = Modifier.size(44.dp)
-        )
+        // 흰 원 안의 보라 카메라 (목업 .photo-up .cam)
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .shadow(2.dp, CircleShape)
+                .background(Color.White, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.CameraAlt,
+                contentDescription = "사진 업로드",
+                tint = MainPurpleColor,
+                modifier = Modifier.size(25.dp)
+            )
+        }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(9.dp))
 
         Text(
-            text = "대표 사진 추가",
-            color = Color(0xFF6D7483),
-            style = MaterialTheme.typography.bodyLarge
+            text = "팀 대표 사진 추가",
+            color = Color(0xFF17161D),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "팀을 가장 잘 보여주는 사진 한 장",
+            color = Color(0xFF56535F),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -619,53 +649,52 @@ private fun CreateTeamButton(
     isCreateButtonLocked: Boolean,
     onClick: () -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        enabled = !isCreatingTeam && !isCreateButtonLocked,
+    val disabled = isCreatingTeam || isCreateButtonLocked
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
-            .height(56.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MainPurpleColor,
-            disabledContainerColor = DisabledPurpleColor
-        )
+            .height(56.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .then(
+                if (disabled) Modifier.background(DisabledPurpleColor)
+                else Modifier.background(CreateGradient)
+            )
+            .clickable(enabled = !disabled, onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        when {
-            isCreatingTeam -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
-                    color = Color.White
-                )
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Text(
-                    text = "팀 생성 중...",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            isCreateButtonLocked -> {
-                Text(
-                    text = "잠시만 기다려주세요...",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            else -> {
-                Text(
-                    text = "팀 만들기",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when {
+                isCreatingTeam -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "팀 생성 중...",
+                        color = Color.White,
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+                isCreateButtonLocked -> {
+                    Text(
+                        text = "잠시만 기다려주세요...",
+                        color = Color.White,
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+                else -> {
+                    Text(
+                        text = "팀 만들기 완료",
+                        color = Color.White,
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
             }
         }
     }
@@ -676,37 +705,42 @@ private fun CreateTeamButton(
 private fun WhiteCardSection(
     title: String,
     titleRightText: String? = null,
+    required: Boolean = false,
     content: @Composable () -> Unit
 ) {
     Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp),
+            .fillMaxWidth(),
         shape = RoundedCornerShape(0.dp),
         color = Color.White,
         shadowElevation = 0.dp
     ) {
-        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
-                    color = Color.Black,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    color = Color(0xFF17161D),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold
                 )
+                if (required) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "*", color = Color(0xFFFF5C8A), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
 
                 if (titleRightText != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-
                     Text(
                         text = titleRightText,
-                        color = Color(0xFF63708C),
-                        style = MaterialTheme.typography.bodyMedium
+                        color = Color(0xFFC4C2CD),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             content()
         }
@@ -729,19 +763,23 @@ private fun TagWrapLayout(
                 rowTags.forEach { tag ->
                     val selected = selectedTags.contains(tag)
 
-                    Surface(
+                    Box(
                         modifier = Modifier
-                            .wrapContentHeight()
-                            .clickable { onTagClick(tag) },
-                        shape = RoundedCornerShape(22.dp),
-                        color = if (selected) LightPurpleColor else InputBackgroundColor
+                            .clip(RoundedCornerShape(999.dp))
+                            .then(
+                                if (selected) Modifier.background(CreateGradient)
+                                else Modifier
+                                    .background(Color.White)
+                                    .border(1.dp, BorderColor, RoundedCornerShape(999.dp))
+                            )
+                            .clickable { onTagClick(tag) }
+                            .padding(horizontal = 14.dp, vertical = 9.dp)
                     ) {
                         Text(
-                            text = "#$tag",
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            color = if (selected) MainPurpleColor else Color(0xFF444B5A),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            text = tag,
+                            color = if (selected) Color.White else Color(0xFF56535F),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -778,7 +816,6 @@ private fun SelectedTagList(
                             )
 
                             Spacer(modifier = Modifier.width(6.dp))
-
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "태그 제거",

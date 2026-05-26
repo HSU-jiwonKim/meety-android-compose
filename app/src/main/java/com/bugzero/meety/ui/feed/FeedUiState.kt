@@ -50,6 +50,7 @@ data class FeedUiState(
     val hasMore: Boolean = true,
     val errorMessage: String? = null,
     val userPreferences: Map<String, Int> = emptyMap(),
+    val userTagScores: Map<String, Int> = emptyMap(),  // 태그 점수만 (Top N 매칭 근거용)
     val selectedTeam: Team? = null,
 
     // ── 전체보기 모드 (LIST 탭) ──

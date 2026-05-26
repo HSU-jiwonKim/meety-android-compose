@@ -4,8 +4,10 @@ import android.app.Application
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +33,10 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ArrowBack
@@ -64,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -296,7 +302,7 @@ fun MyTeamScreen(
                 )
             }
         },
-        containerColor = Color.White
+        containerColor = Color(0xFFF4F4F8)
     ) { innerPadding ->
         when (screenMode) {
             FriendScreenMode.LIST -> {
@@ -304,12 +310,12 @@ fun MyTeamScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 18.dp,
-                        bottom = 120.dp
+                        start = 20.dp,
+                        end = 20.dp,
+                        top = 4.dp,
+                        bottom = 130.dp
                     )
                 ) {
                     item {
@@ -317,6 +323,11 @@ fun MyTeamScreen(
                             query = friendSearchQuery,
                             onQueryChange = { friendSearchQuery = it }
                         )
+                    }
+
+                    // 친구 추가 배너 (목업 .add-friend)
+                    item {
+                        AddFriendBanner(onClick = { screenMode = FriendScreenMode.ADD_FRIEND })
                     }
 
                     if (isLoading) {
@@ -328,27 +339,25 @@ fun MyTeamScreen(
                     } else if (filteredFriendList.isEmpty() && !isLoading) {
                         item { EmptyFriendCard(text = "검색 결과가 없습니다.") }
                     } else {
+                        // 즐겨찾기 가로 스트립 (목업 .fav-row)
                         if (favoriteFriendList.isNotEmpty()) {
                             item { SectionTitle(text = "즐겨찾기") }
-                            items(favoriteFriendList) { friend ->
-                                FriendListItem(
-                                    friend = friend,
-                                    onProfileClick = {
+                            item {
+                                FavoriteFriendRow(
+                                    favorites = favoriteFriendList,
+                                    onClick = { friend ->
                                         selectedProfile = friend.toProfilePreview()
                                         screenMode = FriendScreenMode.PROFILE_DETAIL
-                                    },
-                                    onFavoriteClick = { viewModel.toggleFavoriteFriend(friend.id, friend.isFavorite) },
-                                    onChatClick = { startFriendChat(friend) },
-                                    onRemoveClick = { viewModel.removeFriend(friend.id) }
+                                    }
                                 )
-                            }
-
-                            if (normalFriendList.isNotEmpty()) {
-                                item { SectionTitle(text = "친구") }
                             }
                         }
 
-                        items(normalFriendList) { friend ->
+                        item {
+                            SectionTitle(text = "전체 친구", trailing = "${filteredFriendList.size}명")
+                        }
+
+                        items(filteredFriendList) { friend ->
                             FriendListItem(
                                 friend = friend,
                                 onProfileClick = {
@@ -357,6 +366,7 @@ fun MyTeamScreen(
                                 },
                                 onFavoriteClick = { viewModel.toggleFavoriteFriend(friend.id, friend.isFavorite) },
                                 onChatClick = { startFriendChat(friend) },
+                                onCallClick = { startProfileCall(friend.id, "voice") },
                                 onRemoveClick = { viewModel.removeFriend(friend.id) }
                             )
                         }
@@ -426,48 +436,40 @@ private fun FriendListTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .background(Color(0xFFF4F4F8))
+            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(
-                        androidx.compose.ui.graphics.Brush.linearGradient(
-                            listOf(Color(0xFFB44FD3), Color(0xFFEC4899))
-                        ),
-                        RoundedCornerShape(12.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Meety",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFD946C7)
+                text = "친구",
+                fontSize = 23.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.4).sp,
+                color = Color(0xFF17161D)
+            )
+            Text(
+                text = "함께할 사람들을 찾아보세요",
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF9B98A6)
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        IconButton(onClick = onAddFriendClick) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .shadow(2.dp, RoundedCornerShape(13.dp))
+                .background(Color.White, RoundedCornerShape(13.dp))
+                .border(1.dp, Color(0xFFECEAF1), RoundedCornerShape(13.dp))
+                .clickable(onClick = onAddFriendClick),
+            contentAlignment = Alignment.Center
+        ) {
             Icon(
                 imageVector = Icons.Default.PersonAdd,
                 contentDescription = "친구 추가",
-                tint = Color(0xFF111111),
-                modifier = Modifier.size(27.dp)
+                tint = Color(0xFF17161D),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -814,22 +816,27 @@ private fun FriendSearchSection(
         onValueChange = onQueryChange,
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(15.dp),
         colors = androidx.compose.material3.TextFieldDefaults.colors(
             focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White
+            unfocusedContainerColor = Color.White,
+            focusedIndicatorColor = Color(0xFF7B5CFF),
+            unfocusedIndicatorColor = Color(0xFFECEAF1),
+            cursorColor = Color(0xFF7B5CFF)
         ),
         placeholder = {
             Text(
                 text = "친구 이름 검색",
-                color = Color(0xFF9CA3AF)
+                color = Color(0xFF9B98A6),
+                fontSize = 14.sp
             )
         },
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
                 contentDescription = "검색",
-                tint = Color(0xFFA020F0)
+                tint = Color(0xFF9B98A6),
+                modifier = Modifier.size(18.dp)
             )
         }
     )
@@ -916,15 +923,151 @@ private fun TeamTabButton(
 
 @Composable
 private fun SectionTitle(
-    text: String
+    text: String,
+    trailing: String? = null
 ) {
-    Text(
-        text = text,
-        color = Color(0xFF666666),
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(horizontal = 6.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFF17161D),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
+        if (trailing != null) {
+            Text(
+                text = trailing,
+                color = Color(0xFF9B98A6),
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/** 친구 추가 배너 (목업 .add-friend) */
+@Composable
+private fun AddFriendBanner(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(Color(0xFFEFE9FF), Color(0xFFFFE8F1))
+                )
+            )
+            .border(1.dp, Color(0xFFEADFFF), RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(15.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        0f to Color(0xFF7B5CFF), 0.45f to Color(0xFFA24BFF), 1f to Color(0xFFFF5C8A)
+                    ),
+                    RoundedCornerShape(13.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text("한성대 이메일로 친구 추가", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF17161D))
+            Spacer(Modifier.height(2.dp))
+            Text("@hansung.ac.kr 유저를 친구로 추가", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF56535F))
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF7B5CFF), modifier = Modifier.size(20.dp))
+    }
+}
+
+/** 즐겨찾기 가로 스트립 (목업 .fav-row) */
+@Composable
+private fun FavoriteFriendRow(
+    favorites: List<FriendUiState>,
+    onClick: (FriendUiState) -> Unit
+) {
+    val palette = listOf(
+        Color(0xFF7B5CFF), Color(0xFFFF5C8A), Color(0xFF26A69A), Color(0xFF1E88E5), Color(0xFFF5A623)
     )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        favorites.forEach { friend ->
+            val c = palette[(friend.id.hashCode() and Int.MAX_VALUE) % palette.size]
+            Column(
+                modifier = Modifier
+                    .width(62.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onClick(friend) },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .background(
+                            androidx.compose.ui.graphics.Brush.linearGradient(
+                                0f to Color(0xFF7B5CFF), 0.45f to Color(0xFFA24BFF), 1f to Color(0xFFFF5C8A)
+                            ),
+                            CircleShape
+                        )
+                        .padding(2.5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(Color(0xFFF4F4F8))
+                            .padding(2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (friend.profileImageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = friend.profileImageUrl,
+                                contentDescription = friend.name,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize().clip(CircleShape).background(c),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    friend.name.firstOrNull()?.toString() ?: "?",
+                                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    friend.name,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF56535F),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -934,9 +1077,9 @@ private fun FriendListItem(
     onProfileClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onChatClick: () -> Unit,
+    onCallClick: () -> Unit,
     onRemoveClick: () -> Unit
 ) {
-    var showActionMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
@@ -951,7 +1094,7 @@ private fun FriendListItem(
                         showDeleteDialog = false
                         onRemoveClick()
                     }
-                ) { Text(text = "삭제", color = Color.Black) }
+                ) { Text(text = "삭제", color = Color(0xFFE53935)) }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
@@ -961,112 +1104,127 @@ private fun FriendListItem(
         )
     }
 
-    Card(
+    val avatarColor = listOf(
+        Color(0xFF7B5CFF), Color(0xFFFF5C8A), Color(0xFF26A69A), Color(0xFF1E88E5), Color(0xFFF5A623)
+    )[(friend.id.hashCode() and Int.MAX_VALUE) % 5]
+
+    val meta = buildString {
+        if (friend.department.isNotBlank()) append(friend.department)
+        if (friend.age > 0) {
+            if (isNotEmpty()) append(" · ")
+            append("${friend.age}세")
+        }
+        if (isEmpty() && friend.bio.isNotBlank()) append(friend.bio)
+    }
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(2.dp, RoundedCornerShape(20.dp))
+            .background(Color.White, RoundedCornerShape(20.dp))
+            .border(1.dp, Color(0xFFF1EFF5), RoundedCornerShape(20.dp))
             .combinedClickable(
                 onClick = onProfileClick,
-                onLongClick = { showActionMenu = true }
-            ),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                onLongClick = { showDeleteDialog = true }
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        // 아바타 (라운드 사각, 그라데이션/이미지)
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .size(52.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(listOf(avatarColor, avatarColor.copy(alpha = 0.8f)))
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFF2F3F5)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (friend.profileImageUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = friend.profileImageUrl,
-                        contentDescription = "프로필 이미지",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "기본 프로필",
-                        tint = Color(0xFF9CA3AF),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+            if (friend.profileImageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = friend.profileImageUrl,
+                    contentDescription = "프로필 이미지",
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
                 Text(
-                    text = friend.name,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = Color(0xFF111111)
+                    friend.name.firstOrNull()?.toString() ?: "?",
+                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold
                 )
-
-                if (friend.bio.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = friend.bio,
-                        fontSize = 13.sp,
-                        color = Color(0xFF777777),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            IconButton(onClick = onChatClick) {
-                Icon(
-                    imageVector = Icons.Default.ChatBubble,
-                    contentDescription = "채팅",
-                    tint = Color(0xFF9CA3AF),
-                    modifier = Modifier.size(23.dp)
-                )
-            }
-
-            Box {
-                IconButton(onClick = { showActionMenu = true }) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "친구 메뉴",
-                        tint = Color(0xFF9CA3AF)
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showActionMenu,
-                    onDismissRequest = { showActionMenu = false },
-                    containerColor = Color(0xFFF7F7F7),
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(if (friend.isFavorite) "즐겨찾기 해제" else "즐겨찾기") },
-                        onClick = {
-                            showActionMenu = false
-                            onFavoriteClick()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("친구 삭제", color = Color(0xFFE53935)) },
-                        onClick = {
-                            showActionMenu = false
-                            showDeleteDialog = true
-                        }
-                    )
-                }
             }
         }
+
+        Spacer(modifier = Modifier.width(13.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = friend.name,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.sp,
+                color = Color(0xFF17161D),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (meta.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = meta,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF9B98A6),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // 인라인 액션: 채팅 / 통화 / 즐겨찾기
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+            FriendActionButton(
+                icon = Icons.Default.ChatBubble,
+                tint = Color(0xFF7B5CFF),
+                bg = Color(0xFFF2EEFF),
+                border = false,
+                onClick = onChatClick
+            )
+            FriendActionButton(
+                icon = Icons.Default.Call,
+                tint = Color(0xFF19C37D),
+                bg = Color(0xFFFAFAFD),
+                border = true,
+                onClick = onCallClick
+            )
+            FriendActionButton(
+                icon = if (friend.isFavorite) Icons.Default.Star else Icons.Outlined.StarOutline,
+                tint = if (friend.isFavorite) Color(0xFFF5A623) else Color(0xFF9B98A6),
+                bg = Color(0xFFFAFAFD),
+                border = true,
+                onClick = onFavoriteClick
+            )
+        }
+    }
+}
+
+/** 친구 카드 인라인 액션 버튼 (목업 .f-act) */
+@Composable
+private fun FriendActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    bg: Color,
+    border: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .then(if (border) Modifier.border(1.dp, Color(0xFFECEAF1), RoundedCornerShape(12.dp)) else Modifier)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
     }
 }
 

@@ -22,7 +22,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +52,16 @@ fun FeedScreen(
     val unreadCount by notificationViewModel.unreadCount.collectAsStateWithLifecycle()
     val currentTeam = uiState.teams.getOrNull(uiState.currentIndex)
     val nextTeam    = uiState.teams.getOrNull(uiState.currentIndex + 1)
+
+    // 매칭 근거 "자주 누른 태그 Top N"용: 점수 높은 순 상위 태그 + 좋아요·패스 누적 횟수
+    val userTopTags = remember(uiState.userTagScores) {
+        uiState.userTagScores
+            .filterValues { it > 0 }
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+    }
+    val actionCount = uiState.likedTeamIds.size + uiState.passedTeamIds.size
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -95,6 +107,8 @@ fun FeedScreen(
                                 currentTeam    = currentTeam,
                                 nextTeam       = nextTeam,
                                 isLoadingMore  = uiState.isLoadingMore,
+                                userTopTags    = userTopTags,
+                                actionCount    = actionCount,
                                 onLike         = { viewModel.onCardSwiped(true) },
                                 onPass         = { viewModel.onCardSwiped(false) },
                                 onInfo         = { currentTeam?.let { viewModel.selectTeam(it.teamId) } },
@@ -225,147 +239,122 @@ private fun RecommendContent(
     currentTeam: Team?,
     nextTeam: Team?,
     isLoadingMore: Boolean,
+    userTopTags: List<String>,
+    actionCount: Int,
     onLike: () -> Unit,
     onPass: () -> Unit,
     onInfo: () -> Unit,
     onUndo: () -> Unit,
     onReset: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        ) {
-            when {
-                // ── 카드 있음: 다음 카드 프리렌더 + 현재 카드 ──
-                currentTeam != null -> {
-                    // 다음 카드를 미리 렌더링 (non-interactive, 약간 축소해 뒤에 깔림)
-                    nextTeam?.let { next ->
-                        val colorIndex = (next.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
-                        val bgColors   = FeedConstants.CardColorPalette[colorIndex]
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                                .offset(y = 8.dp)
-                                .shadow(4.dp, RoundedCornerShape(24.dp))
-                                .clip(RoundedCornerShape(24.dp))
-                        ) {
-                            // 배경: 실제 이미지 또는 그라데이션
-                            if (next.teamProfileImage.isNotBlank()) {
-                                AsyncImage(
-                                    model              = next.teamProfileImage,
-                                    contentDescription = null,
-                                    modifier           = Modifier.fillMaxSize(),
-                                    contentScale       = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Brush.verticalGradient(bgColors))
-                                )
-                            }
-                            // 하단 어둠 오버레이
+    // ? 버튼 상태를 여기서 관리 → MatchReasonSheet이 액션버튼까지 덮을 수 있음
+    var whyOpen by remember { mutableStateOf(false) }
+    // 팀이 바뀌면 시트 닫기
+    LaunchedEffect(currentTeam?.teamId) { whyOpen = false }
+
+    // Box로 감싸서 MatchReasonSheet를 카드+버튼 위에 오버레이
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                when {
+                    // ── 카드 있음: 다음 카드 프리렌더 + 현재 카드 ──
+                    currentTeam != null -> {
+                        nextTeam?.let { next ->
+                            val colorIndex = (next.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
+                            val bgColors   = FeedConstants.CardColorPalette[colorIndex]
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0.4f to Color.Transparent,
-                                            1.0f to Color.Black.copy(alpha = 0.65f)
-                                        )
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .offset(y = 8.dp)
+                                    .shadow(4.dp, RoundedCornerShape(24.dp))
+                                    .clip(RoundedCornerShape(24.dp))
+                            ) {
+                                if (next.teamProfileImage.isNotBlank()) {
+                                    AsyncImage(
+                                        model = next.teamProfileImage, contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
                                     )
-                            )
-                            // 팀 이름 (하단)
-                            Text(
-                                text       = next.teamName,
-                                fontSize   = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color      = Color.White,
-                                modifier   = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 24.dp, bottom = 28.dp)
+                                } else {
+                                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(bgColors)))
+                                }
+                                Box(
+                                    Modifier.fillMaxSize().background(
+                                        Brush.verticalGradient(0.4f to Color.Transparent, 1.0f to Color.Black.copy(alpha = 0.65f))
+                                    )
+                                )
+                                Text(
+                                    text = next.teamName, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 28.dp)
+                                )
+                            }
+                        }
+
+                        key(currentTeam.teamId) {
+                            SwipeCard(
+                                team        = currentTeam,
+                                onLike      = onLike,
+                                onPass      = onPass,
+                                onInfo      = onInfo,
+                                userTopTags = userTopTags,
+                                actionCount = actionCount,
+                                whyOpen     = whyOpen,
+                                onWhyOpen   = { whyOpen = true }
                             )
                         }
                     }
 
-                    // key(teamId): currentTeam이 바뀌면 SwipeCard를 완전히 교체한다
-                    key(currentTeam.teamId) {
-                        SwipeCard(
-                            team   = currentTeam,
-                            onLike = onLike,
-                            onPass = onPass,
-                            onInfo = onInfo
-                        )
-                    }
-                }
-
-                // ── 카드 없음 + 추가 로딩 중 ──
-                isLoadingMore -> {
-                    Box(
-                        modifier         = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(
-                                color       = Purple,
-                                strokeWidth = 3.dp,
-                                modifier    = Modifier.size(40.dp)
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                text     = "새 팀을 불러오는 중이에요...",
-                                fontSize = 14.sp,
-                                color    = Gray500
-                            )
+                    isLoadingMore -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Purple, strokeWidth = 3.dp, modifier = Modifier.size(40.dp))
+                                Spacer(Modifier.height(16.dp))
+                                Text("새 팀을 불러오는 중이에요...", fontSize = 14.sp, color = Gray500)
+                            }
                         }
                     }
-                }
 
-                // ── 카드 없음 + 로딩 아님 → 빈 화면 ──
-                else -> {
-                    Column(
-                        modifier            = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("🎉", fontSize = 48.sp)
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text       = "모든 팀을 확인했어요!",
-                            fontSize   = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color      = Gray700
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text      = "새 팀이 생기면 자동으로 추가돼요",
-                            fontSize  = 14.sp,
-                            color     = Gray500,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(28.dp))
-                        Button(
-                            onClick        = onReset,
-                            shape          = RoundedCornerShape(14.dp),
-                            colors         = ButtonDefaults.buttonColors(containerColor = Purple),
-                            contentPadding = PaddingValues(horizontal = 32.dp, vertical = 14.dp)
+                    else -> {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("다시 불러오기", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("🎉", fontSize = 48.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Text("모든 팀을 확인했어요!", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray700)
+                            Spacer(Modifier.height(8.dp))
+                            Text("새 팀이 생기면 자동으로 추가돼요", fontSize = 14.sp, color = Gray500, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(28.dp))
+                            Button(
+                                onClick = onReset, shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Purple),
+                                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 14.dp)
+                            ) { Text("다시 불러오기", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                         }
                     }
                 }
             }
+
+            if (currentTeam != null) {
+                SwipeActionButtons(onUndo = onUndo, onPass = onPass, onLike = onLike, onInfo = onInfo)
+            }
         }
 
-        if (currentTeam != null) {
-            SwipeActionButtons(
-                onUndo = onUndo,
-                onPass = onPass,
-                onLike = onLike
+        // MatchReasonSheet: 카드 + 액션 버튼 전체를 덮는 오버레이
+        if (whyOpen && currentTeam != null) {
+            MatchReasonSheet(
+                team        = currentTeam,
+                userTopTags = userTopTags,
+                actionCount = actionCount,
+                onClose     = { whyOpen = false },
+                onApply     = { whyOpen = false; onLike() }
             )
         }
     }

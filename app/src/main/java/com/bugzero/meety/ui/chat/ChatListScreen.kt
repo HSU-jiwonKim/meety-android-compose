@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -154,17 +155,22 @@ fun ChatListScreen(
                     val isSelected = selectedFilter == filter
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) Color(0xFF7C3AED) else Color(0xFFF3F4F6))
+                            .clip(RoundedCornerShape(999.dp))
+                            .then(
+                                if (isSelected) Modifier.background(FeedConstants.GradientPurplePink)
+                                else Modifier
+                                    .background(Color.White)
+                                    .border(1.dp, Color(0xFFECEAF1), RoundedCornerShape(999.dp))
+                            )
                             .clickable { selectedFilter = filter }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = filter,
-                            color = if (isSelected) Color.White else Color(0xFF4B5563),
-                            fontSize = 14.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            color = if (isSelected) Color.White else Color(0xFF56535F),
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -308,58 +314,68 @@ private fun ChatListItem(chat: ChatPreview, timeText: String, onClick: () -> Uni
         verticalAlignment = Alignment.CenterVertically
     ) {
         val imageUrl = chat.imageUrl
+        val isTeam = chat.type == "team"
 
         if (imageUrl.isNotEmpty()) {
-            // DB에 등록된 팀 사진이 있을 때 (동그라미에 꽉 차게!)
             AsyncImage(
                 model = imageUrl,
                 contentDescription = "채팅방 프로필 이미지",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(18.dp))
             )
         } else {
-            // 등록된 사진이 없어서 기본값일 때 (기존 핑크색 배경 + 이모지)
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(FeedConstants.GradientPurplePink),
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .then(
+                        if (isTeam) Modifier.background(Color(0xFFF2EEFF))
+                        else Modifier.background(FeedConstants.GradientPurplePink)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = chat.emoji, fontSize = 24.sp)
+                Text(text = chat.emoji, fontSize = if (isTeam) 24.sp else 22.sp)
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(13.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = chat.teamName,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    color = Color(0xFF17161D),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-
-                // ✨ 수정된 부분: 방의 ID나 이름 따지지 말고, 그냥 '참여자가 3명 이상'이면 무조건 띄워줍니다!
-                if (chat.participantCount > 2) {
-                    Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                // 개인/팀 태그 칩
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isTeam) Color(0xFFFFECF3) else Color(0xFFF2EEFF),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
                     Text(
-                        text = "${chat.participantCount}",
-                        fontSize = 14.sp,
-                        color = Color(0xFF9CA3AF)
+                        text = if (isTeam) "팀" else "개인",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isTeam) Color(0xFFE0457A) else Color(0xFF6D49E0)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = chat.lastMessage,
-                fontSize = 14.sp,
-                color = Color.Gray,
+                fontSize = 13.sp,
+                color = Color(0xFF56535F),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -368,17 +384,17 @@ private fun ChatListItem(chat: ChatPreview, timeText: String, onClick: () -> Uni
         Spacer(modifier = Modifier.width(8.dp))
 
         Column(horizontalAlignment = Alignment.End) {
-            Text(text = timeText, fontSize = 12.sp, color = Color(0xFF9CA3AF))
+            Text(text = timeText, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF9B98A6))
             if (chat.unreadCount > 0) {
+                Spacer(modifier = Modifier.height(5.dp))
                 Box(
                     modifier = Modifier
-                        .padding(top = 4.dp)
                         .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
-                        .background(Color(0xFFA78BFA), CircleShape)
+                        .background(Color(0xFFFF5C8A), CircleShape)
                         .padding(horizontal = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "${chat.unreadCount}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "${chat.unreadCount}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
@@ -399,32 +415,13 @@ private fun ChatTopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(FeedConstants.GradientPurplePink, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Favorite, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Meety",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.drawWithCache {
-                    val brush = FeedConstants.GradientPurplePink
-                    onDrawWithContent {
-                        drawContent()
-                        drawRect(brush, blendMode = BlendMode.SrcAtop)
-                    }
-                }
-            )
-        }
+        Text(
+            "채팅",
+            fontSize = 23.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.4).sp,
+            color = Color(0xFF17161D)
+        )
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -631,65 +628,58 @@ private fun PendingInvitationsSection(
             }
         }
 
-        // 초대 카드 목록
+        // 초대 카드 목록 (목업 .invite-card — 그라데이션 강조 카드)
         invitations.forEach { inv ->
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF5F3FF))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(FeedConstants.GradientPurplePink)
                     .clickable { onTapDetail(inv) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(15.dp)
             ) {
-                // 팀 아이콘
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(FeedConstants.GradientPurplePink),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(inv.teamEmoji, fontSize = 20.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(inv.teamEmoji.ifBlank { "💌" }, fontSize = 15.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("받은 초대", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 }
-
-                Spacer(Modifier.width(12.dp))
-
-                // 팀 이름 + 안내 문구
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(inv.teamName, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color(0xFF1F2937))
-                    Text("팀원 초대장이 도착했어요", fontSize = 12.sp, color = Color(0xFF7C3AED))
-                }
-
-                // 거절 / 수락 버튼
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(
-                        onClick        = { onReject(inv) },
-                        shape          = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier       = Modifier.height(36.dp)
+                Spacer(Modifier.height(8.dp))
+                Text(inv.teamName, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color.White)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "팀원 초대장이 도착했어요",
+                    fontSize = 12.5.sp,
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(13.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(Color.White)
+                            .clickable { onAccept(inv) }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("거절", fontSize = 13.sp, color = Color(0xFF6B7280))
+                        Text("수락", fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF7B5CFF))
                     }
-                    Button(
-                        onClick        = { onAccept(inv) },
-                        shape          = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier       = Modifier.height(36.dp),
-                        colors         = ButtonDefaults.buttonColors(containerColor = Color(0xFFA78BFA))
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(Color.White.copy(alpha = 0.2f))
+                            .clickable { onReject(inv) }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("수락", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("거절", fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
         }
-
-        HorizontalDivider(
-            modifier  = Modifier.padding(top = 4.dp),
-            color     = Color(0xFFF3F4F6),
-            thickness = 1.dp
-        )
     }
 }
 
