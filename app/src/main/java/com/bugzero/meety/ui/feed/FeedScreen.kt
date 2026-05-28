@@ -40,6 +40,9 @@ import com.bugzero.meety.ui.notification.NotificationViewModel
 import com.bugzero.meety.ui.team.Team
 import com.bugzero.meety.ui.theme.*
 import com.bugzero.meety.ui.feed.TeamActionStatus
+import com.bugzero.meety.ui.feed.CurrentUserProfile
+import com.bugzero.meety.ui.feed.MemberDistanceResult
+import com.bugzero.meety.ui.feed.MemberProfile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,17 +106,29 @@ fun FeedScreen(
                         label = "tab_transition"
                     ) { mode ->
                         if (mode == FeedViewMode.RECOMMEND) {
+                            // 현재 카드에 대한 캐시 조회 (사전 fetch된 데이터)
+                            val currentFitScore = currentTeam?.teamId
+                                ?.let { uiState.cardFitScoreCache[it] } ?: 70
+                            val currentMemberProfiles = currentTeam?.teamId
+                                ?.let { uiState.cardMemberProfilesCache[it] } ?: emptyList()
+                            val currentDistanceResults = currentTeam?.teamId
+                                ?.let { uiState.cardDistanceCache[it] } ?: emptyList()
+
                             RecommendContent(
-                                currentTeam    = currentTeam,
-                                nextTeam       = nextTeam,
-                                isLoadingMore  = uiState.isLoadingMore,
-                                userTopTags    = userTopTags,
-                                actionCount    = actionCount,
-                                onLike         = { viewModel.onCardSwiped(true) },
-                                onPass         = { viewModel.onCardSwiped(false) },
-                                onInfo         = { currentTeam?.let { viewModel.selectTeam(it.teamId) } },
-                                onUndo         = { viewModel.undoSwipe() },
-                                onReset        = { viewModel.fetchRemoteTeams() }
+                                currentTeam          = currentTeam,
+                                nextTeam             = nextTeam,
+                                isLoadingMore        = uiState.isLoadingMore,
+                                userTopTags          = userTopTags,
+                                actionCount          = actionCount,
+                                currentUserProfile   = uiState.currentUserProfile,
+                                memberProfiles       = currentMemberProfiles,
+                                distanceResults      = currentDistanceResults,
+                                fitScore             = currentFitScore,
+                                onLike               = { viewModel.onCardSwiped(true) },
+                                onPass               = { viewModel.onCardSwiped(false) },
+                                onInfo               = { currentTeam?.let { viewModel.selectTeam(it.teamId) } },
+                                onUndo               = { viewModel.undoSwipe() },
+                                onReset              = { viewModel.fetchRemoteTeams() }
                             )
                         } else {
                             // 목록 모드: pull-to-refresh (allTeams = 전체 보기)
@@ -241,6 +256,10 @@ private fun RecommendContent(
     isLoadingMore: Boolean,
     userTopTags: List<String>,
     actionCount: Int,
+    currentUserProfile: CurrentUserProfile?,
+    memberProfiles: List<MemberProfile>,
+    distanceResults: List<MemberDistanceResult>,
+    fitScore: Int,
     onLike: () -> Unit,
     onPass: () -> Unit,
     onInfo: () -> Unit,
@@ -298,14 +317,13 @@ private fun RecommendContent(
 
                         key(currentTeam.teamId) {
                             SwipeCard(
-                                team        = currentTeam,
-                                onLike      = onLike,
-                                onPass      = onPass,
-                                onInfo      = onInfo,
-                                userTopTags = userTopTags,
-                                actionCount = actionCount,
-                                whyOpen     = whyOpen,
-                                onWhyOpen   = { whyOpen = true }
+                                team      = currentTeam,
+                                onLike    = onLike,
+                                onPass    = onPass,
+                                onInfo    = onInfo,
+                                fitScore  = fitScore,
+                                whyOpen   = whyOpen,
+                                onWhyOpen = { whyOpen = true }
                             )
                         }
                     }
@@ -350,11 +368,14 @@ private fun RecommendContent(
         // MatchReasonSheet: 카드 + 액션 버튼 전체를 덮는 오버레이
         if (whyOpen && currentTeam != null) {
             MatchReasonSheet(
-                team        = currentTeam,
-                userTopTags = userTopTags,
-                actionCount = actionCount,
-                onClose     = { whyOpen = false },
-                onApply     = { whyOpen = false; onLike() }
+                team               = currentTeam,
+                userTopTags        = userTopTags,
+                actionCount        = actionCount,
+                currentUserProfile = currentUserProfile,
+                memberProfiles     = memberProfiles,
+                distanceResults    = distanceResults,
+                onClose            = { whyOpen = false },
+                onApply            = { whyOpen = false; onLike() }
             )
         }
     }

@@ -29,9 +29,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bugzero.meety.ui.auth.BALANCE_QUESTIONS
+import com.bugzero.meety.ui.feed.CurrentUserProfile
 import com.bugzero.meety.ui.feed.FeedConstants
+import com.bugzero.meety.ui.feed.MemberDistanceResult
+import com.bugzero.meety.ui.feed.MemberProfile
 import com.bugzero.meety.ui.team.Team
 import com.bugzero.meety.ui.theme.*
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -44,18 +49,16 @@ import kotlin.math.roundToInt
  * 해금 전에는 적합도 점수 계산에서 제외(잠금)된다.
  */
 
-// 해금 기준: 좋아요 + 패스 누적 횟수
-private const val UNLOCK_THRESHOLD = 10
-// 자주 누른 태그 상위 N개만 사용 (방법 2)
-private const val TOP_TAG_N = 3
-
 /**
- * 카드 배지용 적합도 점수 계산 (SwipeCard에서도 사용)
- * 기본 4항목 평균(80+88+80+75=81) + 해금 시 Top 태그 겹침 비율 추가
+ * 카드 배지용 적합도 점수 계산 (레거시 — SwipeCard에서 캐시된 값으로 교체 예정)
+ *
+ * FeedViewModel.computeFitScore()가 실제 계산을 담당하며,
+ * 이 함수는 캐시가 아직 준비되지 않았을 때의 폴백용으로만 사용된다.
  */
+@Deprecated("FeedUiState.cardFitScoreCache 에서 미리 계산된 값을 사용하세요")
 fun calculateFitScore(userTopTags: List<String>, teamTags: List<String>, actionCount: Int): Int {
-    val unlocked = actionCount >= UNLOCK_THRESHOLD
-    val topTags  = userTopTags.take(TOP_TAG_N)
+    val unlocked = actionCount >= FeedConstants.MATCH_UNLOCK_THRESHOLD
+    val topTags  = userTopTags.take(FeedConstants.MATCH_TOP_TAG_N)
     val overlap  = topTags.count { it in teamTags }
     val topPct   = if (topTags.isNotEmpty()) (overlap * 100f / topTags.size).roundToInt() else 0
     val base     = listOf(80, 88, 80, 75)
@@ -64,6 +67,20 @@ fun calculateFitScore(userTopTags: List<String>, teamTags: List<String>, actionC
 }
 
 private val GradSoft = Brush.linearGradient(listOf(GradSoftStart, GradSoftEnd))
+
+/**
+ * 밸런스 게임 axis 키 → 화면 표시용 짧은 레이블.
+ * BalanceQuestions.kt 의 axis 값과 1:1 대응해야 한다.
+ * axis가 추가/변경되면 여기도 같이 업데이트.
+ */
+private val AXIS_DISPLAY_LABELS = mapOf(
+    "meeting_purpose" to "모임 목적",
+    "intensity"       to "활동 강도",
+    "frequency"       to "만남 빈도",
+    "cost"            to "비용 정산",
+    "vibe"            to "분위기",
+    "planning"        to "약속 스타일"
+)
 
 /** 근거 강도 배지 */
 private enum class Strength(val bg: Color, val fg: Color, val filled: Int) {
@@ -161,144 +178,240 @@ private data class DistRow(val label: String, val distance: String, val score: I
 private data class MatchRow(val label: String, val value: String, val matched: Boolean)
 
 /**
- * 추천 카드 위 매칭 근거 근거를 구성한다.
- * - 4개 기본 항목은 목업 값을 사용 (콜드스타트 UI 우선)
- * - "관심사 일치" 칩과 "Top N 태그"는 실제 team.tags / 사용자 태그 점수로 계산
+ * 매칭 근거 카드 목록을 구성한다.
+ *
+ * - 관심사·태그: currentUserProfile.interests/foodLikes ∩ team.tags
+ * - 동네 근접도: distanceResults (FeedViewModel이 사전 계산한 대중교통 소요시간)
+ * - 가치관 일치: currentUserProfile.balanceAnswers ↔ team.balanceProfile
+ * - 팀원 공통점: memberProfiles ∩ currentUserProfile (관심사·음식취향)
+ * - 자주 누른 태그: userTopTags(선호도 누적 Top N) ∩ team.tags
  */
 private fun buildReasons(
     team: Team,
     userTopTags: List<String>,
-    actionCount: Int
+    actionCount: Int,
+    currentUserProfile: CurrentUserProfile?,
+    memberProfiles: List<MemberProfile>,
+    distanceResults: List<MemberDistanceResult>
 ): List<Reason> {
-    val unlocked = actionCount >= UNLOCK_THRESHOLD
+    val unlocked = actionCount >= FeedConstants.MATCH_UNLOCK_THRESHOLD
 
-    // ── 방법 2: 자주 누른 태그 Top N ──
-    val topTags = userTopTags.take(TOP_TAG_N)
+    // ── 자주 누른 태그 Top N ──
+    val topTags = userTopTags.take(FeedConstants.MATCH_TOP_TAG_N)
     val overlap = topTags.count { it in team.tags }
     val topPercent = if (topTags.isNotEmpty()) (overlap * 100f / topTags.size).roundToInt() else 0
 
-    // ── 적합도 종합 (기본 4항목 + 해금 시 Top 태그) ──
-    val baseBars = listOf(
-        Bar("관심사 일치", 80),
-        Bar("동네 근접도", 88),
-        Bar("가치관 일치", 80),
-        Bar("팀원 공통점", 75)
-    )
-    val topBar = Bar("자주 누른 태그", if (unlocked) topPercent else 0, locked = !unlocked)
-    val allBars = baseBars + topBar
+    // ── 관심사·태그 일치 ──
+    val userInterests = currentUserProfile?.interests ?: emptyList()
+    val userFoodLikes = currentUserProfile?.foodLikes ?: emptyList()
+    val allUserTags = (userInterests + userFoodLikes).distinct().take(8)
+    val matchedTags = allUserTags.filter { it in team.tags }
+    val unmatchedTags = allUserTags.filter { it !in team.tags }
+    val displayChips: List<Pair<String, Boolean>> = (matchedTags + unmatchedTags.take(3))
+        .map { it to (it in team.tags) }
+        .ifEmpty { team.tags.take(5).map { it to false } }
+    val interestMatchCount = matchedTags.size
+    val interestTotalCount = allUserTags.size.coerceAtLeast(1)
+    val interestScore = if (allUserTags.isNotEmpty()) {
+        (interestMatchCount.toDouble() / interestTotalCount * 100).toInt().coerceIn(0, 100)
+    } else 70
 
-    val activeValues = baseBars.map { it.value } + if (unlocked) listOf(topPercent) else emptyList()
-    val fitScore = if (activeValues.isNotEmpty()) activeValues.average().roundToInt() else 0
-
-    val calc = if (unlocked) {
-        "$fitScore = (${activeValues.joinToString(" + ")}) ÷ ${activeValues.size} — 확률이 아니라 위 항목들의 평균이에요. " +
-                "'자주 누른 태그' 근거가 해금되어 점수에 반영됐어요."
+    // ── 동네 근접도 ──
+    val hasDistance = distanceResults.isNotEmpty()
+    val avgMinutes = if (hasDistance) distanceResults.map { it.transitMinutes }.average().toInt() else 0
+    val avgDistScore = if (hasDistance) distanceResults.map { it.score }.average().toInt() else 70
+    val distRows = if (hasDistance) {
+        distanceResults.map { r ->
+            val distStr = if (r.distanceKm < 1.0) "${(r.distanceKm * 1000).toInt()}m"
+            else "${"%.1f".format(r.distanceKm)}km"
+            DistRow(
+                label    = "${r.memberName} · ${r.memberLocation}",
+                distance = "$distStr · 약 ${r.transitMinutes}분",
+                score    = r.score
+            )
+        }
     } else {
-        "$fitScore = (${baseBars.joinToString(" + ") { it.value.toString() }}) ÷ ${baseBars.size} — 확률이 아니라 위 항목들의 평균이에요. " +
-                "'자주 누른 태그' 근거는 좋아요·패스 ${UNLOCK_THRESHOLD}회를 채우면 해금돼 점수에 반영돼요. (현재 ${actionCount}/${UNLOCK_THRESHOLD})"
+        listOf(DistRow("계산 중…", "잠시 후 다시 열어보세요", 0))
     }
 
-    return listOf(
-        Reason.Overview(
+    // ── 가치관 일치 (balanceAnswers ↔ team.balanceProfile) ──
+    val userAnswers  = currentUserProfile?.balanceAnswers ?: emptyMap()
+    val teamProfile  = team.balanceProfile
+    // axis → (행 레이블, 유저가 고른 옵션 태그)
+    // 저장 규칙: -1 = optionA("a" 선택), +1 = optionB("b" 선택)
+    val axisInfo: Map<String, Pair<String, String>> = BALANCE_QUESTIONS.associate { q ->
+        val chosenTag = when (userAnswers[q.axis]) {
+            -1   -> q.optionA.tag
+            1    -> q.optionB.tag
+            else -> "—"
+        }
+        q.axis to ((AXIS_DISPLAY_LABELS[q.axis] ?: q.axis) to chosenTag)
+    }
+    val availableAxes = userAnswers.keys.intersect(teamProfile.keys)
+        .sortedByDescending { axis -> abs(teamProfile[axis] ?: 0f) }
+        .take(5)
+    val balanceRows = availableAxes.mapNotNull { axis ->
+        val userVal  = userAnswers[axis]  ?: return@mapNotNull null
+        val teamAvg  = teamProfile[axis]  ?: return@mapNotNull null
+        val (category, answerLabel) = axisInfo[axis] ?: return@mapNotNull null
+        val matched = when {
+            abs(teamAvg) < 0.1f         -> false  // 팀이 반반 → 절반 점수
+            userVal < 0 && teamAvg < -0.1f -> true
+            userVal > 0 && teamAvg > 0.1f  -> true
+            else                            -> false
+        }
+        MatchRow(label = category, value = answerLabel, matched = matched)
+    }
+    val balanceMatchCount = balanceRows.count { it.matched }
+    val balanceTotal = balanceRows.size.coerceAtLeast(1)
+    val balanceScore = if (availableAxes.isNotEmpty()) {
+        availableAxes.mapNotNull { axis ->
+            val u = userAnswers[axis]?.toFloat() ?: return@mapNotNull null
+            val t = teamProfile[axis]             ?: return@mapNotNull null
+            ((u * t + 1f) / 2f * 100f).coerceIn(0f, 100f)
+        }.average().toInt().coerceIn(0, 100)
+    } else 75
+    val hasBalance = balanceRows.isNotEmpty()
+
+    // ── 팀원 공통점 ──
+    val hasMemberData = memberProfiles.isNotEmpty() && currentUserProfile != null
+    val commonRows: List<MatchRow>
+    val membersWithCommon: Int
+    val commonScore: Int
+
+    if (hasMemberData) {
+        val interestMatchRows = userInterests.map { interest ->
+            val cnt = memberProfiles.count { interest in it.interests }
+            MatchRow("공통 관심사 · $interest", "${cnt}명", cnt > 0)
+        }.take(3)
+        val foodMatchRows = userFoodLikes.map { food ->
+            val cnt = memberProfiles.count { food in it.foodLikes }
+            MatchRow("음식 취향 · $food", "${cnt}명", cnt > 0)
+        }.take(2)
+        commonRows = (interestMatchRows + foodMatchRows).ifEmpty {
+            listOf(MatchRow("공통 프로필 항목 없음", "현재 데이터 기준", false))
+        }
+        membersWithCommon = memberProfiles.count { member ->
+            userInterests.any { it in member.interests } || userFoodLikes.any { it in member.foodLikes }
+        }
+        commonScore = (membersWithCommon.toDouble() / memberProfiles.size * 100).toInt().coerceIn(0, 100)
+    } else {
+        commonRows = listOf(MatchRow("팀원 프로필 로딩 중", "잠시 후 다시 열어보세요", false))
+        membersWithCommon = 0
+        commonScore = 50
+    }
+
+    // ── 적합도 종합 bars ──
+    val baseBars = listOf(
+        Bar("관심사 일치",  interestScore),
+        Bar("동네 근접도",  if (hasDistance) avgDistScore else 70),
+        Bar("가치관 일치",  if (hasBalance)  balanceScore else 75),
+        Bar("팀원 공통점",  commonScore)
+    )
+    val topBar   = Bar("자주 누른 태그", if (unlocked) topPercent else 0, locked = !unlocked)
+    val allBars  = baseBars + topBar
+
+    val activeValues = baseBars.map { it.value } + if (unlocked) listOf(topPercent) else emptyList()
+    val fitScore     = if (activeValues.isNotEmpty()) activeValues.average().roundToInt() else 0
+
+    val calc = buildString {
+        append("$fitScore = (${activeValues.joinToString(" + ")}) ÷ ${activeValues.size}")
+        append(" — 확률이 아니라 위 항목들의 평균이에요.")
+        if (unlocked) {
+            append(" '자주 누른 태그' 근거가 해금되어 점수에 반영됐어요.")
+        } else {
+            append(" '자주 누른 태그' 근거는 좋아요·패스 ${FeedConstants.MATCH_UNLOCK_THRESHOLD}회를 채우면 해금돼요.")
+            append(" (현재 $actionCount/${FeedConstants.MATCH_UNLOCK_THRESHOLD})")
+        }
+    }
+
+    return buildList {
+        add(Reason.Overview(
             icon = "🎯",
             title = "적합도 ${fitScore}점",
-            source = if (unlocked) "5개 항목의 평균 · 직접 계산" else "4개 항목의 평균 · 직접 계산",
+            source = "${if (unlocked) "5" else "4"}개 항목의 평균 · 직접 계산",
             strength = Strength.HI,
             strengthLabel = "계산값",
             fitScore = fitScore,
             bars = allBars,
             calc = calc
-        ),
-        Reason.Chips(
+        ))
+        add(Reason.Chips(
             icon = "🏷️",
             title = "관심사·태그 일치",
-            source = "회원님 프로필 ∩ 팀 태그",
-            strength = Strength.HI,
-            strengthLabel = "80%",
-            statNum = "4/5",
+            source = "회원님 관심사 ∩ 팀 태그",
+            strength = if (interestMatchCount > 0) Strength.HI else Strength.MID,
+            strengthLabel = if (allUserTags.isNotEmpty()) "${interestScore}%" else "분석 중",
+            statNum = "$interestMatchCount/${allUserTags.size}",
             statLabel = "개 일치",
-            statSub = "회원님 관심사 5개 중 4개가 이 팀과 겹쳐요",
-            chips = listOf(
-                "맛집탐방" to true, "카페" to true, "영화" to true, "여행" to true, "운동" to false
-            ),
-            why = "두 집합의 교집합으로 계산했어요. 화면의 칩을 직접 세면 그대로 4개예요 — 검증 가능합니다.",
-            score = "일치 4개 ÷ 내 관심사 5개 × 100",
-            scoreVal = "80점"
-        ),
-        Reason.Distance(
+            statSub = "회원님 관심사 ${allUserTags.size}개 중 ${interestMatchCount}개가 이 팀과 겹쳐요",
+            chips = displayChips,
+            why = "회원님 관심사·음식취향과 팀 태그의 교집합으로 계산했어요. 화면의 칩을 직접 세면 같은 수예요 — 검증 가능합니다.",
+            score = "일치 ${interestMatchCount}개 ÷ 내 관심사 ${allUserTags.size}개 × 100",
+            scoreVal = "${interestScore}점"
+        ))
+        add(Reason.Distance(
             icon = "📍",
             title = "동네 근접도",
             source = "회원님 ↔ 팀원 대중교통 거리",
-            strength = Strength.HI,
-            strengthLabel = "평균 15분",
-            statNum = "약 15분",
+            strength = if (hasDistance && avgDistScore >= 75) Strength.HI else Strength.MID,
+            strengthLabel = if (hasDistance) "평균 ${avgMinutes}분" else "계산 중",
+            statNum = if (hasDistance) "약 ${avgMinutes}분" else "—",
             statLabel = "대중교통 평균",
-            statSub = "회원님(성북구) 기준 · 평균 2.5km · 4명 중 3명 20분 내",
-            rows = listOf(
-                DistRow("멤버 A · 성북구(동일)", "0.5km · 5분", 100),
-                DistRow("멤버 B · 동대문구", "1.8km · 12분", 92),
-                DistRow("멤버 C · 종로구", "2.7km · 18분", 84),
-                DistRow("멤버 D · 노원구", "5.0km · 25분", 76)
-            ),
-            why = "단순 거리(2.5km)보다 대중교통 소요 시간으로 보여줘 \"얼마나 가까운지\"를 바로 체감할 수 있어요. 가까울수록 높은 점수를 줍니다.",
-            score = "팀원별 거리 점수 평균 (100+92+84+76)÷4",
-            scoreVal = "88점"
-        ),
-        Reason.Rows(
+            statSub = if (hasDistance) {
+                val loc = currentUserProfile?.location?.ifBlank { "내 동네" } ?: "내 동네"
+                "회원님($loc) 기준 · ${distanceResults.size}명 대상"
+            } else "거리 데이터를 불러오는 중이에요",
+            rows = distRows,
+            why = "단순 직선거리보다 대중교통 소요 시간으로 보여줘 \"얼마나 가까운지\"를 바로 체감할 수 있어요. 가까울수록 높은 점수를 줍니다.",
+            score = "팀원별 점수 (100 - 분×0.8) 평균",
+            scoreVal = "${avgDistScore}점"
+        ))
+        add(Reason.Rows(
             icon = "⚖️",
             title = "가치관 일치",
             source = "온보딩 밸런스 게임 응답",
-            strength = Strength.HI,
-            strengthLabel = "4/5",
-            statNum = "4/5",
+            strength = if (hasBalance && balanceScore >= 70) Strength.HI else Strength.MID,
+            strengthLabel = if (hasBalance) "$balanceMatchCount/$balanceTotal" else "분석 중",
+            statNum = if (hasBalance) "$balanceMatchCount/$balanceTotal" else "—",
             statLabel = "문항 동일",
-            statSub = "회원님과 이 팀 다수의 선택이 일치",
-            rows = listOf(
-                MatchRow("모임 성격", "친목 중심", true),
-                MatchRow("활동 강도", "가볍게", true),
-                MatchRow("만남 빈도", "주 1회", true),
-                MatchRow("비용", "더치페이", true),
-                MatchRow("분위기", "조용→활발", false)
-            ),
-            why = "가입할 때 답한 밸런스 게임 5문항을 팀 다수 응답과 비교했어요. 미리 수집한 값이라 사용자 없이도 즉시 계산돼요.",
-            score = "동일 응답 4 ÷ 5문항 × 100",
-            scoreVal = "80점"
-        ),
-        Reason.Rows(
+            statSub = if (hasBalance) "회원님과 이 팀 다수의 선택이 일치하는 문항" else "밸런스 게임 응답 분석 중",
+            rows = balanceRows.ifEmpty {
+                listOf(MatchRow("밸런스 게임 데이터 없음", "팀·유저 답변 대기 중", false))
+            },
+            why = "가입할 때 답한 밸런스 게임 문항을 팀 다수 응답과 비교했어요. 팀원 의견이 반반일 때는 절반 점수만 부여합니다 — 억지로 일치로 처리하지 않아요.",
+            score = "(유저답변 × 팀평균 + 1) ÷ 2 × 100의 평균",
+            scoreVal = "${balanceScore}점"
+        ))
+        add(Reason.Rows(
             icon = "🧩",
             title = "팀원과의 공통점",
             source = "팀원 프로필 대조",
-            strength = Strength.MID,
-            strengthLabel = "3/4",
-            statNum = "3/4",
+            strength = if (membersWithCommon > memberProfiles.size / 2) Strength.HI else Strength.MID,
+            strengthLabel = "${membersWithCommon}/${memberProfiles.size.coerceAtLeast(1)}명",
+            statNum = "${membersWithCommon}/${memberProfiles.size.coerceAtLeast(1)}",
             statLabel = "명과 공통점",
-            statSub = "팀원 4명 중 3명과 겹치는 점이 있어요",
-            rows = listOf(
-                MatchRow("같은 디자인 계열", "2명", true),
-                MatchRow("공통 관심사 · 영화", "1명", true),
-                MatchRow("동갑(22세)", "3명", true),
-                MatchRow("같은 동아리", "0명", false)
-            ),
+            statSub = "팀원 ${memberProfiles.size}명 중 ${membersWithCommon}명과 겹치는 점이 있어요",
+            rows = commonRows,
             why = "추상적 점수가 아니라 실제 팀원과 겹치는 사실이라 가장 와닿아요.",
-            score = "공통점 있는 멤버 3 ÷ 팀원 4명 × 100",
-            scoreVal = "75점",
+            score = "공통점 있는 멤버 ${membersWithCommon} ÷ 팀원 ${memberProfiles.size.coerceAtLeast(1)}명 × 100",
+            scoreVal = "${commonScore}점",
             caveat = "아직 실제 활동·유지 데이터는 없어, 프로필·취향 기반으로만 계산했어요. 사용자가 늘면 결과 지표가 더해집니다."
-        ),
-        // ── 방법 2: 자주 누른 태그 Top N (마지막, 잠금/해금) ──
-        Reason.TopTags(
+        ))
+        add(Reason.TopTags(
             icon = "🔥",
-            title = "자주 누른 태그 Top $TOP_TAG_N",
+            title = "자주 누른 태그 Top ${FeedConstants.MATCH_TOP_TAG_N}",
             source = "내가 자주 누른 태그 ∩ 팀 태그",
             strength = if (overlap >= 2) Strength.HI else Strength.MID,
-            strengthLabel = if (unlocked) "$topPercent%" else "잠금",
+            strengthLabel = if (unlocked) "${topPercent}%" else "잠금",
             unlocked = unlocked,
             actionCount = actionCount,
             userTopTags = topTags,
             teamTags = team.tags,
             overlap = overlap,
             percent = topPercent
-        )
-    )
+        ))
+    }
 }
 
 @Composable
@@ -306,11 +419,28 @@ fun MatchReasonSheet(
     team: Team,
     userTopTags: List<String>,
     actionCount: Int,
+    currentUserProfile: CurrentUserProfile?,
+    memberProfiles: List<MemberProfile>,
+    distanceResults: List<MemberDistanceResult>,
     onClose: () -> Unit,
     onApply: () -> Unit
 ) {
-    val reasons = remember(team.teamId, userTopTags, actionCount) {
-        buildReasons(team, userTopTags, actionCount)
+    val reasons = remember(
+        team.teamId,
+        userTopTags,
+        actionCount,
+        currentUserProfile,
+        memberProfiles.size,
+        distanceResults.size
+    ) {
+        buildReasons(
+            team = team,
+            userTopTags = userTopTags,
+            actionCount = actionCount,
+            currentUserProfile = currentUserProfile,
+            memberProfiles = memberProfiles,
+            distanceResults = distanceResults
+        )
     }
     var idx by remember(team.teamId) { mutableStateOf(0) }
     // 슬라이드 방향: 1 = 다음(왼쪽에서 오른쪽으로 밀려남), -1 = 이전
@@ -396,10 +526,10 @@ fun MatchReasonSheet(
                             animationSpec = tween(280, easing = FastOutSlowInEasing),
                             initialOffsetX = { fullWidth -> if (slideDir > 0) fullWidth else -fullWidth }
                         ) + fadeIn(tween(200))) togetherWith
-                        (slideOutHorizontally(
-                            animationSpec = tween(280, easing = FastOutSlowInEasing),
-                            targetOffsetX = { fullWidth -> if (slideDir > 0) -fullWidth else fullWidth }
-                        ) + fadeOut(tween(200)))
+                                (slideOutHorizontally(
+                                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> if (slideDir > 0) -fullWidth else fullWidth }
+                                ) + fadeOut(tween(200)))
                     },
                     label = "reason_slide"
                 ) { currentIdx ->
@@ -826,7 +956,7 @@ private fun TopTagsBody(r: Reason.TopTags) {
                     Text("아직 잠겨 있어요", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        "좋아요·패스 ${UNLOCK_THRESHOLD}회를 채우면 해금돼 적합도 점수에 반영돼요",
+                        "좋아요·패스 ${FeedConstants.MATCH_UNLOCK_THRESHOLD}회를 채우면 해금돼 적합도 점수에 반영돼요",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Ink2,
@@ -849,40 +979,53 @@ private fun TopTagsBody(r: Reason.TopTags) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fillMaxWidth((r.actionCount.coerceAtMost(UNLOCK_THRESHOLD).toFloat() / UNLOCK_THRESHOLD))
+                            .fillMaxWidth((r.actionCount.coerceAtMost(FeedConstants.MATCH_UNLOCK_THRESHOLD).toFloat() / FeedConstants.MATCH_UNLOCK_THRESHOLD))
                             .clip(RoundedCornerShape(999.dp))
                             .background(FeedConstants.GradientPurplePink)
                     )
                 }
                 Spacer(Modifier.width(9.dp))
-                Text("${r.actionCount}/${UNLOCK_THRESHOLD}", fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = Brand1)
+                Text("${r.actionCount}/${FeedConstants.MATCH_UNLOCK_THRESHOLD}", fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = Brand1)
             }
             Spacer(Modifier.height(11.dp))
             WhyText(
-                "내가 제일 좋아하는 태그 ${TOP_TAG_N}개 중 몇 개가 이 팀에 있는지 보는 근거예요. " +
+                "내가 제일 좋아하는 태그 ${FeedConstants.MATCH_TOP_TAG_N}개 중 몇 개가 이 팀에 있는지 보는 근거예요. " +
                         "자주 누른 태그를 \"순위\"로만 써서 복잡한 가중치 없이 직관적으로 계산해요. " +
-                        "충분히 둘러봐야 내 취향 순위가 정확해지기 때문에 ${UNLOCK_THRESHOLD}회 이후 해금됩니다."
+                        "충분히 둘러봐야 내 취향 순위가 정확해지기 때문에 ${FeedConstants.MATCH_UNLOCK_THRESHOLD}회 이후 해금됩니다."
             )
         }
     } else {
         // ── 해금 상태 ──
+        val topN = FeedConstants.MATCH_TOP_TAG_N  // 항상 3 — 표시용 기준값
         Column {
-            StatHero("${r.overlap}/${r.userTopTags.size}", "개 겹침", "내 Top ${r.userTopTags.size} 태그 중 ${r.overlap}개가 이 팀에 있어요")
-            Spacer(Modifier.height(11.dp))
-            Text("내가 자주 누른 태그 Top ${r.userTopTags.size}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink3)
-            Spacer(Modifier.height(6.dp))
-            FlowRowChips(r.userTopTags.map { it to (it in r.teamTags) })
-            Spacer(Modifier.height(10.dp))
-            Text("이 팀 태그", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink3)
-            Spacer(Modifier.height(6.dp))
-            FlowRowChips(r.teamTags.take(6).map { it to (it in r.userTopTags) })
-            Spacer(Modifier.height(11.dp))
-            WhyText(
-                "내가 제일 좋아하는 태그 ${r.userTopTags.size}개 중 ${r.overlap}개가 이 팀에 있어요. " +
-                        "횟수를 \"순위\"로만 쓰고 복잡한 가중치 계산은 버려, 화면에서 직접 셀 수 있어요."
-            )
-            Spacer(Modifier.height(10.dp))
-            ScoreBox("겹친 ${r.overlap}개 ÷ Top ${r.userTopTags.size}개 × 100", "${r.percent}점")
+            if (r.userTopTags.isEmpty()) {
+                // userTagScores가 아직 없는 상태 (첫 세션, 데이터 미수집)
+                StatHero("—", "분석 중", "좋아요·패스를 더 하면 내 취향 태그가 쌓여요")
+                Spacer(Modifier.height(11.dp))
+                Text(
+                    "아직 누적된 태그가 없어요. 카드를 더 둘러보면 Top ${topN}이 채워집니다.",
+                    fontSize = 12.sp,
+                    color = Ink3,
+                    lineHeight = 17.sp
+                )
+            } else {
+                StatHero("${r.overlap}/${topN}", "개 겹침", "내 Top ${topN} 태그 중 ${r.overlap}개가 이 팀에 있어요")
+                Spacer(Modifier.height(11.dp))
+                Text("내가 자주 누른 태그 Top ${topN}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink3)
+                Spacer(Modifier.height(6.dp))
+                FlowRowChips(r.userTopTags.map { it to (it in r.teamTags) })
+                Spacer(Modifier.height(10.dp))
+                Text("이 팀 태그", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink3)
+                Spacer(Modifier.height(6.dp))
+                FlowRowChips(r.teamTags.take(6).map { it to (it in r.userTopTags) })
+                Spacer(Modifier.height(11.dp))
+                WhyText(
+                    "내가 제일 좋아하는 태그 ${topN}개 중 ${r.overlap}개가 이 팀에 있어요. " +
+                            "횟수를 \"순위\"로만 쓰고 복잡한 가중치 계산은 버려, 화면에서 직접 셀 수 있어요."
+                )
+                Spacer(Modifier.height(10.dp))
+                ScoreBox("겹친 ${r.overlap}개 ÷ Top ${topN}개 × 100", "${r.percent}점")
+            }
         }
     }
 }

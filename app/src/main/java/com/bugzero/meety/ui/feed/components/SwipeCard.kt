@@ -49,8 +49,8 @@ fun SwipeCard(
     onLike: () -> Unit,
     onPass: () -> Unit,
     onInfo: () -> Unit,
-    userTopTags: List<String> = emptyList(),
-    actionCount: Int = 0,
+    /** FeedUiState.cardFitScoreCache 에서 사전 계산된 종합 매칭 점수 */
+    fitScore: Int = 70,
     // ? 버튼 상태는 부모가 관리
     whyOpen: Boolean = false,
     onWhyOpen: () -> Unit = {}
@@ -69,11 +69,6 @@ fun SwipeCard(
 
     val colorIndex = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
     val bgColors   = FeedConstants.CardColorPalette[colorIndex]
-
-    // 매칭 점수 (좌상단 배지용)
-    val fitScore = remember(team.teamId, userTopTags, actionCount) {
-        calculateFitScore(userTopTags, team.tags, actionCount)
-    }
 
     // ── 무한 애니메이션: ping 링 + 말풍선 floaty ──
     val infTrans = rememberInfiniteTransition(label = "qbtn_anim")
@@ -131,7 +126,7 @@ fun SwipeCard(
                                         val nextVal = offsetXAnim.value + dx
                                         val crossed =
                                             (nextVal >  FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value <=  FeedConstants.SWIPE_THRESHOLD) ||
-                                            (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
+                                                    (nextVal < -FeedConstants.SWIPE_THRESHOLD && offsetXAnim.value >= -FeedConstants.SWIPE_THRESHOLD)
                                         if (crossed && !hapticFired) {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             hapticFired = true
@@ -260,7 +255,7 @@ fun SwipeCard(
             Spacer(Modifier.height(3.dp))
             Text(
                 "멤버 ${team.memberIds.size}명" +
-                    (team.description.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                        (team.description.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                 fontSize = 13.sp, fontWeight = FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.92f), maxLines = 1
             )

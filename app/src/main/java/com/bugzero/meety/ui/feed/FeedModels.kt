@@ -50,6 +50,36 @@ data class MemberProfile(
  *   - 좋아요한 팀의 태그/MBTI: 점수 +
  *   - 패스한 팀의 태그/MBTI: 점수 -
  */
+/**
+ * 현재 로그인한 유저의 프로필 스냅샷 — 매칭 근거 계산 전용
+ *
+ * 방향 B 확장 시 이 모델에 필드를 추가하고,
+ * FeedRepository.fetchCurrentUserProfile() 에서 매핑만 추가하면 된다.
+ */
+data class CurrentUserProfile(
+    val userId: String = "",
+    val age: Int = 0,
+    val department: String = "",
+    val mbti: String = "",
+    val location: String = "",
+    val interests: List<String> = emptyList(),
+    val foodLikes: List<String> = emptyList(),
+    val balanceAnswers: Map<String, Int> = emptyMap()   // axis → -1 | +1
+)
+
+/**
+ * 팀원 한 명에 대한 거리 계산 결과
+ * distanceKm: 직선거리, transitMinutes: 대중교통 소요시간, score: 0~100점
+ */
+data class MemberDistanceResult(
+    val memberId: String = "",
+    val memberName: String = "",
+    val memberLocation: String = "",
+    val transitMinutes: Int = 0,
+    val distanceKm: Double = 0.0,
+    val score: Int = 0
+)
+
 data class UserPreference(
     val userId: String = "",
     val tagScores: Map<String, Int> = emptyMap(),     // e.g. {"활발한": 5, "조용한": -2}

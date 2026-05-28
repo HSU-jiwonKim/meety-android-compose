@@ -1206,7 +1206,7 @@ class MeetingPlaceRepository {
         return total
     }
 
-    private fun haversineKm(
+    fun haversineKm(
         lat1: Double, lng1: Double, lat2: Double, lng2: Double
     ): Double {
         val r = 6371.0

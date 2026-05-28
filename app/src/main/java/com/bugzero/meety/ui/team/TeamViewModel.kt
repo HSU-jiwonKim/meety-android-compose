@@ -21,7 +21,19 @@ data class Team(
     val status: String = "active",
     val teamName: String = "",
     val description: String = "",
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    /**
+     * 팀원 밸런스게임 답변의 축별 평균 (-1.0 ~ +1.0)
+     * 예: "vibe" → -0.5  (4명 중 3명 optionA(-1), 1명 optionB(+1) → (-3+1)/4)
+     *
+     * 현재 axis 목록 (BalanceQuestions.kt 와 1:1 대응):
+     *   meeting_purpose, intensity, frequency, cost, vibe, planning
+     * 저장 규칙: optionA 선택 = -1, optionB 선택 = +1
+     *
+     * 팀 생성·팀원 변경 시점에 Firestore에 기록된다.
+     * 값이 없으면(emptyMap) 가치관 카드를 fallback 표시한다.
+     */
+    val balanceProfile: Map<String, Float> = emptyMap()
 )
 data class FriendItem(
     val userId: String = "",

@@ -1,6 +1,7 @@
 package com.bugzero.meety.data.repository
 
 import com.bugzero.meety.data.model.InAppNotification
+import com.bugzero.meety.ui.feed.CurrentUserProfile
 import com.bugzero.meety.ui.feed.FeedConstants
 import com.bugzero.meety.ui.feed.Like
 import com.bugzero.meety.ui.feed.MemberProfile
@@ -198,21 +199,6 @@ class FeedRepository(
                 @Suppress("UNCHECKED_CAST")
                 val teamIds = (snapshot.get("teamIds") as? List<String>) ?: emptyList()
                 trySend(teamIds)
-            }
-
-        awaitClose { listener.remove() }
-    }
-
-    fun observeLikedTeamIds(): Flow<Set<String>> = callbackFlow {
-        val userId = auth.currentUser?.uid
-        if (userId == null) { close(); return@callbackFlow }
-
-        val listener = db.collection("userPreferences").document(userId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) return@addSnapshotListener
-                @Suppress("UNCHECKED_CAST")
-                val liked = (snapshot.get("likedTeamIds") as? List<String>)?.toSet() ?: emptySet()
-                trySend(liked)
             }
 
         awaitClose { listener.remove() }
@@ -502,6 +488,62 @@ class FeedRepository(
     // =====================
     // 프로필
     // =====================
+
+    /**
+     * 현재 로그인 유저의 프로필을 [CurrentUserProfile]로 변환해 반환한다.
+     *
+     * - 앱 시작 시 FeedViewModel.init에서 1회 호출 (이후 캐시).
+     * - balanceAnswers 파싱 우선순위:
+     *     1) users/{uid}.balanceProfile.answers — 중첩 맵 (Int: -1/+1)
+     *     2) users/{uid}.balanceAnswers — 플랫 맵 레거시
+     *     3) String "a"/"b" 형태로 저장된 경우 자동 변환 ("a"→-1, "b"→+1)
+     *        (BalanceGameScreen 저장 로직 연결 시 String 포맷을 쓸 경우 대비)
+     */
+    suspend fun fetchCurrentUserProfile(): Result<CurrentUserProfile> {
+        return try {
+            val userId = auth.currentUser?.uid
+                ?: return Result.failure(Exception("로그인 필요"))
+
+            val doc = db.collection("users").document(userId).get().await()
+
+            // 값 하나를 Int로 변환 — Long/Int/String("a"/"b") 모두 처리
+            fun toBalanceInt(v: Any?): Int? = when (v) {
+                is Long   -> v.toInt()
+                is Int    -> v
+                is String -> when (v) { "a" -> -1; "b" -> 1; else -> null }
+                else      -> null
+            }
+
+            // balanceAnswers 추출: 중첩 맵 우선, 없으면 플랫 맵 시도
+            @Suppress("UNCHECKED_CAST")
+            val balanceAnswers: Map<String, Int> = run {
+                val nested = (doc.get("balanceProfile") as? Map<String, Any>)
+                    ?.let { profile ->
+                        (profile["answers"] as? Map<String, Any>)
+                            ?.mapNotNull { (k, v) -> toBalanceInt(v)?.let { k to it } }
+                            ?.toMap()
+                    }
+                val flat = (doc.get("balanceAnswers") as? Map<String, Any>)
+                    ?.mapNotNull { (k, v) -> toBalanceInt(v)?.let { k to it } }
+                    ?.toMap()
+                nested ?: flat ?: emptyMap()
+            }
+
+            val profile = CurrentUserProfile(
+                userId      = userId,
+                age         = doc.getLong("age")?.toInt() ?: 0,
+                department  = doc.getString("department") ?: "",
+                mbti        = doc.getString("mbti") ?: "",
+                location    = doc.getString("location") ?: "",
+                interests   = (doc.get("interests") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                foodLikes   = (doc.get("foodLikes") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                balanceAnswers = balanceAnswers
+            )
+            Result.success(profile)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     suspend fun fetchMyProfile(): Result<Map<String, Any>> {
         return try {

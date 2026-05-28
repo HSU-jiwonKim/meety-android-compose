@@ -65,5 +65,15 @@ data class FeedUiState(
 
     // ── 팀 상세화면 — 팀원 프로필 ──
     val memberProfiles: List<MemberProfile> = emptyList(),
-    val isMembersLoading: Boolean = false
+    val isMembersLoading: Boolean = false,
+
+    // ── 매칭 근거 계산용 ──
+    /** 로그인 유저 프로필 (앱 시작 시 1회 로드) */
+    val currentUserProfile: CurrentUserProfile? = null,
+    /** teamId → 해당 팀의 팀원 프로필 (스와이프 카드 사전 fetch 캐시) */
+    val cardMemberProfilesCache: Map<String, List<MemberProfile>> = emptyMap(),
+    /** teamId → 해당 팀의 팀원별 거리 계산 결과 (사전 fetch 캐시) */
+    val cardDistanceCache: Map<String, List<MemberDistanceResult>> = emptyMap(),
+    /** teamId → 해당 팀에 대한 종합 매칭 점수 (사전 계산 캐시, SwipeCard 표시용) */
+    val cardFitScoreCache: Map<String, Int> = emptyMap()
 )

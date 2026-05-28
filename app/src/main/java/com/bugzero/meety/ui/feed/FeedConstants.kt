@@ -56,4 +56,12 @@ object FeedConstants {
     // ── 자동 새로고침 ──
     /** 추천 피드를 백그라운드에서 자동 갱신하는 주기 (밀리초) — 기본 5분 */
     const val AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1_000L
+
+    // ── 매칭 근거 (MatchReasonSheet) ──
+    /** "자주 누른 태그" 근거 해금 기준: 좋아요 + 패스 누적 횟수 */
+    const val MATCH_UNLOCK_THRESHOLD = 10
+    /** 자주 누른 태그 상위 N개만 사용 */
+    const val MATCH_TOP_TAG_N = 3
+    /** 카드 사전 fetch 범위 — 현재 카드 기준 앞으로 N장 */
+    const val MATCH_PREFETCH_AHEAD = 3
 }
