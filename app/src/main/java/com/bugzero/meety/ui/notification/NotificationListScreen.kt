@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bugzero.meety.data.model.InAppNotification
 import java.text.SimpleDateFormat
@@ -156,11 +158,13 @@ fun NotificationListScreen(
     var filter       by remember { mutableStateOf(NotifFilter.ALL) }
     var showSettings by remember { mutableStateOf(false) }
 
-    // 알림 설정 토글 (로컬 UI 상태)
-    var likeOn  by remember { mutableStateOf(true) }
-    var chatOn  by remember { mutableStateOf(true) }
-    var callOn  by remember { mutableStateOf(true) }
-    var videoOn by remember { mutableStateOf(true) }
+    // 알림 설정 토글 — SharedPreferences에 영구 저장
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("notif_settings", Context.MODE_PRIVATE) }
+    var likeOn  by remember { mutableStateOf(prefs.getBoolean("likeOn",  true)) }
+    var chatOn  by remember { mutableStateOf(prefs.getBoolean("chatOn",  true)) }
+    var callOn  by remember { mutableStateOf(prefs.getBoolean("callOn",  true)) }
+    var videoOn by remember { mutableStateOf(prefs.getBoolean("videoOn", true)) }
 
     // 화면 떠날 때 전체 읽음 처리(삭제)
     DisposableEffect(Unit) { onDispose { viewModel.clearAll() } }
@@ -214,10 +218,10 @@ fun NotificationListScreen(
                 showSettings -> {
                     // ── 설정 패널 ─────────────────────────────────────────
                     NotifSettingsPanel(
-                        likeOn = likeOn,  onLike  = { likeOn  = it },
-                        chatOn = chatOn,  onChat  = { chatOn  = it },
-                        callOn = callOn,  onCall  = { callOn  = it },
-                        videoOn = videoOn, onVideo = { videoOn = it }
+                        likeOn = likeOn,  onLike  = { likeOn  = it; prefs.edit().putBoolean("likeOn",  it).apply() },
+                        chatOn = chatOn,  onChat  = { chatOn  = it; prefs.edit().putBoolean("chatOn",  it).apply() },
+                        callOn = callOn,  onCall  = { callOn  = it; prefs.edit().putBoolean("callOn",  it).apply() },
+                        videoOn = videoOn, onVideo = { videoOn = it; prefs.edit().putBoolean("videoOn", it).apply() }
                     )
                 }
                 filtered.isEmpty() -> NotifEmptyState(Modifier.fillMaxSize())
