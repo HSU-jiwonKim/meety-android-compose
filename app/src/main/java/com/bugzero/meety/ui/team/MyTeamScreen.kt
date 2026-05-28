@@ -140,7 +140,9 @@ data class ProfilePreviewUiState(
     val location: String = "",
     val height: Int = 0,
     val interests: List<String> = emptyList(),
-    val foodLikes: List<String> = emptyList()
+    val foodLikes: List<String> = emptyList(),
+    val foodDislikes: List<String> = emptyList(),
+    val schedule: Map<String, Any> = emptyMap()
 )
 
 @Composable
@@ -1718,4 +1720,45 @@ private suspend fun findOrCreateOneToOneChat(
     newChatRef.set(chatData).await()
 
     return newChatRef.id
+}
+
+@Composable
+fun FriendProfileScreen(
+    profile: ProfilePreviewUiState,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 상단 닫기 버튼
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowBack,
+                        contentDescription = "뒤로가기"
+                    )
+                }
+            }
+
+            // 프로필 헤더
+            FriendProfileHeader(profile = profile)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 프로필 상세
+            FriendProfileDetailPage(
+                profile = profile,
+                onVoiceCallClick = {},
+                onVideoCallClick = {}
+            )
+        }
+    }
 }
