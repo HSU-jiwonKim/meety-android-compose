@@ -44,6 +44,22 @@ data class TeamInfo(
     val memberCount: Int = 0
 )
 
+data class DirectChatInfo(
+    val chatId: String = "",
+    val type: String = "direct",   // "direct" | "group"
+    val participantCount: Int = 0
+)
+
+data class PendingLikeInfo(
+    val likeId: String = "",
+    val fromUserId: String = "",
+    val fromUserName: String = "",
+    val fromUserEmail: String = "",
+    val fromUserProfileImage: String = "",
+    val toTeamId: String = "",
+    val toTeamName: String = ""
+)
+
 sealed class AdminActionState {
     object Idle : AdminActionState()
     object Loading : AdminActionState()
@@ -79,11 +95,21 @@ class AdminViewModel : ViewModel() {
     private val _nonDummyTeams = MutableStateFlow<List<TeamInfo>>(emptyList())
     val nonDummyTeams: StateFlow<List<TeamInfo>> = _nonDummyTeams
 
+    // ── 사용자가 만든 개인/그룹 채팅방 목록 (direct / group 타입) ──
+    private val _nonDummyDirectChats = MutableStateFlow<List<DirectChatInfo>>(emptyList())
+    val nonDummyDirectChats: StateFlow<List<DirectChatInfo>> = _nonDummyDirectChats
+
+    // ── 더미팀으로 들어온 pending 좋아요 목록 ──
+    private val _pendingDummyLikes = MutableStateFlow<List<PendingLikeInfo>>(emptyList())
+    val pendingDummyLikes: StateFlow<List<PendingLikeInfo>> = _pendingDummyLikes
+
     init {
         fetchPendingRequests()
         fetchUsers()
         fetchReports()
         fetchNonDummyTeams()
+        fetchNonDummyDirectChats()
+        fetchPendingDummyLikes()
     }
 
     fun fetchPendingRequests() {
@@ -93,11 +119,9 @@ class AdminViewModel : ViewModel() {
     fun fetchUsers() {
         adminRepository.fetchUsers { users ->
             _users.value = users
-            // 시연 계정 필터: test 계정 + 더미가 아닌 실제 유저
+            // 시연 계정 필터: 이름 또는 이메일에 "테스터" 포함된 계정만
             _demoUsers.value = users.filter { user ->
-                user.email.startsWith("test") ||
-                        (!user.isAdmin && user.email.endsWith("@hansung.ac.kr") &&
-                                !(user.email.startsWith("dummy_")))
+                user.name.contains("테스터") || user.email.contains("테스터")
             }
         }
     }
@@ -236,12 +260,47 @@ class AdminViewModel : ViewModel() {
         adminRepository.fetchNonDummyTeams { _nonDummyTeams.value = it }
     }
 
+    fun fetchNonDummyDirectChats() {
+        adminRepository.fetchNonDummyDirectChats { _nonDummyDirectChats.value = it }
+    }
+
+    fun fetchPendingDummyLikes() {
+        adminRepository.fetchPendingLikesToDummyTeams { _pendingDummyLikes.value = it }
+    }
+
+    fun acceptLike(likeId: String, fromUserId: String, toTeamId: String, toTeamName: String) {
+        _actionState.value = AdminActionState.Loading
+        adminRepository.acceptLike(
+            likeId = likeId,
+            fromUserId = fromUserId,
+            toTeamId = toTeamId,
+            toTeamName = toTeamName,
+            onSuccess = { _actionState.value = AdminActionState.Success(it) },
+            onFailure = { _actionState.value = AdminActionState.Error(it) }
+        )
+    }
+
     fun deleteTeam(teamId: String) {
         _actionState.value = AdminActionState.Loading
         viewModelScope.launch {
             adminRepository.deleteTeam(
                 teamId = teamId,
                 onSuccess = { _actionState.value = AdminActionState.Success(it) },
+                onFailure = { _actionState.value = AdminActionState.Error(it) }
+            )
+        }
+    }
+
+
+    fun deleteAllNonDummyTeams() {
+        _actionState.value = AdminActionState.Loading
+        viewModelScope.launch {
+            adminRepository.deleteAllNonDummyTeams(
+                onSuccess = {
+                    _actionState.value = AdminActionState.Success(it)
+                    fetchNonDummyTeams()          // 팀 목록 즉시 갱신
+                    fetchNonDummyDirectChats()    // 직접 채팅방 목록 즉시 갱신
+                },
                 onFailure = { _actionState.value = AdminActionState.Error(it) }
             )
         }

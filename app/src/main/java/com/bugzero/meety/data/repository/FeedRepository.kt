@@ -203,6 +203,21 @@ class FeedRepository(
         awaitClose { listener.remove() }
     }
 
+    fun observeLikedTeamIds(): Flow<Set<String>> = callbackFlow {
+        val userId = auth.currentUser?.uid
+        if (userId == null) { close(); return@callbackFlow }
+
+        val listener = db.collection("userPreferences").document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                @Suppress("UNCHECKED_CAST")
+                val liked = (snapshot.get("likedTeamIds") as? List<String>)?.toSet() ?: emptySet()
+                trySend(liked)
+            }
+
+        awaitClose { listener.remove() }
+    }
+
     // =====================
     // 좋아요 / 패스
     // =====================

@@ -380,12 +380,21 @@ private fun TeamInfoCard(team: Team) {
                         .background(Brush.verticalGradient(avatarColors)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text       = initial,
-                        fontSize   = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        color      = Color.White
-                    )
+                    if (team.teamProfileImage.isNotBlank()) {
+                        AsyncImage(
+                            model              = team.teamProfileImage,
+                            contentDescription = "${team.teamName} 대표 사진",
+                            modifier           = Modifier.fillMaxSize(),
+                            contentScale       = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text       = initial,
+                            fontSize   = 36.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = Color.White
+                        )
+                    }
                 }
             }
 

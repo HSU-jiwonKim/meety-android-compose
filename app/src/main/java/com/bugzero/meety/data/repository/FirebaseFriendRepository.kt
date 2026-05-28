@@ -130,6 +130,13 @@ class FirebaseFriendRepository : FriendRepository {
                         val images = (doc.get("profileImages") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
                         val mainImage = doc.getString("mainProfileImageUrl").orEmpty()
                         val firstImage = if (mainImage.isNotBlank()) mainImage else images.firstOrNull().orEmpty()
+                        val scheduleMap = mutableMapOf<String, List<String>>()
+                        val rawSchedule = doc.get("schedule") as? Map<*, *> ?: emptyMap<Any, Any>()
+                        rawSchedule.forEach { (key, value) ->
+                            val day = key as? String ?: return@forEach
+                            val timeList = value as? List<*> ?: return@forEach
+                            scheduleMap[day] = timeList.mapNotNull { it as? String }
+                        }
 
                         resultList.add(
                             FriendItem(
@@ -145,7 +152,9 @@ class FirebaseFriendRepository : FriendRepository {
                                 location = doc.getString("location") ?: "",
                                 height = (doc.getLong("height") ?: 0L).toInt(),
                                 interests = (doc.get("interests") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
-                                foodLikes = (doc.get("foodLikes") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                                foodLikes = (doc.get("foodLikes") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                                foodDislikes = (doc.get("foodDislikes") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                                schedule = scheduleMap
                             )
                         )
                     }

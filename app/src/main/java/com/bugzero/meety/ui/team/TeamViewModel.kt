@@ -37,7 +37,19 @@ data class FriendItem(
     val height: Int = 0,
     val interests: List<String> = emptyList(),
     val foodLikes: List<String> = emptyList(),
+    val foodDislikes: List<String> = emptyList(),
+    val schedule: Map<String, List<String>> = emptyMap(),
     val isFavorite: Boolean = false
+)
+
+data class SearchedUserUiState(
+    val userId: String = "",
+    val name: String = "",
+    val department: String = "",
+    val age: Int = 0,
+    val mbti: String = "",
+    val profileImageUrl: String = "",
+    val email: String = ""
 )
 
 data class FriendRequestItem(
@@ -96,6 +108,11 @@ class TeamViewModel(
     private val _friendAddMessage = MutableStateFlow("")
     val friendAddMessage: StateFlow<String> = _friendAddMessage
 
+    private val _searchedUser = MutableStateFlow<SearchedUserUiState?>(null)
+    val searchedUser: StateFlow<SearchedUserUiState?> = _searchedUser
+
+    private val _searchMessage = MutableStateFlow("")
+    val searchMessage: StateFlow<String> = _searchMessage
 
     fun createTeam(
         teamName: String,
@@ -382,5 +399,65 @@ class TeamViewModel(
 
     fun clearFriendAddMessage() {
         _friendAddMessage.value = ""
+    }
+
+    fun clearSearchedUser() {
+        _searchedUser.value = null
+        _searchMessage.value = ""
+    }
+
+    fun searchFriendByEmail(email: String) {
+        val myUser = auth.currentUser
+        val myUserId = myUser?.uid
+        val myEmail = myUser?.email
+
+        if (myUserId == null || myEmail == null) {
+            _searchMessage.value = "로그인된 사용자가 없습니다."
+            return
+        }
+
+        val trimmedEmail = email.trim()
+
+        if (trimmedEmail.isBlank()) {
+            _searchMessage.value = "이메일을 입력해주세요."
+            return
+        }
+
+        if (trimmedEmail == myEmail) {
+            _searchMessage.value = "자기 자신은 검색할 수 없습니다."
+            return
+        }
+
+        _isLoading.value = true
+        _searchMessage.value = ""
+        _searchedUser.value = null
+        _friendAddMessage.value = ""
+
+        friendRepository.findUserByEmail(
+            email = trimmedEmail,
+            onSuccess = { friendUserId ->
+                db.collection("users").document(friendUserId).get()
+                    .addOnSuccessListener { doc ->
+                        _searchedUser.value = SearchedUserUiState(
+                            userId = friendUserId,
+                            name = doc.getString("name") ?: "이름 없음",
+                            department = doc.getString("department") ?: "",
+                            age = (doc.getLong("age") ?: 0L).toInt(),
+                            mbti = doc.getString("mbti") ?: "",
+                            profileImageUrl = doc.getString("profileImageUrl") ?: "",
+                            email = trimmedEmail
+                        )
+                        _isLoading.value = false
+                    }
+                    .addOnFailureListener {
+                        _searchMessage.value = "프로필을 불러오지 못했습니다."
+                        _isLoading.value = false
+                    }
+            },
+            onFailure = {
+                _searchMessage.value = "해당 이메일의 사용자가 없습니다."
+                _isLoading.value = false
+            }
+        )
     }
 }

@@ -57,7 +57,15 @@ class ChatViewModel(
     private val placeRepository: MeetingPlaceRepository = MeetingPlaceRepository()
 ) : ViewModel() {
 
-    private var likesListener: com.google.firebase.firestore.ListenerRegistration? = null
+    // 청크별 실시간 리스너 목록 — 여러 개 등록되므로 List로 관리
+    private val likesListeners = java.util.Collections.synchronizedList(
+        mutableListOf<com.google.firebase.firestore.ListenerRegistration>()
+    )
+    /** 이전 리스너를 모두 제거하는 헬퍼 */
+    private fun removeLikesListeners() {
+        likesListeners.forEach { it.remove() }
+        likesListeners.clear()
+    }
     private val currentUserIdOrNull: String? get() = FirebaseAuth.getInstance().currentUser?.uid
 
     private val _chatList = MutableStateFlow<List<ChatPreview>>(emptyList())
@@ -102,6 +110,14 @@ class ChatViewModel(
 
     private val _currentChatType = MutableStateFlow("")   // "team" | "direct" | "group"
     val currentChatType: StateFlow<String> = _currentChatType.asStateFlow()
+
+    // 채팅방 상단 아바타 이미지 (direct: 상대방 프로필, team: 팀 대표사진)
+    private val _roomImageUrl = MutableStateFlow("")
+    val roomImageUrl: StateFlow<String> = _roomImageUrl.asStateFlow()
+
+    // 새 팀 채팅방 최초 입장 여부 — 본인에게만 "방금 매칭됐어요!" 배너 표시용
+    private val _isNewTeamChat = MutableStateFlow(false)
+    val isNewTeamChat: StateFlow<Boolean> = _isNewTeamChat.asStateFlow()
 
     // ── 팀원 자동 매칭 / 초대 ──
     private val _pendingInvitations = MutableStateFlow<List<TeamInvitation>>(emptyList())
@@ -201,13 +217,13 @@ class ChatViewModel(
     fun refreshForAuthState() {
         val userId = currentUserIdOrNull
         if (userId.isNullOrBlank()) { clearForLoggedOutState(); return }
-        likesListener?.remove(); likesListener = null
+        removeLikesListeners()
         _chatList.value = emptyList(); _requestList.value = emptyList(); _errorMessage.value = null
         loadChatList(); loadRequestList(); saveFcmToken(); loadSavedPlaces(); loadPendingInvitations()
     }
 
     private fun clearForLoggedOutState() {
-        likesListener?.remove(); likesListener = null
+        removeLikesListeners()
         _chatList.value = emptyList(); _requestList.value = emptyList(); _messages.value = emptyList()
         _participants.value = emptyList(); _friendList.value = emptyList(); _selectedUserProfile.value = null
         _isLoading.value = false; _isSending.value = false; _isLoadingFriends.value = false; _isLoadingProfile.value = false
@@ -223,6 +239,32 @@ class ChatViewModel(
         _roomName.value = roomName
         _currentTeamId.value = ""
         _currentChatType.value = ""
+        _isNewTeamChat.value = false
+
+        // 새 팀 채팅방인지 확인 후 viewedBy 마킹
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val chatDoc = db.collection("chats").document(chatId).get().await()
+                val type = chatDoc.getString("type") ?: ""
+                @Suppress("UNCHECKED_CAST")
+                val viewedBy = (chatDoc.get("viewedBy") as? List<String>) ?: emptyList()
+
+                if (type == "team" && !viewedBy.contains(userId)) {
+                    // 팀 생성자(leaderId)는 배너 제외 — 새로 합류한 팀원에게만 표시
+                    val leaderId = chatDoc.getString("leaderId").orEmpty()
+                    if (leaderId != userId) {
+                        _isNewTeamChat.value = true
+                    }
+                    db.collection("chats").document(chatId)
+                        .update("viewedBy", FieldValue.arrayUnion(userId))
+                        .await()
+                }
+            } catch (e: Exception) {
+                Log.e("ChatVM", "enterChatRoom isNew 체크 실패: ${e.message}")
+            }
+        }
+
         observeMessages(chatId)
         loadParticipants(chatId)
         loadSavedPlaces()   // 찜 목록 Firestore에서 복원
@@ -281,8 +323,13 @@ class ChatViewModel(
 
     fun loadRequestList() {
         val userId = currentUserIdOrNull ?: return
-        likesListener?.remove()
-        likesListener = teamRepository.observeReceivedLikes(onUpdate = { _requestList.value = it }, onFailure = { _errorMessage.value = it })
+        // 이전 리스너 모두 제거 후 새로 구독
+        removeLikesListeners()
+        teamRepository.observeReceivedLikes(
+            onUpdate        = { _requestList.value = it },
+            onFailure       = { _errorMessage.value = it },
+            onRegistrations = { likesListeners.addAll(it) }
+        )
     }
 
     fun acceptRequest(likeId: String) {
@@ -477,6 +524,24 @@ class ChatViewModel(
                 }
 
                 _participants.value = sortedList
+
+                // ── 채팅방 상단 아바타 이미지 설정 ──
+                if (isDirect) {
+                    // 1:1 채팅: 상대방 프로필 사진
+                    val otherItem = rawItems.firstOrNull { it.userId != myId }
+                    _roomImageUrl.value = otherItem?.profileImage ?: ""
+                } else if (isTeam) {
+                    // 팀 채팅: teams 컬렉션에서 대표 사진 가져오기
+                    try {
+                        val teamDoc = db.collection("teams").document(resolvedTeamId).get().await()
+                        val teamImg = teamDoc.getString("teamProfileImage")?.takeIf { it.isNotBlank() }
+                            ?: (teamDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
+                            ?: ""
+                        _roomImageUrl.value = teamImg
+                    } catch (e: Exception) {
+                        _roomImageUrl.value = ""
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("ChatVM", "Participants Error: ${e.message}")
             }
@@ -601,27 +666,128 @@ class ChatViewModel(
         viewModelScope.launch {
             try {
                 val db = FirebaseFirestore.getInstance()
+                val usersRef = db.collection("users").document(userId)
+                val chatRef = db.collection("chats").document(chatId)
+
+                val userDoc = usersRef.get().await()
+                val myName = userDoc.getString("name") ?: "알 수 없음"
+                val now = com.google.firebase.Timestamp.now()
+
+                val chatDoc = chatRef.get().await()
+                val chatType = chatDoc.getString("type") ?: "group"
+                val isTeamChat = chatType == "team"
+                val teamId = chatDoc.getString("teamId") ?: chatId
+                val chatLeaderId = chatDoc.getString("leaderId") ?: ""
+
+                var isLeaderLastMember = false
+
+                if (isTeamChat && teamId.isNotBlank()) {
+                    try {
+                        val teamRef = db.collection("teams").document(teamId)
+                        val teamDoc = teamRef.get().await()
+                        if (teamDoc.exists()) {
+                            @Suppress("UNCHECKED_CAST")
+                            val memberIds = (teamDoc.get("memberIds") as? List<String>) ?: emptyList()
+                            val teamLeaderId = teamDoc.getString("leaderId") ?: chatLeaderId
+                            val remainingMembers = memberIds.filter { it != userId }
+                            isLeaderLastMember = (teamLeaderId == userId && remainingMembers.isEmpty())
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
+                chatRef.collection("messages").add(systemMsg).await()
+
+                chatRef.update(
+                    mapOf("lastMessage" to "${myName}님이 나갔습니다.", "lastMessageAt" to now, "participants" to FieldValue.arrayRemove(userId))
+                ).await()
+
+                if (isTeamChat && teamId.isNotBlank()) {
+                    val teamRef = db.collection("teams").document(teamId)
+                    try {
+                        if (isLeaderLastMember) {
+                            teamRef.delete().await()
+                            val messagesSnap = chatRef.collection("messages").get().await()
+                            for (msg in messagesSnap.documents) msg.reference.delete()
+                            chatRef.delete().await()
+                        } else {
+                            teamRef.update("memberIds", FieldValue.arrayRemove(userId)).await()
+                        }
+                        try { usersRef.update("teamIds", FieldValue.arrayRemove(teamId)).await() } catch (_: Exception) {}
+                    } catch (_: Exception) {}
+                }
+                withContext(Dispatchers.Main) { onSuccess() }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onFailure("실패: ${e.message}") }
+            }
+        }
+    }
+
+    fun leaveMultipleChatRooms(chatIds: List<String>, onComplete: () -> Unit = {}) {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
                 val userDoc = db.collection("users").document(userId).get().await()
                 val myName = userDoc.getString("name") ?: "알 수 없음"
                 val now = com.google.firebase.Timestamp.now()
 
-                val chatRef = db.collection("chats").document(chatId)
+                chatIds.forEach { chatId ->
+                    try {
+                        val chatRef = db.collection("chats").document(chatId)
+                        val chatDoc = chatRef.get().await()
+                        val chatType = chatDoc.getString("type") ?: "team"
 
-                // 1) 채팅방에서 나가기
-                val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
-                chatRef.collection("messages").add(systemMsg).await()
-                chatRef.update(mapOf("lastMessage" to "${myName}님이 나갔습니다.", "lastMessageAt" to now, "participants" to FieldValue.arrayRemove(userId))).await()
+                        if (chatType == "team") {
+                            val teamId = chatDoc.getString("teamId")?.takeIf { it.isNotBlank() } ?: chatId
+                            val teamDoc = db.collection("teams").document(teamId).get().await()
+                            @Suppress("UNCHECKED_CAST")
+                            val memberIds = (teamDoc.get("memberIds") as? List<String>) ?: emptyList()
+                            val leaderId  = teamDoc.getString("leaderId").orEmpty()
+                            val isLeaderAlone = leaderId == userId && memberIds.all { it == userId }
 
-                // ✨ 2) 팀(teams) 컬렉션에서도 나를 삭제 (필드명 memberIds 로 수정!)
-                val chatDoc = chatRef.get().await()
-                val teamId = chatDoc.getString("teamId") ?: chatId
-                try {
-                    db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await()
-                } catch (e: Exception) { }
+                            if (isLeaderAlone) {
+                                // 팀장 혼자 → 팀 + 채팅방 통째로 삭제
+                                try { db.collection("teams").document(teamId).delete().await() } catch (e: Exception) {}
+                                try { chatRef.delete().await() } catch (e: Exception) {}
+                                try { db.collection("users").document(userId).update("teamIds", FieldValue.arrayRemove(teamId)).await() } catch (e: Exception) {}
+                                try {
+                                    val likeDocs = db.collection("likes").whereEqualTo("toTeamId", teamId).get().await()
+                                    for (doc in likeDocs.documents) { doc.reference.delete().await() }
+                                } catch (e: Exception) {}
+                                return@forEach
+                            }
 
-                withContext(Dispatchers.Main) { onSuccess() }
+                            // 일반 나가기
+                            val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
+                            chatRef.collection("messages").add(systemMsg).await()
+                            chatRef.update(mapOf("lastMessage" to "${myName}님이 나갔습니다.", "lastMessageAt" to now, "participants" to FieldValue.arrayRemove(userId))).await()
+                            try { db.collection("teams").document(teamId).update("memberIds", FieldValue.arrayRemove(userId)).await() } catch (e: Exception) {}
+                            try { db.collection("users").document(userId).update("teamIds", FieldValue.arrayRemove(teamId)).await() } catch (e: Exception) {}
+                            try {
+                                val likeDocs = db.collection("likes")
+                                    .whereEqualTo("fromUserId", userId)
+                                    .whereEqualTo("toTeamId", teamId)
+                                    .get().await()
+                                for (doc in likeDocs.documents) { doc.reference.delete().await() }
+                            } catch (e: Exception) {}
+                            try {
+                                db.collection("userPreferences").document(userId)
+                                    .update("likedTeamIds", FieldValue.arrayRemove(teamId)).await()
+                            } catch (e: Exception) {}
+                        } else {
+                            // 1:1 채팅 등 팀 타입 아닌 경우
+                            val systemMsg = mapOf("senderId" to "system", "content" to "${myName}님이 나갔습니다.", "type" to "system", "createdAt" to now)
+                            chatRef.collection("messages").add(systemMsg).await()
+                            chatRef.update(mapOf("lastMessage" to "${myName}님이 나갔습니다.", "lastMessageAt" to now, "participants" to FieldValue.arrayRemove(userId))).await()
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ChatVM", "leaveMultiple 실패 chatId=$chatId: ${e.message}")
+                    }
+                }
+                withContext(Dispatchers.Main) { onComplete() }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { onFailure("실패") }
+                withContext(Dispatchers.Main) { onComplete() }
             }
         }
     }
@@ -665,7 +831,19 @@ class ChatViewModel(
                 for (id in friendIds) {
                     val doc = FirebaseFirestore.getInstance().collection("users").document(id).get().await()
                     if (doc.exists()) {
-                        friends.add(UserProfileData(userId = doc.id, name = doc.getString("name") ?: "알 수 없음", department = doc.getString("department") ?: "", mbti = doc.getString("mbti") ?: ""))
+                        @Suppress("UNCHECKED_CAST")
+                        val profileImageUrl =
+                            (doc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
+                                ?: doc.getString("profileImageUrl")
+                                ?: doc.getString("profileImage")
+                                ?: ""
+                        friends.add(UserProfileData(
+                            userId = doc.id,
+                            name = doc.getString("name") ?: "알 수 없음",
+                            department = doc.getString("department") ?: "",
+                            mbti = doc.getString("mbti") ?: "",
+                            profileImageUrl = profileImageUrl
+                        ))
                     }
                 }
                 _friendList.value = friends.sortedBy { it.name }
@@ -1552,4 +1730,116 @@ class ChatViewModel(
             }
         }
     }
+    // ── 채팅방 입장 시 모든 메시지 읽음 처리 ──────────────────────────────────
+    fun markMessagesAsRead(chatId: String) {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val messagesSnapshot = db.collection("chats")
+                    .document(chatId)
+                    .collection("messages")
+                    .get()
+                    .await()
+
+                for (messageDoc in messagesSnapshot.documents) {
+                    val senderId = messageDoc.getString("senderId") ?: ""
+                    if (senderId != userId && senderId != "system") {
+                        @Suppress("UNCHECKED_CAST")
+                        val currentReadBy = (messageDoc.get("readBy") as? List<String>)?.toMutableList() ?: mutableListOf()
+                        if (!currentReadBy.contains(userId)) {
+                            currentReadBy.add(userId)
+                            messageDoc.reference.update("readBy", currentReadBy).await()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatVM", "읽음 표시 실패: ${e.message}")
+            }
+        }
+    }
+
+    // ── 메시지별 안 읽은 사람 수 계산 (카톡 숫자) ────────────────────────────
+    fun getUnreadCount(message: ChatMessage, participants: List<ParticipantItem>): Int {
+        if (!message.isMe) return 0
+        if (message.senderId == "system") return 0
+        val unreadCount = participants.size - 1 - message.readBy.size  // -1은 자신 제외
+        return maxOf(0, unreadCount)
+    }
+
+    fun createVote(chatId: String, title: String, options: List<String>, isMultiple: Boolean, isAnonymous: Boolean) {
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val now = com.google.firebase.Timestamp.now()
+                val userDoc = db.collection("users").document(userId).get().await()
+                val myName = userDoc.getString("name") ?: "알 수 없음"
+                val myProfile = userDoc.getString("profileImageUrl") ?: ""
+
+                val voteData = mapOf(
+                    "title" to title,
+                    "options" to options,
+                    "isMultipleChoice" to isMultiple,
+                    "isAnonymous" to isAnonymous,
+                    "voters" to emptyMap<String, List<Number>>()
+                )
+
+                val messageData = mapOf(
+                    "id" to UUID.randomUUID().toString(),
+                    "chatId" to chatId,
+                    "senderId" to userId,
+                    "senderName" to myName,
+                    "senderProfileImage" to myProfile,
+                    "content" to "📊 투표가 등록되었습니다.",
+                    "type" to "vote",
+                    "voteData" to voteData,
+                    "createdAt" to now,
+                    "readBy" to listOf(userId)
+                )
+
+                db.collection("chats").document(chatId).collection("messages").add(messageData).await()
+                db.collection("chats").document(chatId).update(
+                    mapOf("lastMessage" to "📊 투표가 등록되었습니다.", "lastMessageAt" to now)
+                ).await()
+
+                android.util.Log.d("ChatViewModel", "투표 생성 성공!")
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "투표 생성 실패: ${e.message}")
+            }
+        }
+    }
+
+    fun castVote(chatId: String, messageId: String, selectedOptionIndices: List<Int>) {
+        android.util.Log.d("VoteDebug", "투표 함수 시작! chatId: $chatId, messageId: $messageId, indices: $selectedOptionIndices")
+        val userId = currentUserIdOrNull ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val messageRef = db.collection("chats")
+                    .document(chatId)
+                    .collection("messages")
+                    .document(messageId)
+
+                db.runTransaction { transaction ->
+                    val doc = transaction.get(messageRef)
+                    @Suppress("UNCHECKED_CAST")
+                    val voteData = (doc.get("voteData") as? Map<String, Any>)?.toMutableMap()
+                        ?: mutableMapOf()
+                    @Suppress("UNCHECKED_CAST")
+                    val voters = (voteData["voters"] as? Map<String, List<Number>>)?.toMutableMap()
+                        ?: mutableMapOf()
+                    voters[userId] = selectedOptionIndices.map { it.toDouble() }
+                    voteData["voters"] = voters
+                    transaction.update(messageRef, "voteData", voteData)
+                    null
+                }.await()
+
+                android.util.Log.d("VoteDebug", "투표 DB 업데이트 성공! userId: $userId")
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "투표 참여 실패: ${e.message}", e)
+            }
+        }
+    }
+
 }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
@@ -150,7 +150,8 @@ fun MeetingCreateScreen(
     }
 
     Scaffold(
-        containerColor = ScreenBackgroundColor
+        containerColor = ScreenBackgroundColor,
+        contentWindowInsets = WindowInsets(0)
     ) { innerPadding ->
         LazyColumn(
             state = listState,
@@ -207,18 +208,6 @@ fun MeetingCreateScreen(
 
                         // 태그를 하나라도 선택하면 에러 표시 제거
                         if (selectedTags.isNotEmpty()) {
-                            showTeamTagError = false
-                        }
-                    },
-                    onAddCustomTag = { newTag ->
-                        val normalizedTag = normalizeTag(newTag)
-
-                        if (
-                            normalizedTag.isNotBlank() &&
-                            !selectedTags.contains(normalizedTag) &&
-                            selectedTags.size < 5
-                        ) {
-                            selectedTags.add(normalizedTag)
                             showTeamTagError = false
                         }
                     },
@@ -297,23 +286,14 @@ fun MeetingCreateScreen(
 // 화면 상단의 제목 영역
 @Composable
 private fun ScreenTitle() {
-    Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp)
-    ) {
-        Text(
-            text = "팀 만들기",
-            fontSize = 23.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-0.4).sp,
-            color = Color(0xFF17161D)
-        )
-        Text(
-            text = "같이 활동할 팀 정보를 입력해주세요.",
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF9B98A6)
-        )
-    }
+    Text(
+        text = "팀 만들기",
+        fontSize = 23.sp,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = (-0.4).sp,
+        color = Color(0xFF17161D),
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 14.dp)
+    )
 }
 
 // 팀 이름 입력 영역
@@ -515,10 +495,8 @@ private fun TeamTagSection(
     selectedTags: List<String>,
     isError: Boolean,
     onTagClick: (String) -> Unit,
-    onAddCustomTag: (String) -> Unit,
     onRemoveTag: (String) -> Unit
 ) {
-    var customTagInput by remember { mutableStateOf("") }
 
     WhiteCardSection(
         title = "팀 태그 (최대 5개)",
@@ -541,18 +519,6 @@ private fun TeamTagSection(
             onTagClick = onTagClick
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        CustomTagInputRow(
-            customTagInput = customTagInput,
-            selectedTags = selectedTags,
-            onCustomTagInputChange = { customTagInput = it },
-            onAddCustomTag = { tag ->
-                onAddCustomTag(tag)
-                customTagInput = ""
-            }
-        )
-
         if (selectedTags.isNotEmpty()) {
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -560,84 +526,6 @@ private fun TeamTagSection(
                 selectedTags = selectedTags,
                 onRemoveTag = onRemoveTag
             )
-        }
-    }
-}
-
-// 직접 태그 입력 후 추가하는 영역
-@Composable
-private fun CustomTagInputRow(
-    customTagInput: String,
-    selectedTags: List<String>,
-    onCustomTagInputChange: (String) -> Unit,
-    onAddCustomTag: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(18.dp))
-                .background(InputBackgroundColor)
-                .padding(horizontal = 14.dp, vertical = 14.dp)
-        ) {
-            BasicTextField(
-                value = customTagInput,
-                onValueChange = onCustomTagInputChange,
-                textStyle = TextStyle(color = Color(0xFF222222)),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                decorationBox = { innerTextField ->
-                    if (customTagInput.isEmpty()) {
-                        Text(
-                            text = "직접 태그 입력 후 추가",
-                            color = PlaceholderColor,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-
-                    innerTextField()
-                }
-            )
-        }
-
-        Surface(
-            modifier = Modifier.clickable {
-                val normalizedTag = normalizeTag(customTagInput)
-
-                if (
-                    normalizedTag.isNotBlank() &&
-                    selectedTags.size < 5 &&
-                    !selectedTags.contains(normalizedTag)
-                ) {
-                    onAddCustomTag(normalizedTag)
-                }
-            },
-            shape = RoundedCornerShape(18.dp),
-            color = LightPurpleColor
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "태그 추가",
-                    tint = MainPurpleColor,
-                    modifier = Modifier.size(16.dp)
-                )
-
-                Text(
-                    text = "추가",
-                    color = MainPurpleColor,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
         }
     }
 }
@@ -832,10 +720,6 @@ private fun SelectedTagList(
     }
 }
 
-// 사용자가 직접 입력한 태그에서 공백과 # 기호를 정리하는 함수
-private fun normalizeTag(tag: String): String {
-    return tag.trim().removePrefix("#")
-}
 
 // 필수 입력이 비어 있을 때 해당 입력 영역으로 스크롤하는 함수
 private fun scrollToItem(

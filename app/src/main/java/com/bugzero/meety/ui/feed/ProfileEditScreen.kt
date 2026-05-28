@@ -36,20 +36,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.bugzero.meety.data.repository.FeedRepository
+import com.bugzero.meety.ui.auth.DEPARTMENT_OPTIONS
+import com.bugzero.meety.ui.auth.FOOD_OPTIONS
+import com.bugzero.meety.ui.auth.INTEREST_TAGS
+import com.bugzero.meety.ui.auth.LOCATION_MAP
+import com.bugzero.meety.ui.auth.MBTI_TYPES
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// ── MyPageScreen과 동일한 컬러 팔레트 ──────────────────────────────────────────
-private val EditPurplePrimary = Color(0xFF9C27B0)
-private val EditPurpleLight   = Color(0xFFF3E7FF)
-private val EditGradientStart = Color(0xFFB842F5)
-private val EditGradientEnd   = Color(0xFFFF4FA3)
-private val EditBgColor       = Color(0xFFF8F1F8)
-private val EditTextPrimary   = Color(0xFF222222)
-private val EditTextSecondary = Color(0xFF666666)
-private val EditTextHint      = Color(0xFFBBBBBB)
-private val EditDivider       = Color(0xFFF0F0F0)
-private val EditUnderlineIdle = Color(0xFFEADFF5)
+// ── Meety 2.0 디자인 토큰 (Color.kt와 동일) ───────────────────────────────────
+private val EditPurplePrimary = Color(0xFF7B5CFF)   // Brand1 violet
+private val EditPurpleLight   = Color(0xFFF2EEFF)   // VioletSoft
+private val EditGradientStart = Color(0xFF7B5CFF)   // Brand1
+private val EditGradientMid   = Color(0xFFA24BFF)   // BrandMid
+private val EditGradientEnd   = Color(0xFFFF5C8A)   // Brand2 pink
+private val EditBgColor       = Color(0xFFF4F4F8)   // MeetyBg
+private val EditTextPrimary   = Color(0xFF17161D)   // Ink
+private val EditTextSecondary = Color(0xFF56535F)   // Ink2
+private val EditTextHint      = Color(0xFF9B98A6)   // Ink3
+private val EditDivider       = Color(0xFFECEAF1)   // Line
+private val EditUnderlineIdle = Color(0xFFECEAF1)   // Line
 
 /**
  * 프로필 수정 화면
@@ -69,10 +75,11 @@ fun ProfileEditScreen(
     // ── 편집 상태 ──────────────────────────────────────────────────────────────
     var name          by remember { mutableStateOf("") }
     var age           by remember { mutableStateOf("") }
-    var school        by remember { mutableStateOf("") }
-    var department    by remember { mutableStateOf("") }
+    // 학교는 한성대로 고정 — 수정 불필요
+    var department       by remember { mutableStateOf("") }
     var height        by remember { mutableStateOf("") }
-    var location      by remember { mutableStateOf("") }
+    var locationProvince by remember { mutableStateOf("") }
+    var locationDistrict by remember { mutableStateOf("") }
     var bio           by remember { mutableStateOf("") }
     var mbti          by remember { mutableStateOf("") }
     var interests     by remember { mutableStateOf(emptyList<String>()) }
@@ -99,11 +106,15 @@ fun ProfileEditScreen(
                 name       = data["name"]       as? String ?: ""
                 age        = ((data["age"]    as? Long)?.toString()
                     ?: (data["age"]    as? Int)?.toString()) ?: ""
-                school     = data["school"]     as? String ?: ""
+                // school은 "한성대학교"로 고정
                 department = data["department"] as? String ?: ""
+                // 저장된 location ("시/도 시/군/구") 파싱
+                val savedLocation = data["location"] as? String ?: ""
+                val locParts = savedLocation.split(" ", limit = 2)
+                locationProvince = locParts.getOrElse(0) { "" }
+                locationDistrict = locParts.getOrElse(1) { "" }
                 height     = ((data["height"] as? Long)?.toString()
                     ?: (data["height"] as? Int)?.toString()) ?: ""
-                location   = data["location"]   as? String ?: ""
                 bio        = data["bio"]        as? String ?: ""
                 mbti       = data["mbti"]       as? String ?: ""
                 interests    = (data["interests"]    as? List<*>)?.filterIsInstance<String>() ?: emptyList()
@@ -117,15 +128,6 @@ fun ProfileEditScreen(
 
     // 저장
     fun save() {
-        val mbtiTrimmed = mbti.trim().uppercase()
-        if (mbtiTrimmed.isNotBlank()) {
-            val validMbtiRegex = Regex("^[EI][NS][FT][JP]$")
-            if (!validMbtiRegex.matches(mbtiTrimmed)) {
-                errorMessage = "MBTI는 4자리 형식으로 입력해주세요 (예: ENFP, INTJ)"
-                return
-            }
-        }
-
         scope.launch {
             isSaving = true
             errorMessage = null
@@ -134,12 +136,14 @@ fun ProfileEditScreen(
                 put("name",         name.trim())
                 put("department",   department.trim())
                 put("bio",          bio.trim())
-                put("mbti",         mbtiTrimmed)
+                put("mbti",         mbti.trim())
                 put("interests",    interests)
                 put("foodLikes",    foodLikes)
                 put("foodDislikes", foodDislikes)
-                school.trim().takeIf { it.isNotBlank() }?.let { put("school", it) }
-                location.trim().takeIf { it.isNotBlank() }?.let { put("location", it) }
+                put("school", "한성대학교")
+                listOf(locationProvince, locationDistrict)
+                    .filter { it.isNotBlank() }.joinToString(" ")
+                    .takeIf { it.isNotBlank() }?.let { put("location", it) }
                 age.toIntOrNull()?.let    { put("age",    it) }
                 height.toIntOrNull()?.let { put("height", it) }
                 // TODO: pickedImageUri를 Firebase Storage에 업로드 후 profileImages에 URL 추가
@@ -233,10 +237,10 @@ fun ProfileEditScreen(
                 EditableHeaderSection(
                     name              = name,          onNameChange       = { name = it },
                     age               = age,           onAgeChange        = { age = it },
-                    school            = school,        onSchoolChange     = { school = it },
                     department        = department,    onDepartmentChange = { department = it },
                     height            = height,        onHeightChange     = { height = it },
-                    location          = location,      onLocationChange   = { location = it },
+                    locationProvince  = locationProvince, onProvinceChange = { locationProvince = it; locationDistrict = "" },
+                    locationDistrict  = locationDistrict, onDistrictChange = { locationDistrict = it },
                     mbti              = mbti,          onMbtiChange       = { mbti = it.uppercase() },
                     profileImageUrl   = profileImages.firstOrNull() ?: "",
                     pickedImageUri    = pickedImageUri,
@@ -247,14 +251,29 @@ fun ProfileEditScreen(
             // ── 관심사 ──
             item {
                 EditSectionCard(title = "관심사") {
-                    ChipEditor(
-                        chips       = interests,
-                        onAdd       = { tag -> if (tag !in interests) interests = interests + tag },
-                        onRemove    = { tag -> interests = interests.filter { it != tag } },
-                        chipColor   = Color(0xFFF3E7FF),
-                        textColor   = Color(0xFF8E24AA),
-                        addColor    = Color(0xFFE8D6F7),
-                        placeholder = "관심사 입력 후 확인"
+                    Row(
+                        modifier                  = Modifier.fillMaxWidth(),
+                        horizontalArrangement     = Arrangement.SpaceBetween,
+                        verticalAlignment         = Alignment.CenterVertically
+                    ) {
+                        Text("최대 10개", fontSize = 12.sp, color = EditTextHint)
+                        Text(
+                            "${interests.size}/10",
+                            fontSize   = 12.sp,
+                            color      = EditPurplePrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    SelectableChipGroup(
+                        options      = INTEREST_TAGS,
+                        selected     = interests,
+                        onToggle     = { tag ->
+                            interests = if (tag in interests) interests - tag else interests + tag
+                        },
+                        maxSelect    = 10,
+                        selectedBg   = Color(0xFFF2EEFF),
+                        selectedText = Color(0xFF6D49E0)
                     )
                 }
             }
@@ -287,30 +306,46 @@ fun ProfileEditScreen(
             // ── 음식 취향 ──
             item {
                 EditSectionCard(title = "음식 취향") {
-                    Text("좋아하는 음식", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), fontSize = 13.sp)
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment     = Alignment.CenterVertically
+                    ) {
+                        Text("좋아하는 음식", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), fontSize = 13.sp)
+                        Text("${foodLikes.size}/5", fontSize = 12.sp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                    }
                     Spacer(Modifier.height(10.dp))
-                    ChipEditor(
-                        chips       = foodLikes,
-                        onAdd       = { tag -> if (tag !in foodLikes) foodLikes = foodLikes + tag },
-                        onRemove    = { tag -> foodLikes = foodLikes.filter { it != tag } },
-                        chipColor   = Color(0xFFE6F7E8),
-                        textColor   = Color(0xFF2E7D32),
-                        addColor    = Color(0xFFD0F0D3),
-                        placeholder = "좋아하는 음식 입력"
+                    SelectableChipGroup(
+                        options      = FOOD_OPTIONS,
+                        selected     = foodLikes,
+                        onToggle     = { tag ->
+                            foodLikes = if (tag in foodLikes) foodLikes - tag else foodLikes + tag
+                        },
+                        maxSelect    = 5,
+                        selectedBg   = Color(0xFFE6F7E8),
+                        selectedText = Color(0xFF2E7D32)
                     )
                     Spacer(Modifier.height(16.dp))
                     HorizontalDivider(color = EditDivider)
                     Spacer(Modifier.height(16.dp))
-                    Text("싫어하는 음식", fontWeight = FontWeight.Bold, color = Color(0xFFC62828), fontSize = 13.sp)
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment     = Alignment.CenterVertically
+                    ) {
+                        Text("싫어하는 음식", fontWeight = FontWeight.Bold, color = Color(0xFFC62828), fontSize = 13.sp)
+                        Text("${foodDislikes.size}/5", fontSize = 12.sp, color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
+                    }
                     Spacer(Modifier.height(10.dp))
-                    ChipEditor(
-                        chips       = foodDislikes,
-                        onAdd       = { tag -> if (tag !in foodDislikes) foodDislikes = foodDislikes + tag },
-                        onRemove    = { tag -> foodDislikes = foodDislikes.filter { it != tag } },
-                        chipColor   = Color(0xFFFFE7E7),
-                        textColor   = Color(0xFFC62828),
-                        addColor    = Color(0xFFFFD0D0),
-                        placeholder = "싫어하는 음식 입력"
+                    SelectableChipGroup(
+                        options      = FOOD_OPTIONS,
+                        selected     = foodDislikes,
+                        onToggle     = { tag ->
+                            foodDislikes = if (tag in foodDislikes) foodDislikes - tag else foodDislikes + tag
+                        },
+                        maxSelect    = 5,
+                        selectedBg   = Color(0xFFFFE7E7),
+                        selectedText = Color(0xFFC62828)
                     )
                 }
             }
@@ -324,10 +359,10 @@ fun ProfileEditScreen(
 private fun EditableHeaderSection(
     name: String,           onNameChange: (String) -> Unit,
     age: String,            onAgeChange: (String) -> Unit,
-    school: String,         onSchoolChange: (String) -> Unit,
     department: String,     onDepartmentChange: (String) -> Unit,
     height: String,         onHeightChange: (String) -> Unit,
-    location: String,       onLocationChange: (String) -> Unit,
+    locationProvince: String, onProvinceChange: (String) -> Unit,
+    locationDistrict: String, onDistrictChange: (String) -> Unit,
     mbti: String,           onMbtiChange: (String) -> Unit,
     profileImageUrl: String,
     pickedImageUri: Uri?,
@@ -341,7 +376,7 @@ private fun EditableHeaderSection(
                     .fillMaxWidth()
                     .height(150.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Brush.horizontalGradient(listOf(EditGradientStart, EditGradientEnd)))
+                    .background(Brush.linearGradient(listOf(EditGradientStart, EditGradientMid, EditGradientEnd)))
             )
             Spacer(modifier = Modifier.height(54.dp))
 
@@ -384,7 +419,7 @@ private fun EditableHeaderSection(
                     )
                     Spacer(Modifier.height(18.dp))
 
-                    // 학교 · 학과
+                    // 학교(고정) · 학과
                     EditableInfoRow(
                         icon = {
                             Icon(Icons.Default.School, contentDescription = "학교",
@@ -396,14 +431,19 @@ private fun EditableHeaderSection(
                             verticalAlignment     = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            InlineEditField(
-                                value = school, onValueChange = onSchoolChange,
-                                placeholder = "학교", modifier = Modifier.weight(1f), singleLine = true
+                            // 학교는 한성대로 고정
+                            Text(
+                                text     = "한성대학교",
+                                style    = TextStyle(fontSize = 14.sp, color = EditTextPrimary),
+                                modifier = Modifier.weight(1f)
                             )
                             Text("·", color = EditTextSecondary, fontSize = 14.sp)
-                            InlineEditField(
-                                value = department, onValueChange = onDepartmentChange,
-                                placeholder = "학과", modifier = Modifier.weight(1f), singleLine = true
+                            InlineDropdownField(
+                                value       = department,
+                                options     = DEPARTMENT_OPTIONS,
+                                onSelect    = onDepartmentChange,
+                                placeholder = "학과",
+                                modifier    = Modifier.weight(1f)
                             )
                         }
                     }
@@ -426,26 +466,52 @@ private fun EditableHeaderSection(
                             Text("·", color = EditTextSecondary, fontSize = 14.sp)
                             Icon(Icons.Default.Person, contentDescription = "MBTI",
                                 tint = EditPurplePrimary, modifier = Modifier.size(18.dp))
-                            InlineEditField(
-                                value = mbti,
-                                onValueChange = { if (it.length <= 4) onMbtiChange(it) },
-                                placeholder = "MBTI", modifier = Modifier.width(80.dp), singleLine = true
+                            InlineDropdownField(
+                                value       = mbti,
+                                options     = MBTI_TYPES,
+                                onSelect    = onMbtiChange,
+                                placeholder = "MBTI",
+                                modifier    = Modifier.width(90.dp)
                             )
                         }
                     }
                     Spacer(Modifier.height(12.dp))
 
-                    // 지역
+                    // 지역 — 시/도 → 시/군/구 2단계
                     EditableInfoRow(
                         icon = {
                             Icon(Icons.Default.LocationOn, contentDescription = "지역",
                                 tint = EditPurplePrimary, modifier = Modifier.size(18.dp))
                         }
                     ) {
-                        InlineEditField(
-                            value = location, onValueChange = onLocationChange,
-                            placeholder = "지역", modifier = Modifier.fillMaxWidth(), singleLine = true
-                        )
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // 시/도
+                            InlineDropdownField(
+                                value       = locationProvince,
+                                options     = LOCATION_MAP.keys.toList(),
+                                onSelect    = onProvinceChange,
+                                placeholder = "시/도",
+                                modifier    = Modifier.weight(1f)
+                            )
+                            Text("·", color = EditTextSecondary, fontSize = 14.sp)
+                            // 시/군/구 — 시/도 선택 후 활성화
+                            val districtList = LOCATION_MAP[locationProvince] ?: emptyList()
+                            InlineDropdownField(
+                                value       = locationDistrict,
+                                options     = districtList,
+                                onSelect    = onDistrictChange,
+                                placeholder = if (locationProvince.isBlank()) "시/도 먼저" else "시/군/구",
+                                modifier    = Modifier.weight(1f),
+                                textStyle   = TextStyle(
+                                    fontSize = 14.sp,
+                                    color    = if (locationProvince.isBlank()) EditTextHint else EditTextPrimary
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -474,7 +540,7 @@ private fun EditableHeaderSection(
                 )
             } else {
                 Box(
-                    modifier         = Modifier.size(108.dp).clip(CircleShape).background(Color(0xFFE8D6F7)),
+                    modifier         = Modifier.size(108.dp).clip(CircleShape).background(Color(0xFFF2EEFF)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.Person, contentDescription = null,
@@ -563,6 +629,100 @@ private fun InlineEditField(
     }
 }
 
+// ── 드롭다운 선택 필드 (학과·MBTI·지역용) ─────────────────────────────────────
+@Composable
+private fun InlineDropdownField(
+    value: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = TextStyle(fontSize = 14.sp, color = EditTextPrimary)
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Column {
+            Row(
+                modifier          = Modifier.fillMaxWidth().clickable { expanded = true },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text     = if (value.isBlank()) placeholder else value,
+                    style    = textStyle.copy(color = if (value.isBlank()) EditTextHint else textStyle.color),
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint               = if (expanded) EditPurplePrimary else EditTextSecondary,
+                    modifier           = Modifier.size(16.dp)
+                )
+            }
+            Spacer(Modifier.height(3.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(if (expanded) EditPurplePrimary else EditUnderlineIdle)
+            )
+        }
+        DropdownMenu(
+            expanded          = expanded,
+            onDismissRequest  = { expanded = false },
+            modifier          = Modifier.heightIn(max = 280.dp).background(Color.White)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text    = {
+                        Text(
+                            option,
+                            color      = if (option == value) EditPurplePrimary else EditTextPrimary,
+                            fontSize   = 14.sp,
+                            fontWeight = if (option == value) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    onClick = { onSelect(option); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+// ── 미리 정해진 옵션에서 고르는 칩 그룹 (관심사·음식취향용) ─────────────────
+@Composable
+private fun SelectableChipGroup(
+    options: List<String>,
+    selected: List<String>,
+    onToggle: (String) -> Unit,
+    maxSelect: Int = options.size,
+    selectedBg: Color,
+    selectedText: Color
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement   = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { option ->
+            val isSelected = option in selected
+            Surface(
+                shape    = RoundedCornerShape(20.dp),
+                color    = if (isSelected) selectedBg else Color(0xFFF4F4F8),
+                modifier = Modifier.clickable {
+                    if (isSelected || selected.size < maxSelect) onToggle(option)
+                }
+            ) {
+                Text(
+                    text       = option,
+                    modifier   = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    fontSize   = 13.sp,
+                    color      = if (isSelected) selectedText else EditTextSecondary,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun EditSectionCard(
     title: String,
@@ -578,114 +738,6 @@ private fun EditSectionCard(
             Text(text = title, fontWeight = FontWeight.Bold, color = EditTextPrimary, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(14.dp))
             content()
-        }
-    }
-}
-
-@Composable
-private fun ChipEditor(
-    chips: List<String>,
-    onAdd: (String) -> Unit,
-    onRemove: (String) -> Unit,
-    chipColor: Color,
-    textColor: Color,
-    addColor: Color,
-    placeholder: String
-) {
-    var isAdding    by remember { mutableStateOf(false) }
-    var newChipText by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-
-    fun confirmAdd() {
-        val text = newChipText.trim()
-        if (text.isNotBlank()) onAdd(text)
-        newChipText = ""
-        isAdding = false
-    }
-
-    LaunchedEffect(isAdding) {
-        if (isAdding) focusRequester.requestFocus()
-    }
-
-    val allChips = chips + if (isAdding) listOf("__INPUT__") else listOf("__ADD__")
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        allChips.chunked(3).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                rowItems.forEach { item ->
-                    when (item) {
-                        "__ADD__" -> {
-                            Surface(
-                                shape    = RoundedCornerShape(20.dp),
-                                color    = addColor.copy(alpha = 0.7f),
-                                modifier = Modifier.clickable { isAdding = true }
-                            ) {
-                                Row(
-                                    modifier              = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                    verticalAlignment     = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "추가",
-                                        tint = textColor, modifier = Modifier.size(13.dp))
-                                    Text("추가", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                        "__INPUT__" -> {
-                            Surface(shape = RoundedCornerShape(20.dp), color = addColor) {
-                                Row(
-                                    modifier          = Modifier
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                        .widthIn(min = 80.dp, max = 180.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    BasicTextField(
-                                        value         = newChipText,
-                                        onValueChange = { newChipText = it },
-                                        modifier      = Modifier.weight(1f).focusRequester(focusRequester),
-                                        singleLine    = true,
-                                        textStyle     = TextStyle(fontSize = 12.sp, color = textColor),
-                                        cursorBrush   = SolidColor(textColor),
-                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                        keyboardActions = KeyboardActions(onDone = { confirmAdd() }),
-                                        decorationBox = { innerTextField ->
-                                            Box {
-                                                if (newChipText.isEmpty()) {
-                                                    Text(placeholder, fontSize = 12.sp,
-                                                        color = textColor.copy(alpha = 0.45f))
-                                                }
-                                                innerTextField()
-                                            }
-                                        }
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.Check, contentDescription = "추가 완료",
-                                        tint = textColor,
-                                        modifier = Modifier.size(14.dp).clickable { confirmAdd() }
-                                    )
-                                }
-                            }
-                        }
-                        else -> {
-                            Surface(shape = RoundedCornerShape(20.dp), color = chipColor) {
-                                Row(
-                                    modifier          = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(item, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                    Spacer(Modifier.width(5.dp))
-                                    Icon(
-                                        Icons.Default.Close, contentDescription = "삭제",
-                                        tint = textColor.copy(alpha = 0.65f),
-                                        modifier = Modifier.size(13.dp).clickable { onRemove(item) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

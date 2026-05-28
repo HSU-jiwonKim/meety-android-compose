@@ -12,7 +12,6 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.bugzero.meety.ui.theme.Brand1
 import com.bugzero.meety.ui.theme.Ink4
@@ -595,39 +594,49 @@ private fun MeetyBottomBar(
             }
 
             if (item.type == "plus") {
-                // ── 중앙 FAB ──
+                // ── 중앙 팀 만들기 (다른 탭과 같은 높이로 정렬) ──
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { onNavigate(item.route) },
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        ) { onNavigate(item.route) }
+                        .padding(top = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    // 다른 탭의 아이콘 크기(25dp)와 동일한 영역에 그라데이션 사각형 배치
                     Box(
-                        modifier = Modifier
-                            .offset(y = (-10).dp)
-                            .size(54.dp)
-                            .shadow(12.dp, RoundedCornerShape(18.dp), spotColor = Color(0xFF7B5CFF))
-                            .background(
-                                Brush.linearGradient(
-                                    0f to Color(0xFF7B5CFF),
-                                    0.45f to Color(0xFFA24BFF),
-                                    1f to Color(0xFFFF5C8A)
-                                ),
-                                RoundedCornerShape(18.dp)
-                            ),
+                        modifier = Modifier.size(25.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = item.label, tint = Color.White, modifier = Modifier.size(26.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(25.dp)
+                                .background(
+                                    Brush.linearGradient(
+                                        0f to Color(0xFF7B5CFF),
+                                        0.45f to Color(0xFFA24BFF),
+                                        1f to Color(0xFFFF5C8A)
+                                    ),
+                                    RoundedCornerShape(8.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = item.label,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                     Text(
                         item.label,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isSelected) Brand1 else Ink4,
-                        modifier = Modifier.offset(y = (-8).dp)
+                        color = if (isSelected) Brand1 else Ink4
                     )
                 }
             } else {

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.repository.FeedRepository
 import com.bugzero.meety.ui.team.Team
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,10 +21,14 @@ class FeedViewModel(
     private val _uiState = MutableStateFlow(FeedUiState())
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
 
+    // 팀 상세화면 실시간 구독 핸들
+    private var teamDetailListener: ListenerRegistration? = null
+
     init {
         loadPreferenceThenFetch()
         observeResetSignal()
         observeMyTeamIds()
+        observeLikedTeamIds()
         startPeriodicRefresh()
     }
 
@@ -39,6 +45,18 @@ class FeedViewModel(
         viewModelScope.launch {
             repository.observeMyTeamIds().collect { teamIds ->
                 _uiState.update { it.copy(myTeamIds = teamIds.toSet()) }
+            }
+        }
+    }
+
+    // =====================
+    // 좋아요 상태 실시간 감지 (나가기·초기화 등으로 변경 시 즉시 피드 반영)
+    // =====================
+
+    private fun observeLikedTeamIds() {
+        viewModelScope.launch {
+            repository.observeLikedTeamIds().collect { liked ->
+                _uiState.update { it.copy(likedTeamIds = liked) }
             }
         }
     }
@@ -481,10 +499,34 @@ class FeedViewModel(
             ?: _uiState.value.allTeams.find { it.teamId == teamId }
         _uiState.update { it.copy(selectedTeam = team, memberProfiles = emptyList()) }
         team?.let { loadMemberProfiles(it) }
+        // 팀 문서 실시간 감시 시작 → 멤버 변경 즉시 반영
+        observeTeamDetail(teamId)
     }
 
     fun clearSelectedTeam() {
+        teamDetailListener?.remove()
+        teamDetailListener = null
         _uiState.update { it.copy(selectedTeam = null, memberProfiles = emptyList()) }
+    }
+
+    /** 팀 문서를 실시간으로 감시 — memberIds 변경 시 프로필 즉시 재로드 */
+    private fun observeTeamDetail(teamId: String) {
+        teamDetailListener?.remove()
+        teamDetailListener = FirebaseFirestore.getInstance()
+            .collection("teams")
+            .document(teamId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                val updatedTeam = snapshot.toObject(Team::class.java) ?: return@addSnapshotListener
+                val current = _uiState.value.selectedTeam ?: return@addSnapshotListener
+                if (updatedTeam.teamId != current.teamId) return@addSnapshotListener
+
+                val memberIdsChanged = updatedTeam.memberIds.toSet() != current.memberIds.toSet()
+                _uiState.update { it.copy(selectedTeam = updatedTeam) }
+                if (memberIdsChanged) {
+                    loadMemberProfiles(updatedTeam)
+                }
+            }
     }
 
     /** 선택된 팀의 팀원 프로필을 비동기로 로딩한다. */
@@ -610,4 +652,10 @@ class FeedViewModel(
         }
     }
 
+
+
+    override fun onCleared() {
+        teamDetailListener?.remove()
+        super.onCleared()
+    }
 }

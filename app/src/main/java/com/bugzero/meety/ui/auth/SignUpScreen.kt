@@ -159,7 +159,18 @@ fun SignUpStep1(
     signUpState: SignUpState,
     onNext: () -> Unit
 ) {
+    // ── 검증 상태 ──
+    val passwordLongEnough   = password.length >= 8
+    val passwordsMatch       = password == confirmPassword
+    val confirmTouched       = confirmPassword.isNotEmpty()
+    val emailValid           = email.endsWith("@hansung.ac.kr")
+    val isFormValid          = name.isNotBlank() && emailValid &&
+                               passwordLongEnough && confirmTouched && passwordsMatch
+
+    var showConfirmPassword by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // 이름
         Column {
             Text("이름", fontSize = 14.sp, color = Gray700, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(6.dp))
@@ -171,6 +182,8 @@ fun SignUpStep1(
                 shape = RoundedCornerShape(12.dp), singleLine = true
             )
         }
+
+        // 이메일
         Column {
             Text("한성대 이메일", fontSize = 14.sp, color = Gray700, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(6.dp))
@@ -179,11 +192,18 @@ fun SignUpStep1(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("name@hansung.ac.kr", color = Gray400) },
                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Gray400) },
+                isError = email.isNotBlank() && !emailValid,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 shape = RoundedCornerShape(12.dp), singleLine = true
             )
-            Text("@hansung.ac.kr 이메일만 가입 가능합니다", fontSize = 12.sp, color = Gray400)
+            if (email.isNotBlank() && !emailValid) {
+                Text("@hansung.ac.kr 이메일만 가입 가능합니다", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            } else {
+                Text("@hansung.ac.kr 이메일만 가입 가능합니다", fontSize = 12.sp, color = Gray400)
+            }
         }
+
+        // 비밀번호
         Column {
             Text("비밀번호", fontSize = 14.sp, color = Gray700, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(6.dp))
@@ -200,11 +220,17 @@ fun SignUpStep1(
                         )
                     }
                 },
+                isError = password.isNotBlank() && !passwordLongEnough,
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 shape = RoundedCornerShape(12.dp), singleLine = true
             )
+            if (password.isNotBlank() && !passwordLongEnough) {
+                Text("비밀번호는 8자 이상이어야 합니다", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            }
         }
+
+        // 비밀번호 확인
         Column {
             Text("비밀번호 확인", fontSize = 14.sp, color = Gray700, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(6.dp))
@@ -213,13 +239,28 @@ fun SignUpStep1(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("비밀번호를 다시 입력하세요", color = Gray400) },
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Gray400) },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showConfirmPassword = !showConfirmPassword }) {
+                        Icon(
+                            if (showConfirmPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = null, tint = Gray400
+                        )
+                    }
+                },
+                isError = confirmTouched && !passwordsMatch,
+                visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 shape = RoundedCornerShape(12.dp), singleLine = true
             )
+            when {
+                confirmTouched && !passwordsMatch ->
+                    Text("비밀번호가 일치하지 않습니다", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                confirmTouched && passwordsMatch ->
+                    Text("✓ 비밀번호가 일치합니다", fontSize = 12.sp, color = Color(0xFF19C37D))
+            }
         }
 
-        // 에러 메시지
+        // 서버 에러 메시지
         if (signUpState is SignUpState.Error) {
             Text(
                 (signUpState as SignUpState.Error).message,
@@ -229,11 +270,13 @@ fun SignUpStep1(
         }
 
         Button(
-            onClick = onNext,
+            onClick = {
+                if (isFormValid) onNext()
+            },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Purple),
-            enabled = signUpState !is SignUpState.Loading
+            enabled = isFormValid && signUpState !is SignUpState.Loading
         ) {
             if (signUpState is SignUpState.Loading) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)

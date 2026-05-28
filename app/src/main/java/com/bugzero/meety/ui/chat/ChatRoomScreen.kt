@@ -93,12 +93,17 @@ fun ChatRoomScreen(
     callViewModel: CallViewModel = viewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
+    val isNewTeamChat by viewModel.isNewTeamChat.collectAsState()
     val currentRoomName by viewModel.roomName.collectAsState()
     val isSending by viewModel.isSending.collectAsState()
     val participants by viewModel.participants.collectAsState()
     val selectedUserProfile by viewModel.selectedUserProfile.collectAsState()
     val isLoadingProfile by viewModel.isLoadingProfile.collectAsState()
     val requestList by viewModel.requestList.collectAsState()
+    val roomImageUrl by viewModel.roomImageUrl.collectAsState()
+
+    // 프로필/팀사진 다이얼로그 표시 상태
+    var showTeamPhotoDialog by remember { mutableStateOf(false) }
 
     // ✨ 친구 목록 상태 가져오기
     val friendList by viewModel.friendList.collectAsState()
@@ -193,7 +198,7 @@ fun ChatRoomScreen(
     var selectedParticipant by remember { mutableStateOf<ParticipantItem?>(null) }
     var showLeaveDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(chatId) { viewModel.enterChatRoom(chatId, roomName) }
+    LaunchedEffect(chatId) { viewModel.enterChatRoom(chatId, roomName); viewModel.markMessagesAsRead(chatId) }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) { listState.animateScrollToItem(0) }
@@ -207,6 +212,16 @@ fun ChatRoomScreen(
             text = { Text("정말 나가시겠습니까?") },
             confirmButton = { TextButton(onClick = { viewModel.leaveChatRoom(chatId, onSuccess = { showLeaveDialog = false; onBackClick() }) }) { Text("나가기", color = Color.Red) } },
             dismissButton = { TextButton(onClick = { showLeaveDialog = false }) { Text("취소") } }
+        )
+    }
+
+    // 팀 대표사진 다이얼로그
+    if (showTeamPhotoDialog) {
+        TeamPhotoDialog(
+            roomName = currentRoomName.ifEmpty { roomName },
+            imageUrl = roomImageUrl,
+            memberCount = participants.size,
+            onDismiss = { showTeamPhotoDialog = false }
         )
     }
 
@@ -314,21 +329,40 @@ fun ChatRoomScreen(
                     topBar = {
                         TopAppBar(
                             title = {
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    Row(modifier = Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                                // 아바타 + 방이름 클릭 영역
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(
+                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                            indication = null
+                                        ) {
+                                            if (isDirectChat) {
+                                                // 1:1 채팅: 상대방 참여자 프로필 다이얼로그 열기
+                                                val other = participants.firstOrNull { it.userId != currentUserId }
+                                                if (other != null) {
+                                                    selectedParticipant = other
+                                                    viewModel.loadUserProfile(other.userId)
+                                                }
+                                            } else {
+                                                // 팀/단체 채팅: 팀 대표사진 다이얼로그
+                                                showTeamPhotoDialog = true
+                                            }
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = currentRoomName.ifEmpty { roomName },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp
+                                    )
+                                    if (participants.size > 2) {
+                                        Spacer(modifier = Modifier.width(5.dp))
                                         Text(
-                                            text = currentRoomName.ifEmpty { roomName },
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp
+                                            text = "${participants.size}",
+                                            fontSize = 13.sp,
+                                            color = Color.Gray
                                         )
-                                        if (participants.size > 2) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "${participants.size}",
-                                                fontSize = 13.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
                                     }
                                 }
                             },
@@ -368,6 +402,13 @@ fun ChatRoomScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 contentPadding = PaddingValues(top = 52.dp, bottom = 12.dp)
                             ) {
+                                // 새 팀 채팅방 최초 입장 시 본인에게만 보이는 로컬 안내 배너
+                                if (isNewTeamChat) {
+                                    item(key = "new_match_banner") {
+                                        NewMatchGreetingBanner()
+                                    }
+                                }
+
                                 val reversedMessages = messages.reversed()
                                 itemsIndexed(
                                     items = reversedMessages,
@@ -376,6 +417,7 @@ fun ChatRoomScreen(
                                     MessageItem(
                                         message = message,
                                         timeText = viewModel.formatTime(message.createdAt),
+                                        unreadCount = viewModel.getUnreadCount(message, participants),
                                         onProfileClick = {
                                             val participant = participants.find { it.userId == message.senderId }
                                             if (participant != null) {
@@ -383,7 +425,10 @@ fun ChatRoomScreen(
                                                 viewModel.loadUserProfile(message.senderId)
                                             }
                                         },
-                                        onImageClick = { url -> showFullImage = url }
+                                        onImageClick = { url -> showFullImage = url },
+                                        onVoteCast = { selectedIndices ->
+                                            viewModel.castVote(chatId, message.id, selectedIndices)
+                                        }
                                     )
 
                                     val showDateSeparator = if (index == reversedMessages.lastIndex) {
@@ -637,8 +682,7 @@ fun ChatRoomScreen(
         VoteCreationSheet(
             onDismiss = { showVoteSheet = false },
             onCreateVote = { title, options, isMultiple, isAnonymous ->
-                // ✨ 에러 원인 해결: viewModel.createVote 삭제하고 알림창만 띄움!
-                snackScope.launch { snackbarHostState.showSnackbar("투표 기능은 DB 연결 후 활성화됩니다!") }
+                viewModel.createVote(chatId, title, options, isMultiple, isAnonymous)
                 showVoteSheet = false
             }
         )
@@ -1103,8 +1147,10 @@ private fun StickerMessage(
 private fun MessageItem(
     message: ChatMessage,
     timeText: String,
+    unreadCount: Int = 0,
     onProfileClick: () -> Unit = {},
-    onImageClick: (String) -> Unit
+    onImageClick: (String) -> Unit,
+    onVoteCast: (List<Int>) -> Unit = {}
 ) {
     if (message.type == "image") {
         ImageMessage(
@@ -1112,6 +1158,16 @@ private fun MessageItem(
             timeText = timeText,
             onProfileClick = onProfileClick,
             onImageClick = onImageClick
+        )
+        return
+    }
+    if (message.type == "vote") {
+        VoteMessage(
+            message = message,
+            timeText = timeText,
+            unreadCount = unreadCount,
+            onProfileClick = onProfileClick,
+            onVoteCast = onVoteCast
         )
         return
     }
@@ -1198,12 +1254,22 @@ private fun MessageItem(
             ) {
                 // 내 말풍선일 때 시간 (왼쪽)
                 if (isMe) {
-                    Text(
-                        text = timeText,
-                        fontSize = 10.sp,
-                        color = Color.LightGray,
-                        modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (unreadCount > 0) {
+                            Text(
+                                text = unreadCount.toString(),
+                                fontSize = 11.sp,
+                                color = Color(0xFFA78BFA),
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = timeText,
+                            fontSize = 10.sp,
+                            color = Color.LightGray,
+                            modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
+                        )
+                    }
                 }
 
                 // 말풍선 박스
@@ -1577,6 +1643,7 @@ fun IncomingCallDialog(
 private fun PlaceCardMessage(
     message: ChatMessage,
     timeText: String,
+    unreadCount: Int = 0,
     onProfileClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -1654,12 +1721,22 @@ private fun PlaceCardMessage(
                 horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
             ) {
                 if (isMe) {
-                    Text(
-                        text = timeText,
-                        fontSize = 10.sp,
-                        color = Color.LightGray,
-                        modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (unreadCount > 0) {
+                            Text(
+                                text = unreadCount.toString(),
+                                fontSize = 11.sp,
+                                color = Color(0xFFA78BFA),
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = timeText,
+                            fontSize = 10.sp,
+                            color = Color.LightGray,
+                            modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
+                        )
+                    }
                 }
                 Surface(
                     onClick = { openPlaceDetail() },
@@ -2233,6 +2310,53 @@ fun DateDivider(dateText: String) {
     }
 }
 
+/**
+ * 새 팀 채팅방 최초 진입 시 본인에게만 보이는 로컬 인사 배너.
+ * Firebase에 저장되지 않으므로 다른 팀원에게는 보이지 않습니다.
+ */
+@Composable
+private fun NewMatchGreetingBanner() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(Color(0xFF7B5CFF).copy(alpha = 0.12f), Color(0xFFFF5C8A).copy(alpha = 0.12f))
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .border(1.dp, Color(0xFF7B5CFF).copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text("🎉", fontSize = 18.sp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "방금 매칭됐어요!",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF7B5CFF)
+                )
+                Text(
+                    text = "인사를 건네보세요",
+                    fontSize = 12.5.sp,
+                    color = Color(0xFF56535F),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("🎉", fontSize = 18.sp)
+        }
+    }
+}
+
 // ─── 팀원 자동 매칭 시트 ─────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2463,6 +2587,89 @@ private fun AttachmentMenuPanel(
     }
 }
 
+// ── 팀 대표사진 다이얼로그 ────────────────────────────────────────────────────
+@Composable
+private fun TeamPhotoDialog(
+    roomName: String,
+    imageUrl: String,
+    memberCount: Int,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.85f))
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 32.dp)
+            ) {
+                // 팀 대표사진
+                Box(
+                    modifier = Modifier
+                        .size(220.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xFFEDE9FE)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (imageUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = "팀 대표사진",
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Text("👥", fontSize = 80.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // 팀 이름
+                Text(
+                    text = roomName,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+
+                Spacer(Modifier.height(6.dp))
+
+                // 멤버 수
+                Text(
+                    text = "멤버 ${memberCount}명",
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+
+                Spacer(Modifier.height(32.dp))
+
+                // 닫기 버튼
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .clickable { onDismiss() }
+                        .padding(horizontal = 36.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("닫기", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
+        }
+    }
+}
+
 // ✨ [추가 부품 2] 카카오톡 스타일 투표 만들기 화면
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2623,6 +2830,175 @@ fun FullScreenImageDialog(imageUrl: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(modifier = Modifier.fillMaxSize().background(Color.Black).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
             AsyncImage(model = imageUrl, contentDescription = "확대된 사진", modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun VoteMessage(
+    message: ChatMessage,
+    timeText: String,
+    unreadCount: Int = 0,
+    onProfileClick: () -> Unit = {},
+    onVoteCast: (List<Int>) -> Unit
+) {
+    val isMe = message.isMe
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    val voteData = message.voteData ?: return
+    val title = (voteData["title"] as? String) ?: "투표"
+    val options = (voteData["options"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+    val isMultiple = (voteData["isMultipleChoice"] as? Boolean) ?: false
+    val voters = (voteData["voters"] as? Map<String, List<Any>>) ?: emptyMap()
+
+    val myPreviousVote = voters[currentUserId]?.mapNotNull { (it as? Number)?.toInt() }?.toSet() ?: emptySet()
+    var selectedOptions by remember(voters) { mutableStateOf(myPreviousVote) }
+
+    val totalVotes = voters.values.size
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
+    ) {
+        if (!isMe) {
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFE5E7EB)).clickable { onProfileClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (message.senderProfileImage.isNotBlank()) {
+                    AsyncImage(
+                        model = message.senderProfileImage,
+                        contentDescription = "프로필",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(text = message.senderName.take(1).ifEmpty { "👤" }, fontSize = 16.sp, color = Color.DarkGray, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+
+        Column(horizontalAlignment = if (isMe) Alignment.End else Alignment.Start) {
+            if (!isMe && message.senderName.isNotBlank()) {
+                Text(text = message.senderName, fontSize = 13.sp, color = Color(0xFF4B5563), modifier = Modifier.padding(bottom = 4.dp, start = 4.dp))
+            }
+
+            Row(verticalAlignment = Alignment.Bottom) {
+                if (isMe) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy((-2).dp),
+                        modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
+                    ) {
+                        if (unreadCount > 0) {
+                            Text(text = unreadCount.toString(), color = Color(0xFFA78BFA), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(text = timeText, fontSize = 10.sp, color = Color.LightGray)
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(
+                        topStart = if (isMe) 16.dp else 4.dp,
+                        topEnd = if (isMe) 4.dp else 16.dp,
+                        bottomStart = 16.dp,
+                        bottomEnd = 16.dp
+                    ),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEAE8F4)),
+                    modifier = Modifier.widthIn(max = 260.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📊", fontSize = 16.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("투표", fontSize = 12.sp, color = Color(0xFF8B5CF6), fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        Text(
+                            text = if (isMultiple) "복수 선택 가능" else "하나만 선택 가능",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        options.forEachIndexed { index, option ->
+                            val isSelected = selectedOptions.contains(index)
+                            val votesForOption = voters.values.count {
+                                it.mapNotNull { num -> (num as? Number)?.toInt() }.contains(index)
+                            }
+                            val votePercentage = if (totalVotes > 0) votesForOption.toFloat() / totalVotes else 0f
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedOptions = if (isMultiple) {
+                                            if (isSelected) selectedOptions - index else selectedOptions + index
+                                        } else {
+                                            setOf(index)
+                                        }
+                                    }
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isMultiple) {
+                                        Checkbox(checked = isSelected, onCheckedChange = null, modifier = Modifier.size(20.dp))
+                                    } else {
+                                        RadioButton(selected = isSelected, onClick = null, modifier = Modifier.size(20.dp))
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(text = option, fontSize = 14.sp, color = Color(0xFF333333), modifier = Modifier.weight(1f))
+                                    if (totalVotes > 0) {
+                                        Text(text = "${votesForOption}명", fontSize = 12.sp, color = Color.Gray)
+                                    }
+                                }
+                                if (totalVotes > 0) {
+                                    Spacer(Modifier.height(4.dp))
+                                    LinearProgressIndicator(
+                                        progress = { votePercentage },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = Color(0xFFC4B5FD),
+                                        trackColor = Color(0xFFF3F4F6)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { onVoteCast(selectedOptions.toList()) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = selectedOptions.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                if (myPreviousVote.isEmpty()) "투표하기" else "다시 투표하기",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                if (!isMe) {
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy((-2).dp),
+                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                    ) {
+                        if (unreadCount > 0) {
+                            Text(text = unreadCount.toString(), color = Color.LightGray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(text = timeText, fontSize = 10.sp, color = Color.LightGray)
+                    }
+                }
+            }
         }
     }
 }

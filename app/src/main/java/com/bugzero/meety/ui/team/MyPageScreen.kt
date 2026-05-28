@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -77,6 +78,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.getValue
@@ -204,6 +206,7 @@ fun MyPageBody(
     if (showMainImageDialog) {
         SelectMainProfileImageDialog(
             imageUrls = uiState.profileImages,
+            currentMainUrl = uiState.mainProfileImageUrl.ifBlank { uiState.profileImages.firstOrNull().orEmpty() },
             onDismiss = { showMainImageDialog = false },
             onSelect = { imageUrl ->
                 showMainImageDialog = false
@@ -249,6 +252,7 @@ fun MyPageBody(
             item {
                 PhotoSection(
                     imageUrls = uiState.profileImages,
+                    mainProfileImageUrl = uiState.mainProfileImageUrl.ifBlank { uiState.profileImages.firstOrNull().orEmpty() },
                     onAddPhotoClick = onAddPhotoClick,
                     onPhotoClick = { imageUrl ->
                         selectedImageUrl = imageUrl
@@ -262,7 +266,6 @@ fun MyPageBody(
                 )
             }
         } else {
-            item { MyProfileInfoSection(uiState = uiState) }
             item { ScheduleSection(schedule = uiState.schedule, onScheduleClick = onScheduleClick) }
         }
         item { Spacer(modifier = Modifier.height(20.dp)) }
@@ -284,27 +287,13 @@ private fun MyProfileTopBar(
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(7.dp)
-                    .background(Color(0xFF19C37D), CircleShape)
-            )
-            Spacer(modifier = Modifier.width(7.dp))
-            Text(
-                text = handleName,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.2).sp,
-                color = Color(0xFF17161D)
-            )
-            Icon(
-                imageVector = Icons.Default.ExpandMore,
-                contentDescription = null,
-                tint = Color(0xFF17161D),
-                modifier = Modifier.size(18.dp)
-            )
-        }
+        Text(
+            text = handleName,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.2).sp,
+            color = Color(0xFF17161D)
+        )
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -401,37 +390,62 @@ private fun ProfileHeaderSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(88.dp)
-                    .background(IgGradient, CircleShape)
-                    .padding(3.dp)
-                    .combinedClickable(onClick = onImageClick, onLongClick = onChangeMainImageClick),
+                modifier = Modifier.size(88.dp),
                 contentAlignment = Alignment.Center
             ) {
+                // 그라데이션 링 + 프로필 사진 (탭 → 크게 보기)
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .padding(3.dp),
+                        .size(88.dp)
+                        .background(IgGradient, CircleShape)
+                        .padding(3.dp)
+                        .clickable(onClick = onImageClick),
                     contentAlignment = Alignment.Center
                 ) {
-                    val profileImageUrl = if (uiState.mainProfileImageUrl.isNotBlank()) uiState.mainProfileImageUrl
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .padding(3.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val profileImageUrl = if (uiState.mainProfileImageUrl.isNotBlank()) uiState.mainProfileImageUrl
                         else uiState.profileImages.firstOrNull().orEmpty()
-                    if (profileImageUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = profileImageUrl,
-                            contentDescription = "프로필 이미지",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize().clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(Color(0xFFF2EEFF), Color(0xFFFFECF3)))),
-                            contentAlignment = Alignment.Center
-                        ) { Text("🙋", fontSize = 34.sp) }
+                        if (profileImageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = profileImageUrl,
+                                contentDescription = "프로필 이미지",
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                    .background(Brush.linearGradient(listOf(Color(0xFFF2EEFF), Color(0xFFFFECF3)))),
+                                contentAlignment = Alignment.Center
+                            ) { Text("🙋", fontSize = 34.sp) }
+                        }
                     }
+                }
+                // 카메라 배지 — 탭하면 프로필 사진 변경 다이얼로그 오픈
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .align(Alignment.BottomEnd)
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF7B5CFF))
+                        .border(2.dp, Color.White, CircleShape)
+                        .clickable(onClick = onChangeMainImageClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "프로필 사진 변경",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
 
@@ -464,6 +478,7 @@ private fun ProfileHeaderSection(
                 append("🎓 ")
                 if (uiState.department.isNotBlank()) append(uiState.department)
                 if (uiState.age > 0) { if (length > 2) append(" · "); append("${uiState.age}세") }
+                if (uiState.height > 0) { if (length > 2) append(" · "); append("${uiState.height}cm") }
                 if (uiState.school.isNotBlank()) { if (length > 2) append(" · "); append(uiState.school) }
             }
             Spacer(Modifier.height(3.dp))
@@ -481,6 +496,23 @@ private fun ProfileHeaderSection(
                     color = Color(0xFF7B5CFF),
                     lineHeight = 20.sp
                 )
+            }
+            if (uiState.location.isNotBlank()) {
+                Spacer(Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "사는곳",
+                        tint = Color(0xFF9B98A6),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        uiState.location,
+                        fontSize = 12.sp,
+                        color = Color(0xFF9B98A6)
+                    )
+                }
             }
         }
 
@@ -577,6 +609,7 @@ private fun ProfileStat(value: String, label: String) {
 private fun SectionCard(
     title: String,
     onClick: (() -> Unit)? = null,
+    showTitleDot: Boolean = false,
     content: @Composable () -> Unit
 ) {
     Card(
@@ -586,10 +619,28 @@ private fun SectionCard(
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+            if (showTitleDot) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(Color(0xFF7B5CFF), Color(0xFFFF5C8A))))
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color(0xFF17161D)
+                    )
+                }
+            } else {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+            }
             Spacer(modifier = Modifier.height(14.dp))
             content()
         }
@@ -700,7 +751,7 @@ private fun ScheduleSection(
     schedule: Map<String, List<String>>,
     onScheduleClick: () -> Unit = {}
 ) {
-    SectionCard(title = "시간표", onClick = onScheduleClick) {
+    SectionCard(title = "시간표", onClick = onScheduleClick, showTitleDot = true) {
         Column {
             // 요일 헤더 고정
             Row(
@@ -712,7 +763,7 @@ private fun ScheduleSection(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .background(Color(0xFFF1E7F7), RoundedCornerShape(6.dp))
+                            .background(Color(0xFFEFE9FF), RoundedCornerShape(6.dp))
                             .padding(vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -720,7 +771,7 @@ private fun ScheduleSection(
                             text = day,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF6F3D8A)
+                            color = Color(0xFF6D49E0)
                         )
                     }
                 }
@@ -744,7 +795,7 @@ private fun ScheduleSection(
                             Text(
                                 text = time.substring(0, 5),
                                 fontSize = 8.sp,
-                                color = Color(0xFF9C79A8)
+                                color = Color(0xFF9B98A6)
                             )
                         }
                     }
@@ -768,7 +819,7 @@ private fun ScheduleSection(
                                     if (isHalfHour && !isPrevSelected)
                                         Modifier.drawBehind {
                                             drawLine(
-                                                color = Color(0xFFE0D0EA),
+                                                color = Color(0xFFE4DEFF),
                                                 start = Offset(0f, 0f),
                                                 end = Offset(size.width, 0f),
                                                 strokeWidth = 1f,
@@ -779,14 +830,32 @@ private fun ScheduleSection(
                                         }
                                     else Modifier
                                 )
-                                .background(
-                                    color = if (isSelected) Color(0xFFCE93D8) else Color(0xFFF7F2F9),
-                                    shape = RoundedCornerShape(
-                                        topStart = topRadius,
-                                        topEnd = topRadius,
-                                        bottomStart = bottomRadius,
-                                        bottomEnd = bottomRadius
-                                    )
+                                .then(
+                                    if (isSelected)
+                                        Modifier.background(
+                                            brush = Brush.linearGradient(
+                                                listOf(
+                                                    Color(0xFF7B5CFF).copy(alpha = 0.35f),
+                                                    Color(0xFFFF5C8A).copy(alpha = 0.28f)
+                                                )
+                                            ),
+                                            shape = RoundedCornerShape(
+                                                topStart = topRadius,
+                                                topEnd = topRadius,
+                                                bottomStart = bottomRadius,
+                                                bottomEnd = bottomRadius
+                                            )
+                                        )
+                                    else
+                                        Modifier.background(
+                                            color = Color(0xFFF8F6FF),
+                                            shape = RoundedCornerShape(
+                                                topStart = topRadius,
+                                                topEnd = topRadius,
+                                                bottomStart = bottomRadius,
+                                                bottomEnd = bottomRadius
+                                            )
+                                        )
                                 )
                         )
                     }
@@ -803,14 +872,14 @@ private fun ScheduleSection(
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = null,
-                    tint = Color(0xFFAB47BC),
+                    tint = Color(0xFF7B5CFF),
                     modifier = Modifier.size(12.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     "탭하여 시간표 편집",
                     fontSize = 11.sp,
-                    color = Color(0xFFAB47BC)
+                    color = Color(0xFF7B5CFF)
                 )
             }
         }
@@ -819,16 +888,10 @@ private fun ScheduleSection(
 
 @Composable
 private fun FoodPreferenceSection(likes: List<String>, dislikes: List<String>) {
-    SectionCard(title = "음식 취향") {
-        Text(text = "좋아하는 음식", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-        Spacer(modifier = Modifier.height(10.dp))
-        TagWrapSection(tags = likes, chipColor = Color(0xFFE6F7E8), textColor = Color(0xFF2E7D32))
-        Spacer(modifier = Modifier.height(18.dp))
-        Divider(color = Color(0xFFF0F0F0))
-        Spacer(modifier = Modifier.height(18.dp))
-        Text(text = "싫어하는 음식", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
-        Spacer(modifier = Modifier.height(10.dp))
-        TagWrapSection(tags = dislikes, chipColor = Color(0xFFFFE7E7), textColor = Color(0xFFC62828))
+    SectionCard(title = "싫어하는 음식", showTitleDot = true) {
+        if (dislikes.isNotEmpty()) {
+            TagWrapSection(tags = dislikes, chipColor = Color(0xFFFFE7E7), textColor = Color(0xFFC62828))
+        }
     }
 }
 
@@ -848,6 +911,7 @@ private fun EditProfileButton(onClick: () -> Unit) {
 @Composable
 private fun PhotoSection(
     imageUrls: List<String>,
+    mainProfileImageUrl: String = "",
     onAddPhotoClick: () -> Unit,
     onPhotoClick: (String) -> Unit,
     onDeletePhotoClick: (String) -> Unit,
@@ -876,6 +940,7 @@ private fun PhotoSection(
                     } else {
                         PhotoItem(
                             imageUrl = item,
+                            isMainPhoto = item == mainProfileImageUrl,
                             modifier = Modifier.weight(1f),
                             onClick = { onPhotoClick(item) },
                             onDeleteClick = { onDeletePhotoClick(item) },
@@ -896,6 +961,7 @@ private fun PhotoSection(
 @Composable
 private fun PhotoItem(
     imageUrl: String,
+    isMainPhoto: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -937,18 +1003,44 @@ private fun PhotoItem(
         )
     }
 
-    AsyncImage(
-        model = imageUrl,
-        contentDescription = "프로필 사진",
-        modifier = modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { showMenu = true }
-            ),
-        contentScale = ContentScale.Crop
-    )
+    Box(modifier = modifier.aspectRatio(1f)) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "프로필 사진",
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(16.dp))
+                .then(
+                    if (isMainPhoto)
+                        Modifier.border(2.5.dp, Color(0xFF7B5CFF), RoundedCornerShape(16.dp))
+                    else
+                        Modifier
+                )
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { showMenu = true }
+                ),
+            contentScale = ContentScale.Crop
+        )
+        // 대표 사진 배지
+        if (isMainPhoto) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF7B5CFF))
+                    .padding(horizontal = 7.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "대표",
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+    }
 }
 @Composable
 private fun PhotoActionMenuItem(
@@ -1047,6 +1139,7 @@ private fun LargeImageDialog(
 @Composable
 private fun SelectMainProfileImageDialog(
     imageUrls: List<String>,
+    currentMainUrl: String = "",
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
     onPickFromGallery: () -> Unit
@@ -1058,67 +1151,96 @@ private fun SelectMainProfileImageDialog(
         onDismissRequest = onDismiss,
         containerColor = Color.White,
         title = {
-            Text(
-                text = "프로필 사진 변경",
-                color = Color.Black
-            )
+            Text(text = "프로필 사진 변경", color = Color(0xFF17161D), fontWeight = FontWeight.ExtraBold)
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PhotoActionMenuItem(
-                    text = "내 갤러리에서 선택",
+                    text = "📷  갤러리에서 새 사진 선택",
                     onClick = onPickFromGallery
                 )
 
-                photos.chunked(3).forEach { rowItems ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        rowItems.forEach { imageUrl ->
-                            val isSelected = selectedImageUrl == imageUrl
+                if (photos.isNotEmpty()) {
+                    Text(
+                        text = "내 사진에서 선택",
+                        fontSize = 12.sp,
+                        color = Color(0xFF9B98A6),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    photos.chunked(3).forEach { rowItems ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            rowItems.forEach { imageUrl ->
+                                val isPicked = selectedImageUrl == imageUrl
+                                val isCurrent = imageUrl == currentMainUrl && selectedImageUrl == null
+                                val isHighlighted = isPicked || isCurrent
 
-                            AsyncImage(
-                                model = imageUrl,
-                                contentDescription = "선택할 사진",
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .border(
-                                        width = if (isSelected) 3.dp else 0.dp,
-                                        color = if (isSelected) Color.Black else Color.Transparent,
-                                        shape = RoundedCornerShape(14.dp)
+                                Box(modifier = Modifier.size(72.dp)) {
+                                    AsyncImage(
+                                        model = imageUrl,
+                                        contentDescription = "선택할 사진",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .border(
+                                                width = if (isHighlighted) 2.5.dp else 0.dp,
+                                                color = if (isHighlighted) Color(0xFF7B5CFF) else Color.Transparent,
+                                                shape = RoundedCornerShape(14.dp)
+                                            )
+                                            .clickable { selectedImageUrl = imageUrl },
+                                        contentScale = ContentScale.Crop
                                     )
-                                    .clickable { selectedImageUrl = imageUrl },
-                                contentScale = ContentScale.Crop
-                            )
+                                    // 선택됨 체크 또는 현재 대표 표시
+                                    if (isHighlighted) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = (-4).dp, y = 4.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF7B5CFF))
+                                                .border(2.dp, Color.White, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                    // 현재 대표 사진 "현재" 라벨
+                                    if (isCurrent) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(4.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFF7B5CFF).copy(alpha = 0.85f))
+                                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("현재", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-
-                if (photos.isEmpty()) {
-                    Text(
-                        text = "선택할 사진이 없습니다.",
-                        color = Color.Black
-                    )
+                } else {
+                    Text(text = "선택할 사진이 없습니다.", color = Color(0xFF9B98A6), fontSize = 13.sp)
                 }
             }
         },
         confirmButton = {
             TextButton(
                 enabled = selectedImageUrl != null,
-                onClick = {
-                    selectedImageUrl?.let { onSelect(it) }
-                }
+                onClick = { selectedImageUrl?.let { onSelect(it) } }
             ) {
                 Text(
                     text = "확인",
-                    color = Color.Black
+                    color = if (selectedImageUrl != null) Color(0xFF7B5CFF) else Color(0xFFD1D5DB),
+                    fontWeight = FontWeight.ExtraBold
                 )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "취소", color = Color.Black)
+                Text(text = "취소", color = Color(0xFF6B7280))
             }
         }
     )

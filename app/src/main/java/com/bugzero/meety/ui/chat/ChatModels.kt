@@ -41,7 +41,9 @@ data class ChatPreview(
     val emoji: String = "👥",
     val type: String = "team",
     val participantCount: Int = 0,
-    val imageUrl: String = ""
+    val imageUrl: String = "",
+    val isNew: Boolean = false,   // 팀 채팅방 최초 방문 여부 (본인한테만 보이는 NEW 배지용)
+    val participantImages: List<String> = emptyList()  // 단체 채팅방 참여자 프로필 이미지 (본인 제외, 최대 4)
 )
 
 data class ChatMessage(
@@ -69,5 +71,7 @@ data class ChatMessage(
     val placeLng: Double = 0.0,
 
     val imageUrl: String = "",
-    val voteData: Map<String, Any>? = null
+    val voteData: Map<String, Any>? = null,
+    val readBy: List<String> = emptyList(),
+    val unreadCount: Int = 0
 )

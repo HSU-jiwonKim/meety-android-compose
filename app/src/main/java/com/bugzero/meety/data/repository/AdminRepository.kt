@@ -534,6 +534,219 @@ class AdminRepository {
     }
 
     // ═══════════════════════════════════════
+    // 사용자 개인/그룹 채팅방 목록 조회 (direct / group 타입만)
+    // ═══════════════════════════════════════
+
+    fun fetchNonDummyDirectChats(onResult: (List<com.bugzero.meety.ui.admin.DirectChatInfo>) -> Unit) {
+        db.collection("chats")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                val list = snapshot?.documents
+                    ?.filter { doc ->
+                        val type = doc.getString("type") ?: "team"
+                        type == "direct" || type == "group"
+                    }
+                    ?.map { doc ->
+                        com.bugzero.meety.ui.admin.DirectChatInfo(
+                            chatId           = doc.id,
+                            type             = doc.getString("type") ?: "direct",
+                            participantCount = (doc.get("participants") as? List<*>)?.size ?: 0
+                        )
+                    } ?: emptyList()
+                onResult(list)
+            }
+    }
+
+    // ═══════════════════════════════════════
+    // ═══════════════════════════════════════
+    // 더미팀으로 들어온 pending 좋아요 목록 조회
+    // ═══════════════════════════════════════
+
+    fun fetchPendingLikesToDummyTeams(onResult: (List<com.bugzero.meety.ui.admin.PendingLikeInfo>) -> Unit) {
+        // 1. 더미팀 ID 목록 먼저 수집
+        db.collection("teams")
+            .whereEqualTo("isDummy", true)
+            .get()
+            .addOnSuccessListener { teamsSnap ->
+                val dummyTeamIds = teamsSnap.documents.map { it.id }.toSet()
+
+                // 2. pending likes 실시간 감시
+                db.collection("likes")
+                    .whereEqualTo("status", "pending")
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) return@addSnapshotListener
+
+                        val filtered = snapshot?.documents
+                            ?.filter { doc ->
+                                val toTeamId = doc.getString("toTeamId") ?: ""
+                                toTeamId in dummyTeamIds
+                            } ?: emptyList()
+
+                        if (filtered.isEmpty()) {
+                            onResult(emptyList())
+                            return@addSnapshotListener
+                        }
+
+                        // 3. 유저 정보 병합
+                        val results = mutableListOf<com.bugzero.meety.ui.admin.PendingLikeInfo>()
+                        var completed = 0
+
+                        for (likeDoc in filtered) {
+                            val likeId      = likeDoc.id
+                            val fromUserId  = likeDoc.getString("fromUserId") ?: ""
+                            val toTeamId    = likeDoc.getString("toTeamId") ?: ""
+                            val toTeamName  = likeDoc.getString("toTeamName") ?: ""
+
+                            db.collection("users").document(fromUserId).get()
+                                .addOnSuccessListener { userDoc ->
+                                    val profileImages = userDoc.get("profileImages") as? List<*>
+                                    results.add(
+                                        com.bugzero.meety.ui.admin.PendingLikeInfo(
+                                            likeId               = likeId,
+                                            fromUserId           = fromUserId,
+                                            fromUserName         = userDoc.getString("name") ?: "",
+                                            fromUserEmail        = userDoc.getString("email") ?: "",
+                                            fromUserProfileImage = profileImages?.firstOrNull()?.toString() ?: "",
+                                            toTeamId             = toTeamId,
+                                            toTeamName           = toTeamName
+                                        )
+                                    )
+                                    completed++
+                                    if (completed == filtered.size) onResult(results.toList())
+                                }
+                                .addOnFailureListener {
+                                    results.add(
+                                        com.bugzero.meety.ui.admin.PendingLikeInfo(
+                                            likeId     = likeId,
+                                            fromUserId = fromUserId,
+                                            toTeamId   = toTeamId,
+                                            toTeamName = toTeamName
+                                        )
+                                    )
+                                    completed++
+                                    if (completed == filtered.size) onResult(results.toList())
+                                }
+                        }
+                    }
+            }
+    }
+
+    // ═══════════════════════════════════════
+    // 좋아요 수동 수락 (더미팀 전용)
+    // ═══════════════════════════════════════
+
+    fun acceptLike(
+        likeId: String,
+        fromUserId: String,
+        toTeamId: String,
+        toTeamName: String,
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        autoAcceptLike(
+            likeId      = likeId,
+            fromUserId  = fromUserId,
+            toTeamId    = toTeamId,
+            toTeamName  = toTeamName,
+            onAccepted  = { name -> onSuccess("✅ '${name}' 팀 좋아요를 수락했습니다") },
+            onFailure   = onFailure
+        )
+    }
+
+    // ═══════════════════════════════════════
+    // 사용자 팀·채팅방 전체 삭제 (더미팀 절대 건드리지 않음)
+    // ═══════════════════════════════════════
+
+    suspend fun deleteAllNonDummyTeams(
+        onSuccess: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        try {
+            var deletedCount = 0
+
+            // ── 1단계: 사용자가 만든 팀 + 해당 팀 채팅방 삭제 ──
+            val nonDummyTeamDocs = db.collection("teams")
+                .whereEqualTo("status", "active")
+                .get().await()
+                .documents
+                .filter { doc -> !(doc.getBoolean("isDummy") ?: false) }
+
+            for (teamDoc in nonDummyTeamDocs) {
+                val teamId = teamDoc.id
+                val memberIds = (teamDoc.get("memberIds") as? List<String>) ?: emptyList()
+
+                // 채팅방 메시지 전부 삭제
+                val messages = db.collection("chats").document(teamId)
+                    .collection("messages").get().await()
+                for (msg in messages.documents) {
+                    msg.reference.delete().await()
+                }
+
+                // 채팅방 문서 삭제
+                try {
+                    db.collection("chats").document(teamId).delete().await()
+                } catch (_: Exception) { }
+
+                // 이 팀에 보낸 likes 삭제
+                val likesToTeam = db.collection("likes")
+                    .whereEqualTo("toTeamId", teamId)
+                    .get().await()
+                for (doc in likesToTeam.documents) {
+                    doc.reference.delete().await()
+                }
+
+                // 각 멤버의 teamIds에서 제거
+                for (memberId in memberIds) {
+                    try {
+                        db.collection("users").document(memberId)
+                            .update("teamIds", FieldValue.arrayRemove(teamId)).await()
+                    } catch (_: Exception) { }
+                }
+
+                // 팀 문서 삭제
+                db.collection("teams").document(teamId).delete().await()
+                deletedCount++
+            }
+
+            // ── 2단계: 개인/그룹 채팅방(direct · group 타입) 전체 삭제 ──
+            val allChatDocs = db.collection("chats").get().await()
+            for (chatDoc in allChatDocs.documents) {
+                val chatType = chatDoc.getString("type") ?: "team"
+                if (chatType != "direct" && chatType != "group") continue
+
+                val chatId = chatDoc.id
+
+                // 메시지 전부 삭제
+                val msgs = db.collection("chats").document(chatId)
+                    .collection("messages").get().await()
+                for (msg in msgs.documents) {
+                    msg.reference.delete().await()
+                }
+
+                // teamInvitations 삭제 (group 채팅에 연결된 초대장)
+                try {
+                    val invites = db.collection("teamInvitations")
+                        .whereEqualTo("chatId", chatId)
+                        .get().await()
+                    for (inv in invites.documents) {
+                        inv.reference.delete().await()
+                    }
+                } catch (_: Exception) { }
+
+                // 채팅방 문서 삭제
+                try {
+                    db.collection("chats").document(chatId).delete().await()
+                } catch (_: Exception) { }
+
+                deletedCount++
+            }
+
+            onSuccess("✅ ${deletedCount}개 팀·채팅방을 삭제했습니다")
+        } catch (e: Exception) {
+            onFailure("전체 삭제 실패: ${e.message}")
+        }
+    }
+
     // 사용자 팀 삭제 (더미팀은 호출 불가 — ViewModel에서 필터링)
     // ═══════════════════════════════════════
 

@@ -10,6 +10,8 @@ data class ReceivedLikeItem(
     val fromUserMbti: String = "",
     val fromUserDepartment: String = "",
     val fromTeamId: String = "",
+    val toTeamId: String = "",
+    val toTeamName: String = "",
     val createdAt: Long = 0L
 )
 

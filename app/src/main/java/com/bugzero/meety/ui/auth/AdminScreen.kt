@@ -32,7 +32,6 @@ fun AdminScreen(
     val requests by viewModel.requests.collectAsState()
     val users by viewModel.users.collectAsState()
     val actionState by viewModel.actionState.collectAsState()
-    val autoAcceptEnabled by viewModel.autoAcceptEnabled.collectAsState()
     val demoUsers by viewModel.demoUsers.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -118,15 +117,18 @@ fun AdminScreen(
                 onGrantAdmin = { userId -> viewModel.grantAdmin(userId) }
             )
             2 -> DemoManagementTab(
-                autoAcceptEnabled = autoAcceptEnabled,
                 demoUsers = demoUsers,
                 nonDummyTeams = viewModel.nonDummyTeams.collectAsState().value,
+                nonDummyDirectChats = viewModel.nonDummyDirectChats.collectAsState().value,
+                pendingDummyLikes = viewModel.pendingDummyLikes.collectAsState().value,
                 actionState = actionState,
                 padding = padding,
-                onToggleAutoAccept = { viewModel.toggleAutoAccept() },
                 onResetUser = { userId -> viewModel.resetUserDemoData(userId) },
-                onResetAll = { viewModel.resetAllDemoData() },
-                onDeleteTeam = { teamId -> viewModel.deleteTeam(teamId) }
+                onDeleteTeam = { teamId -> viewModel.deleteTeam(teamId) },
+                onDeleteAllNonDummyTeams = { viewModel.deleteAllNonDummyTeams() },
+                onAcceptLike = { likeId, fromUserId, toTeamId, toTeamName ->
+                    viewModel.acceptLike(likeId, fromUserId, toTeamId, toTeamName)
+                }
             )
         }
     }
@@ -137,19 +139,20 @@ fun AdminScreen(
 // ═══════════════════════════════════════
 @Composable
 fun DemoManagementTab(
-    autoAcceptEnabled: Boolean,
     demoUsers: List<UserInfo>,
     nonDummyTeams: List<TeamInfo>,
+    nonDummyDirectChats: List<DirectChatInfo>,
+    pendingDummyLikes: List<PendingLikeInfo>,
     actionState: AdminActionState,
     padding: PaddingValues,
-    onToggleAutoAccept: () -> Unit,
     onResetUser: (String) -> Unit,
-    onResetAll: () -> Unit,
-    onDeleteTeam: (String) -> Unit
+    onDeleteTeam: (String) -> Unit,
+    onDeleteAllNonDummyTeams: () -> Unit,
+    onAcceptLike: (likeId: String, fromUserId: String, toTeamId: String, toTeamName: String) -> Unit
 ) {
-    var showResetAllDialog by remember { mutableStateOf(false) }
     var showResetUserDialog by remember { mutableStateOf<UserInfo?>(null) }
     var showDeleteTeamDialog by remember { mutableStateOf<TeamInfo?>(null) }
+    var showDeleteAllTeamsDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -159,114 +162,121 @@ fun DemoManagementTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── 자동 수락 모드 ──
+        // ── 더미팀 좋아요 수락 ──
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (autoAcceptEnabled) Color(0xFFF0FDF4) else Color.White
-                ),
-                elevation = CardDefaults.cardElevation(2.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                if (autoAcceptEnabled) Color(0xFF22C55E) else Color(0xFFE5E7EB),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "자동 수락 모드",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = Color(0xFF111827)
-                        )
-                        Text(
-                            if (autoAcceptEnabled) "좋아요가 들어오면 자동으로 수락합니다"
-                            else "꺼져 있음 — 수동으로 수락해야 합니다",
-                            fontSize = 13.sp,
-                            color = Color(0xFF6B7280)
-                        )
-                    }
-                    Switch(
-                        checked = autoAcceptEnabled,
-                        onCheckedChange = { onToggleAutoAccept() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF22C55E)
-                        )
-                    )
-                }
-            }
+            Text(
+                "더미팀 좋아요 수락",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color(0xFF111827)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "더미팀으로 들어온 수락 대기 중인 좋아요입니다",
+                fontSize = 12.sp,
+                color = Color(0xFF6B7280)
+            )
         }
 
-        // ── 전체 초기화 ──
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.RestartAlt,
-                            contentDescription = null,
-                            tint = Color(0xFFEF4444),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
+        if (pendingDummyLikes.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("수락 대기 중인 좋아요가 없습니다", color = Color(0xFF6B7280), fontSize = 13.sp)
+                }
+            }
+        } else {
+            items(pendingDummyLikes) { like ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 프로필 아바타
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    Brush.linearGradient(listOf(Color(0xFFA78BFA), Color(0xFFF472B6))),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (like.fromUserProfileImage.isNotBlank()) {
+                                AsyncImage(
+                                    model = like.fromUserProfileImage,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(44.dp).clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "전체 데모 초기화",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
+                                like.fromUserName.ifEmpty { "이름 없음" },
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
                                 color = Color(0xFF111827)
                             )
                             Text(
-                                "모든 좋아요, 채팅, 선호도 기록을 초기 상태로 되돌립니다",
-                                fontSize = 12.sp,
+                                like.fromUserEmail,
+                                fontSize = 11.sp,
                                 color = Color(0xFF6B7280)
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.ArrowForward,
+                                    contentDescription = null,
+                                    tint = Purple,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    like.toTeamName.ifEmpty { "팀" },
+                                    fontSize = 11.sp,
+                                    color = Purple,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { showResetAllDialog = true },
-                        enabled = actionState !is AdminActionState.Loading,
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                    ) {
-                        if (actionState is AdminActionState.Loading) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
+                        Button(
+                            onClick = {
+                                onAcceptLike(
+                                    like.likeId,
+                                    like.fromUserId,
+                                    like.toTeamId,
+                                    like.toTeamName
+                                )
+                            },
+                            enabled = actionState !is AdminActionState.Loading,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Purple)
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
                             )
-                        } else {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("전체 초기화", fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("수락", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -366,21 +376,99 @@ fun DemoManagementTab(
             }
         }
 
-        // ── 사용자 팀 삭제 ──
+        // ── 사용자 팀·채팅방 삭제 ──
         item {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "사용자 팀 삭제",
+                "사용자 팀·채팅방 삭제",
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = Color(0xFF111827)
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "더미팀을 제외한 사용자가 만든 팀을 삭제합니다",
+                "더미 데이터를 제외한 사용자가 만든 팀과 채팅방을 삭제합니다",
                 fontSize = 12.sp,
                 color = Color(0xFF6B7280)
             )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // ── 개수 + 전체 삭제 카드 ──
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (nonDummyTeams.isEmpty() && nonDummyDirectChats.isEmpty()) Color(0xFFF9FAFB) else Color(0xFFFFF1F2)
+                ),
+                elevation = CardDefaults.cardElevation(1.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                if (nonDummyTeams.isEmpty() && nonDummyDirectChats.isEmpty()) Color(0xFFE5E7EB) else Color(0xFFEF4444),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.GroupOff,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "사용자 생성 팀·채팅방",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = Color(0xFF111827)
+                        )
+                        val totalCount = nonDummyTeams.size + nonDummyDirectChats.size
+                        Text(
+                            "팀 ${nonDummyTeams.size}개  ·  개인/그룹채팅 ${nonDummyDirectChats.size}개",
+                            fontSize = 12.sp,
+                            color = if (totalCount == 0) Color(0xFF6B7280) else Color(0xFFEF4444)
+                        )
+                        Text(
+                            "총 ${totalCount}개",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (totalCount == 0) Color(0xFF6B7280) else Color(0xFFEF4444)
+                        )
+                    }
+                    Button(
+                        onClick = { showDeleteAllTeamsDialog = true },
+                        enabled = (nonDummyTeams.isNotEmpty() || nonDummyDirectChats.isNotEmpty()) && actionState !is AdminActionState.Loading,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEF4444),
+                            disabledContainerColor = Color(0xFFE5E7EB)
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "전체 삭제",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
         if (nonDummyTeams.isEmpty()) {
@@ -486,26 +574,32 @@ fun DemoManagementTab(
         )
     }
 
-    // ── 전체 초기화 확인 다이얼로그 ──
-    if (showResetAllDialog) {
+    // ── 사용자 팀·채팅방 전체 삭제 확인 다이얼로그 ──
+    if (showDeleteAllTeamsDialog) {
         AlertDialog(
-            onDismissRequest = { showResetAllDialog = false },
-            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF4444)) },
-            title = { Text("전체 데모 초기화", fontWeight = FontWeight.Bold) },
-            text = { Text("모든 시연 데이터(좋아요, 채팅, 선호도)를 초기 상태로 되돌립니다.\n이 작업은 되돌릴 수 없습니다.") },
+            onDismissRequest = { showDeleteAllTeamsDialog = false },
+            icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = Color(0xFFEF4444)) },
+            title = { Text("전체 팀·채팅방 삭제", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "사용자가 만든 팀 ${nonDummyTeams.size}개,\n" +
+                    "개인/그룹 채팅방 ${nonDummyDirectChats.size}개를 모두 삭제합니다.\n\n" +
+                    "더미 데이터는 절대 삭제되지 않으며,\n이 작업은 되돌릴 수 없습니다."
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = {
-                        showResetAllDialog = false
-                        onResetAll()
+                        showDeleteAllTeamsDialog = false
+                        onDeleteAllNonDummyTeams()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                 ) {
-                    Text("초기화")
+                    Text("전체 삭제")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetAllDialog = false }) {
+                TextButton(onClick = { showDeleteAllTeamsDialog = false }) {
                     Text("취소")
                 }
             }
