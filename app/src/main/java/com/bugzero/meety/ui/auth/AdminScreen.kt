@@ -42,14 +42,19 @@ fun AdminScreen(
     )
 
     LaunchedEffect(actionState) {
-        when (actionState) {
+        when (val state = actionState) {
             is AdminActionState.Success -> {
-                snackbarHostState.showSnackbar((actionState as AdminActionState.Success).message)
+                // 버튼이 즉시 다시 활성화되도록 스낵바를 띄우기 전에 상태부터 초기화한다.
+                // (showSnackbar는 스낵바가 사라질 때까지 suspend되므로, 순서가 바뀌면
+                //  버튼이 계속 비활성화 상태로 남는다)
+                val message = state.message
                 viewModel.resetActionState()
+                snackbarHostState.showSnackbar(message)
             }
             is AdminActionState.Error -> {
-                snackbarHostState.showSnackbar((actionState as AdminActionState.Error).message)
+                val message = state.message
                 viewModel.resetActionState()
+                snackbarHostState.showSnackbar(message)
             }
             else -> {}
         }

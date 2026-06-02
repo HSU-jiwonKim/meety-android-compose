@@ -20,6 +20,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +66,16 @@ fun TeamListItem(
                 .background(Brush.verticalGradient(thumbColors)),
             contentAlignment = Alignment.Center
         ) {
-            Text(initial, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White.copy(alpha = 0.9f))
+            if (team.teamProfileImage.isNotBlank()) {
+                AsyncImage(
+                    model              = team.teamProfileImage,
+                    contentDescription = "${team.teamName} 대표 사진",
+                    modifier           = Modifier.fillMaxSize(),
+                    contentScale       = ContentScale.Crop
+                )
+            } else {
+                Text(initial, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White.copy(alpha = 0.9f))
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)

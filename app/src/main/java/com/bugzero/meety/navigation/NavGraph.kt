@@ -188,7 +188,9 @@ fun NavGraph(
             }
             composable(Routes.BALANCE_GAME) {
                 BalanceGameScreen(
-                    onComplete = {
+                    onComplete = { balanceAnswers ->
+                        // 밸런스 게임 답변을 저장 → 피드 팀 추천 매칭 근거로 사용됨
+                        authViewModel.saveBalanceProfile(balanceAnswers)
                         navController.navigate(Routes.STUDENT_ID_UPLOAD) {
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }

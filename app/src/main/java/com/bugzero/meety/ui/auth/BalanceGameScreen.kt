@@ -90,7 +90,7 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun BalanceGameScreen(
-    onComplete: () -> Unit = {},
+    onComplete: (Map<String, Int>) -> Unit = {},
     onSkip: () -> Unit = {}
 ) {
     val total = BALANCE_QUESTIONS.size
@@ -542,10 +542,16 @@ private fun PickBadge(selected: Boolean, modifier: Modifier = Modifier) {
 @Composable
 private fun DoneView(
     answers: List<String?>,
-    onFinish: () -> Unit
+    onFinish: (Map<String, Int>) -> Unit
 ) {
     // 안전한 fallback: 미선택이면 a 로 간주
     val safeAnswers = answers.map { it ?: "a" }
+
+    // 매칭 로직이 기대하는 포맷으로 변환: axis -> Int (a = -1, b = +1)
+    // FeedRepository.fetchCurrentUserProfile / saveBalanceProfile 규약과 일치.
+    val balanceAnswerMap: Map<String, Int> = safeAnswers.mapIndexed { i, side ->
+        BALANCE_QUESTIONS[i].axis to if (side == "a") -1 else 1
+    }.toMap()
     val chips = safeAnswers.mapIndexed { i, side ->
         val q = BALANCE_QUESTIONS[i]
         if (side == "a") q.optionA.tag else q.optionB.tag
@@ -680,7 +686,7 @@ private fun DoneView(
         CtaButton(
             text = "학생증 인증하러 가기",
             trailingArrow = true,
-            onClick = onFinish
+            onClick = { onFinish(balanceAnswerMap) }
         )
     }
 }
