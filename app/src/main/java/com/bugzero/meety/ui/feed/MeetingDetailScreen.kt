@@ -676,7 +676,7 @@ private fun MemberRow(member: MemberProfile, onClick: () -> Unit) {
 // ─────────────────────────────────────────
 
 @Composable
-private fun MemberProfileDialog(
+internal fun MemberProfileDialog(
     member: MemberProfile,
     onDismiss: () -> Unit
 ) {

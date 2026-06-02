@@ -74,6 +74,7 @@ class InAppNotificationRepository(
         title: String,
         body: String,
         relatedId: String,
+        teamId: String = "",
         fromUserId: String = auth.currentUser?.uid ?: "",
         fromUserName: String = ""
     ): Result<Unit> {
@@ -95,6 +96,7 @@ class InAppNotificationRepository(
                 title = title,
                 body = body,
                 relatedId = relatedId,
+                teamId = teamId,
                 fromUserId = fromUserId,
                 fromUserName = fromUserName,
                 timestamp = System.currentTimeMillis()
@@ -116,6 +118,7 @@ class InAppNotificationRepository(
         title: String,
         body: String,
         relatedId: String,
+        teamId: String = "",
         fromUserName: String = ""
     ) {
         val myUid = auth.currentUser?.uid
@@ -132,6 +135,7 @@ class InAppNotificationRepository(
                 title = title,
                 body = body,
                 relatedId = relatedId,
+                teamId = teamId,
                 fromUserId = myUid ?: "",
                 fromUserName = fromUserName
             )
@@ -146,6 +150,28 @@ class InAppNotificationRepository(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "deleteOne 실패: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * relatedId(= likeId 등)가 일치하는 내 알림을 모두 삭제한다.
+     * 채팅 목록 화면 등에서 notificationId 없이 likeId만 알 때 사용.
+     */
+    suspend fun deleteByRelatedId(relatedId: String): Result<Unit> {
+        return try {
+            val uid = auth.currentUser?.uid ?: return Result.success(Unit)
+            if (relatedId.isBlank()) return Result.success(Unit)
+            val snap = db.collection(COLLECTION)
+                .whereEqualTo("toUserId", uid)
+                .whereEqualTo("relatedId", relatedId)
+                .get().await()
+            val batch = db.batch()
+            snap.documents.forEach { batch.delete(it.reference) }
+            if (!snap.isEmpty) batch.commit().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteByRelatedId 실패: ${e.message}")
             Result.failure(e)
         }
     }

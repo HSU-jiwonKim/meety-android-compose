@@ -421,8 +421,11 @@ class FeedViewModel(
                     likedTeamIds = it.likedTeamIds + team.teamId
                 )
             }
-            val remaining = state.teams.size - (state.currentIndex + 1)
-            if (remaining <= 3 && state.hasMore) loadMoreTeams()
+            val newState = _uiState.value
+            val remaining = newState.teams.size - newState.currentIndex
+            if (remaining <= 3 && newState.hasMore) loadMoreTeams()
+            // onCardSwiped()와 동일하게 다음 카드 데이터 사전 fetch
+            prefetchCardData(newState.teams, newState.currentIndex)
         } else {
             _uiState.update {
                 it.copy(
@@ -467,8 +470,11 @@ class FeedViewModel(
                     passedTeamIds = it.passedTeamIds + team.teamId
                 )
             }
-            val remaining = state.teams.size - (state.currentIndex + 1)
-            if (remaining <= 3 && state.hasMore) loadMoreTeams()
+            val newState = _uiState.value
+            val remaining = newState.teams.size - newState.currentIndex
+            if (remaining <= 3 && newState.hasMore) loadMoreTeams()
+            // onCardSwiped()와 동일하게 다음 카드 데이터 사전 fetch
+            prefetchCardData(newState.teams, newState.currentIndex)
         } else {
             _uiState.update {
                 it.copy(
@@ -530,11 +536,17 @@ class FeedViewModel(
         _uiState.update {
             // 취소된 팀을 현재 인덱스 위치에 다시 삽입 → 다음에 바로 다시 볼 수 있음
             val newTeams = it.teams.toMutableList().apply { add(it.currentIndex, team) }
+            // 히스토리에서 이 팀의 좋아요 항목 제거.
+            // 제거하지 않으면 이후 undo가 이미 취소된 like를 다시 cancelLike + 역산 이중 호출한다.
+            val cleanHistory = it.history.filterNot { e ->
+                e.team.teamId == team.teamId && e.isLike
+            }
             it.copy(
                 teams          = newTeams,
                 selectedTeam   = null,
                 memberProfiles = emptyList(),
-                likedTeamIds   = it.likedTeamIds - team.teamId
+                likedTeamIds   = it.likedTeamIds - team.teamId,
+                history        = cleanHistory
             )
         }
     }
@@ -554,11 +566,20 @@ class FeedViewModel(
         reversePreferenceInMemory(team, wasLike = false)
         updatePreferenceInMemory(team, isLike = true)
         _uiState.update {
+            // 히스토리에서 이 팀의 패스 항목 제거.
+            // 남겨두면 undo 시 isLike=false 항목을 보고 reversePreferenceScores(wasLike=false)를
+            // 호출 → 이미 전환된 좋아요 상태에서 패스 역산을 다시 적용(가중치 이중 추가)하고,
+            // likedTeamIds에서도 제거되지 않아 좋아요가 남는다.
+            // "패스→좋아요 전환"은 상세화면에서 다시 취소 가능하므로 undo 스택에서는 제거한다.
+            val cleanHistory = it.history.filterNot { e ->
+                e.team.teamId == team.teamId && !e.isLike
+            }
             it.copy(
                 selectedTeam   = null,
                 memberProfiles = emptyList(),
                 passedTeamIds  = it.passedTeamIds - team.teamId,
-                likedTeamIds   = it.likedTeamIds  + team.teamId
+                likedTeamIds   = it.likedTeamIds  + team.teamId,
+                history        = cleanHistory
             )
         }
     }
@@ -712,7 +733,30 @@ class FeedViewModel(
                     it.copy(cardFitScoreCache = it.cardFitScoreCache + (team.teamId to fitScore))
                 }
             }
+            // 배치 전체 점수 계산 완료 후 미열람 카드를 점수 내림차순 재정렬
+            applyFitScoreSort()
         }
+    }
+
+    /**
+     * cardFitScoreCache 점수 기준으로 아직 보지 않은 카드를 내림차순 정렬한다.
+     *
+     * - 점수가 캐시된 팀: 점수 높은 순
+     * - 아직 점수 없는 팀: 뒤쪽에 원래 순서 유지
+     * - 이미 스와이프한 카드(currentIndex 이전)는 건드리지 않는다.
+     */
+    private fun applyFitScoreSort() {
+        val state = _uiState.value
+        val cache = state.cardFitScoreCache
+        if (cache.isEmpty()) return
+
+        val seen   = state.teams.take(state.currentIndex)
+        val unseen = state.teams.drop(state.currentIndex)
+
+        val (scored, unscored) = unseen.partition { cache.containsKey(it.teamId) }
+        val sortedUnseen = scored.sortedByDescending { cache[it.teamId] ?: 0 } + unscored
+
+        _uiState.update { it.copy(teams = seen + sortedUnseen) }
     }
 
     // =====================
@@ -900,6 +944,60 @@ class FeedViewModel(
             if (scores.isEmpty()) 50 else scores.average().toInt()
         }
         return memberScores.average().toInt().coerceIn(0, 100)
+    }
+
+    // =====================
+    // 디버그 더미 데이터 주입
+    // =====================
+
+    /**
+     * 디버그 빌드에서 DummyData 를 FeedUiState 에 직접 주입한다.
+     *
+     * 사용 예시 (FeedScreen.kt 또는 Activity):
+     * ```kotlin
+     * if (BuildConfig.DEBUG) {
+     *     LaunchedEffect(Unit) { DummyData.injectTo(viewModel) }
+     * }
+     * ```
+     *
+     * @param teams           피드에 표시할 팀 목록
+     * @param currentUser     로그인 유저 프로필
+     * @param userTopTags     상위 태그 (매칭 근거 Top N 카드용)
+     * @param actionCount     좋아요+패스 누적 횟수 (>=10 이면 해금)
+     * @param memberCache     teamId → 팀원 프로필 캐시
+     * @param distanceCache   teamId → 거리 결과 캐시
+     * @param fitScoreCache   teamId → 종합 점수 캐시
+     */
+    fun injectDummyState(
+        teams         : List<com.bugzero.meety.ui.team.Team>,
+        currentUser   : CurrentUserProfile,
+        userTopTags   : List<String>,
+        actionCount   : Int,
+        memberCache   : Map<String, List<MemberProfile>>,
+        distanceCache : Map<String, List<MemberDistanceResult>>,
+        fitScoreCache : Map<String, Int>
+    ) {
+        val tagScores: Map<String, Int> = userTopTags.mapIndexed { idx, tag ->
+            tag to (actionCount - idx)          // 순위별 점수 역산
+        }.toMap()
+
+        val likedCount  = actionCount / 2
+        val passedCount = actionCount - likedCount
+
+        _uiState.update { old ->
+            old.copy(
+                teams                  = teams,
+                allTeams               = teams,
+                isLoading              = false,
+                currentUserProfile     = currentUser,
+                userTagScores          = tagScores,
+                likedTeamIds           = (1..likedCount).map  { "dummy-liked-$it"  }.toSet(),
+                passedTeamIds          = (1..passedCount).map { "dummy-passed-$it" }.toSet(),
+                cardMemberProfilesCache = memberCache,
+                cardDistanceCache      = distanceCache,
+                cardFitScoreCache      = fitScoreCache
+            )
+        }
     }
 
 }

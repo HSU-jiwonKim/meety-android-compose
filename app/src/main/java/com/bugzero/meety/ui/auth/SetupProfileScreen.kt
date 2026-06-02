@@ -142,6 +142,10 @@ val LOCATION_MAP: Map<String, List<String>> = mapOf(
 @Composable
 fun SetupProfileScreen(
     onComplete: () -> Unit = {},
+    // 예시(미리보기) 모드 — 매칭 근거의 "?" 버튼에서 띄울 때 사용.
+    // true 면 하단 버튼이 저장 대신 닫기로 동작하고, 입력 내용은 어디에도 저장되지 않는다.
+    previewMode: Boolean = false,
+    onClose: () -> Unit = {},
     viewModel: AuthViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -187,6 +191,11 @@ fun SetupProfileScreen(
             Box(modifier = Modifier.fillMaxWidth().background(Color.White).padding(16.dp)) {
                 Button(
                     onClick = {
+                        if (previewMode) {
+                            // 예시 모드: 저장하지 않고 닫기만 한다
+                            onClose()
+                            return@Button
+                        }
                         viewModel.saveProfile(
                             name = name,
                             age = age,
@@ -203,19 +212,23 @@ fun SetupProfileScreen(
                             context = context
                         )
                     },
-                    enabled = isFormValid && profileSaveState !is ProfileSaveState.Loading,
+                    enabled = previewMode || (isFormValid && profileSaveState !is ProfileSaveState.Loading),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Purple)
                 ) {
-                    if (profileSaveState is ProfileSaveState.Loading) {
+                    if (!previewMode && profileSaveState is ProfileSaveState.Loading) {
                         CircularProgressIndicator(
                             color = Color.White,
                             modifier = Modifier.size(22.dp),
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("완료하고 시작하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (previewMode) "닫기" else "완료하고 시작하기",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -233,6 +246,25 @@ fun SetupProfileScreen(
             Column(modifier = Modifier.padding(horizontal = 16.dp).padding(top = 20.dp)) {
                 Text("프로필 설정", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Gray900)
                 Text("회원님을 소개해주세요", fontSize = 14.sp, color = Gray500)
+            }
+
+            // 예시 모드 안내 배너
+            if (previewMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .background(Color(0xFFF3EEFF), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 11.dp)
+                ) {
+                    Text(
+                        "👀 예시 화면이에요. 가입할 때 이렇게 관심사를 골라요 — 여기서 입력한 내용은 저장되지 않아요.",
+                        fontSize = 12.5.sp,
+                        color = Purple,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 18.sp
+                    )
+                }
             }
 
             // 에러 메시지

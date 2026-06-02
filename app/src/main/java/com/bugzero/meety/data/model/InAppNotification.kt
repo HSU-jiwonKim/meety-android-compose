@@ -14,6 +14,9 @@ data class InAppNotification(
     val title: String = "",
     val body: String = "",
     val relatedId: String = "",
+    // 좋아요(like) 알림의 대상 팀 ID. 내 팀의 좋아요만 노출하기 위한 필터용.
+    // 기존(레거시) 알림에는 비어 있을 수 있다.
+    val teamId: String = "",
     val fromUserId: String = "",
     val fromUserName: String = "",
     val timestamp: Long = 0L

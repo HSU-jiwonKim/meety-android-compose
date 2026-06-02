@@ -1,0 +1,12 @@
+{
+  "name": "meety-seed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Meety 더미 데이터 Firestore 시드 스크립트",
+  "scripts": {
+    "seed": "node seedDummyData.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}

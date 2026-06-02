@@ -104,10 +104,12 @@ class FirebaseChatRepository : ChatRepository {
                                     if (fetchedImageUrl.isBlank()) {
                                         fetchedImageUrl = otherUserProfileImage
                                     }
-                                } else if (fetchedImageUrl.isBlank() && teamId.isNotEmpty()) {
-                                    // 팀채팅: teams 컬렉션에서 대표사진 가져오기
+                                } else if (fetchedImageUrl.isBlank() && type != "group") {
+                                    // 팀채팅: teams 컬렉션에서 대표사진 가져오기.
+                                    // teamId 필드가 비어 있어도 팀 채팅은 문서 ID == 팀 ID 이므로 doc.id 로 대체한다.
+                                    val lookupTeamId = teamId.ifBlank { doc.id }
                                     try {
-                                        val teamDoc = db.collection("teams").document(teamId).get().await()
+                                        val teamDoc = db.collection("teams").document(lookupTeamId).get().await()
                                         fetchedImageUrl = teamDoc.getString("teamProfileImage")
                                             ?: teamDoc.getString("teamImageUrl")
                                             ?: teamDoc.getString("imageUrl")

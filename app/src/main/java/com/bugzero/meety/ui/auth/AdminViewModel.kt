@@ -119,9 +119,13 @@ class AdminViewModel : ViewModel() {
     fun fetchUsers() {
         adminRepository.fetchUsers { users ->
             _users.value = users
-            // 시연 계정 필터: 이름 또는 이메일에 "테스터" 포함된 계정만
+            // 시연 계정 필터: 이름/이메일에 "테스터" 또는 "test"(대소문자 무관) 포함된 계정
             _demoUsers.value = users.filter { user ->
-                user.name.contains("테스터") || user.email.contains("테스터")
+                val name = user.name
+                val email = user.email
+                name.contains("테스터") || email.contains("테스터") ||
+                    name.contains("test", ignoreCase = true) ||
+                    email.contains("test", ignoreCase = true)
             }
         }
     }
@@ -193,24 +197,25 @@ class AdminViewModel : ViewModel() {
     // ═══════════════════════════════════════
 
     /**
-     * 자동 수락 모드 토글
-     * 켜면 likes 컬렉션의 pending 좋아요를 실시간 감시하며 자동 수락
+     * 더미팀 좋아요 자동 수락 모드 토글
+     * 켜면 더미팀(isDummy=true)으로 들어온 pending 좋아요만 실시간 감시하며 자동 수락한다.
+     * 사용자가 만든 실제 팀으로 보낸 좋아요는 자동 수락 대상이 아니다.
      */
     fun toggleAutoAccept() {
         val newState = !_autoAcceptEnabled.value
         _autoAcceptEnabled.value = newState
 
         if (newState) {
-            adminRepository.startAutoAcceptListener(
+            adminRepository.startAutoAcceptDummyListener(
                 onAccepted = { teamName ->
-                    _actionState.value = AdminActionState.Success("✅ 자동 수락: $teamName")
+                    _actionState.value = AdminActionState.Success("✅ 더미팀 자동 수락: $teamName")
                 },
                 onFailure = { msg ->
                     _actionState.value = AdminActionState.Error(msg)
                 }
             )
         } else {
-            adminRepository.stopAutoAcceptListener()
+            adminRepository.stopAutoAcceptDummyListener()
         }
     }
 
@@ -313,5 +318,6 @@ class AdminViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         adminRepository.stopAutoAcceptListener()
+        adminRepository.stopAutoAcceptDummyListener()
     }
 }

@@ -15,7 +15,6 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.bugzero.meety.ui.theme.Brand1
 import com.bugzero.meety.ui.theme.Ink4
-import com.bugzero.meety.ui.theme.Line2
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -468,7 +467,7 @@ fun NavGraph(
                         onBackClick = { navController.popBackStack() },
 
                         onNavigateToChat = { newChatId, newRoomName ->
-                            val safeRoomName = android.net.Uri.encode(newRoomName)
+                            val safeRoomName = Uri.encode(newRoomName)
                             navController.navigate("chat_room/$newChatId?roomName=$safeRoomName")
                         },
                         onVideoCallClick = {
@@ -566,7 +565,7 @@ fun NavGraph(
 }
 
 /**
- * 목업 .tabbar — 글래스 플로팅 하단 바 + 중앙 FAB(팀 만들기)
+ * 글래스 플로팅 하단 바 + 중앙 FAB(팀 만들기)
  */
 @Composable
 private fun MeetyBottomBar(

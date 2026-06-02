@@ -412,9 +412,7 @@ fun ChatListScreen(
                                 location       = profile.location,
                                 height         = profile.height,
                                 interests      = profile.interests,
-                                foodLikes      = profile.foodLikes,
-                                foodDislikes   = profile.foodDislikes,
-                                schedule       = emptyMap()
+                                foodLikes      = profile.foodLikes
                             ),
                             onBack = {
                                 showLikeUserProfile = false

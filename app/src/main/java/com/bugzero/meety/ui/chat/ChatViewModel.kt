@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.repository.ChatRepository
 import com.bugzero.meety.data.repository.FirebaseChatRepository
+import com.bugzero.meety.data.repository.InAppNotificationRepository
 import com.bugzero.meety.data.repository.MeetingPlaceRepository
 import com.bugzero.meety.data.repository.PlaceResult
 import com.bugzero.meety.ui.team.FirebaseTeamRepository
@@ -54,7 +55,8 @@ data class ParticipantItem(
 class ChatViewModel(
     private val repository: ChatRepository = FirebaseChatRepository(),
     private val teamRepository: FirebaseTeamRepository = FirebaseTeamRepository(),
-    private val placeRepository: MeetingPlaceRepository = MeetingPlaceRepository()
+    private val placeRepository: MeetingPlaceRepository = MeetingPlaceRepository(),
+    private val notificationRepository: InAppNotificationRepository = InAppNotificationRepository()
 ) : ViewModel() {
 
     // 청크별 실시간 리스너 목록 — 여러 개 등록되므로 List로 관리
@@ -333,11 +335,26 @@ class ChatViewModel(
     }
 
     fun acceptRequest(likeId: String) {
-        teamRepository.acceptReceivedLike(likeId, onSuccess = { loadRequestList(); loadChatList() }, onFailure = { _errorMessage.value = it })
+        teamRepository.acceptReceivedLike(
+            likeId = likeId,
+            onSuccess = {
+                loadRequestList()
+                loadChatList()
+                viewModelScope.launch { notificationRepository.deleteByRelatedId(likeId) }
+            },
+            onFailure = { _errorMessage.value = it }
+        )
     }
 
     fun rejectRequest(likeId: String) {
-        teamRepository.rejectReceivedLike(likeId, onSuccess = { loadRequestList() }, onFailure = { _errorMessage.value = it })
+        teamRepository.rejectReceivedLike(
+            likeId = likeId,
+            onSuccess = {
+                loadRequestList()
+                viewModelScope.launch { notificationRepository.deleteByRelatedId(likeId) }
+            },
+            onFailure = { _errorMessage.value = it }
+        )
     }
 
     fun observeMessages(chatId: String) {

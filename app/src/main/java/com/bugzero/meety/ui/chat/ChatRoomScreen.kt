@@ -71,8 +71,6 @@ import coil.compose.AsyncImage
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.Image
@@ -395,6 +393,23 @@ fun ChatRoomScreen(
                         }
 
                         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            // ✨ [카카오톡 완벽 동기화] 최신 메시지를 읽은 사람은 이전 메시지도 다 읽은 것으로 누적 합산!
+                            val reversedMessages = messages.reversed()
+                            val cumulativeReadSets = remember(reversedMessages) {
+                                val readers = mutableSetOf<String>()
+                                reversedMessages.map { msg ->
+                                    // 1. 기본 읽은 사람 + 보낸 사람 추가
+                                    readers.addAll(msg.readBy)
+                                    readers.add(msg.senderId)
+                                    // 2. 투표자들도 모두 읽은 사람으로 합산!
+                                    if (msg.type == "vote") {
+                                        val voteData = msg.voteData ?: emptyMap<String, Any>()
+                                        val voters = voteData["voters"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                                        readers.addAll(voters.keys.map { it.toString() })
+                                    }
+                                    readers.toSet() // 해당 메시지 시점까지 누적된 진짜 읽은 사람 명단
+                                }
+                            }
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -409,15 +424,19 @@ fun ChatRoomScreen(
                                     }
                                 }
 
-                                val reversedMessages = messages.reversed()
                                 itemsIndexed(
                                     items = reversedMessages,
                                     key = { _, it -> it.id }
                                 ) { index, message ->
+
+                                    // ✨ 위에서 만든 '누적 명단'을 드디어 여기서 씁니다!
+                                    val readCount = cumulativeReadSets[index].size
+                                    val unreadCount = (participants.size - readCount).coerceAtLeast(0)
+
                                     MessageItem(
                                         message = message,
                                         timeText = viewModel.formatTime(message.createdAt),
-                                        unreadCount = viewModel.getUnreadCount(message, participants),
+                                        unreadCount = unreadCount,
                                         onProfileClick = {
                                             val participant = participants.find { it.userId == message.senderId }
                                             if (participant != null) {
@@ -1156,6 +1175,7 @@ private fun MessageItem(
         ImageMessage(
             message = message,
             timeText = timeText,
+            unreadCount = unreadCount, // ✨ 에러 원인 해결! 여기서 넘겨줍니다!
             onProfileClick = onProfileClick,
             onImageClick = onImageClick
         )
@@ -1178,7 +1198,7 @@ private fun MessageItem(
     }
     // 장소 카드 메시지 — 네이버 지도 딥링크 포함
     if (message.type == "place_card") {
-        PlaceCardMessage(message = message, timeText = timeText, onProfileClick = onProfileClick)
+        PlaceCardMessage(message = message, timeText = timeText, unreadCount = unreadCount, onProfileClick = onProfileClick)
         return
     }
     // 스티커(이모티콘) 메시지 — 말풍선 없이 이미지만 표시
@@ -1295,14 +1315,14 @@ private fun MessageItem(
                     )
                 }
 
-                // 상대방 말풍선일 때 시간 (오른쪽)
+                // 상대방 말풍선일 때 시간/숫자 (오른쪽)
                 if (!isMe) {
-                    Text(
-                        text = timeText,
-                        fontSize = 10.sp,
-                        color = Color.LightGray,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-                    )
+                    Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy((-2).dp), modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)) {
+                        if (unreadCount > 0) {
+                            Text(text = unreadCount.toString(), fontSize = 11.sp, color = Color(0xFFA78BFA), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                        Text(text = timeText, fontSize = 10.sp, color = Color.LightGray)
+                    }
                 }
             }
         }
@@ -2774,6 +2794,7 @@ private fun VoteCreationSheet(
 fun ImageMessage(
     message: ChatMessage,
     timeText: String,
+    unreadCount: Int = 0, // ✨ 에러 원인 해결! 파라미터 추가!
     onProfileClick: () -> Unit = {},
     onImageClick: (String) -> Unit
 ) {
@@ -2791,7 +2812,7 @@ fun ImageMessage(
                 if (message.senderProfileImage.isNotBlank()) {
                     AsyncImage(model = message.senderProfileImage, contentDescription = "프로필", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 } else {
-                    Text(text = message.senderName.take(1).ifEmpty { "👤" }, fontSize = 16.sp, color = Color.DarkGray, fontWeight = FontWeight.Bold)
+                    Text(text = message.senderName.take(1).ifEmpty { "👤" }, fontSize = 16.sp, color = Color.DarkGray, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                 }
             }
             Spacer(Modifier.width(8.dp))
@@ -2802,24 +2823,31 @@ fun ImageMessage(
                 Text(text = message.senderName, fontSize = 13.sp, color = Color(0xFF4B5563), modifier = Modifier.padding(bottom = 4.dp, start = 4.dp))
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                if (isMe) Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(end = 4.dp, bottom = 2.dp))
-
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 220.dp)
-                        .heightIn(max = 300.dp)
-                        .clip(RoundedCornerShape(topStart = if (isMe) 16.dp else 4.dp, topEnd = if (isMe) 4.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp))
-                        .background(Color(0xFFF3F4F6))
-                ) {
-                    AsyncImage(
-                        model = message.imageUrl,
-                        contentDescription = "전송된 사진",
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clickable { onImageClick(message.imageUrl) }
-                    )
+                // ✨ 내 사진일 때 시간/숫자
+                if (isMe) {
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy((-2).dp), modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)) {
+                        if (unreadCount > 0) {
+                            Text(text = unreadCount.toString(), fontSize = 11.sp, color = Color(0xFFA78BFA), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                        Text(text = timeText, fontSize = 10.sp, color = Color.LightGray)
+                    }
                 }
 
-                if (!isMe) Text(text = timeText, fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
+                Box(
+                    modifier = Modifier.widthIn(max = 220.dp).heightIn(max = 300.dp).clip(RoundedCornerShape(topStart = if (isMe) 16.dp else 4.dp, topEnd = if (isMe) 4.dp else 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)).background(Color(0xFFF3F4F6))
+                ) {
+                    AsyncImage(model = message.imageUrl, contentDescription = "전송된 사진", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize().clickable { onImageClick(message.imageUrl) })
+                }
+
+                // ✨ 상대방 사진일 때 시간/숫자
+                if (!isMe) {
+                    Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy((-2).dp), modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)) {
+                        if (unreadCount > 0) {
+                            Text(text = unreadCount.toString(), fontSize = 11.sp, color = Color(0xFFA78BFA), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                        Text(text = timeText, fontSize = 10.sp, color = Color.LightGray)
+                    }
+                }
             }
         }
     }

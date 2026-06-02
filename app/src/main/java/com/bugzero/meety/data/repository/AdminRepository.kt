@@ -13,6 +13,7 @@ class AdminRepository {
 
     private val db = FirebaseFirestore.getInstance()
     private var autoAcceptListener: ListenerRegistration? = null
+    private var autoAcceptDummyListener: ListenerRegistration? = null
 
     // =====================
     // 인증 대기 목록
@@ -286,27 +287,47 @@ class AdminRepository {
                                         // 5. 채팅방 참가자 추가
                                         //    ✨ memberJoinedAt 도 같이 set → 재가입 시 자동 덮어쓰기 되어
                                         //       이전 메시지가 observeMessages 의 시간 필터에서 가려진다.
-                                        db.collection("chats").document(toTeamId)
-                                            .update(
-                                                mapOf(
-                                                    "participants" to FieldValue.arrayUnion(fromUserId),
-                                                    "memberJoinedAt.$fromUserId" to com.google.firebase.Timestamp.now()
+                                        //    ⚠️ update() 는 문서가 없으면 NOT_FOUND 로 실패해 채팅방이 안 생긴다.
+                                        //       → set(merge) 로 바꿔 채팅 문서가 없으면 생성되도록 한다.
+                                        //       (set 은 "memberJoinedAt.$uid" 점 표기를 경로로 해석하지 않으므로 중첩 Map 사용)
+                                        //    ✅ 더미 팀원들도 채팅방 참가자로 함께 넣어야 한다. 채팅 문서가
+                                        //       새로 생성되는 경우 fromUserId 만 넣으면 더미 팀원이 빠지기 때문.
+                                        db.collection("teams").document(toTeamId).get()
+                                            .addOnSuccessListener { teamDoc ->
+                                                val teamMemberIds = (teamDoc.get("memberIds") as? List<*>)
+                                                    ?.mapNotNull { it as? String } ?: emptyList()
+                                                val allParticipants = (teamMemberIds + fromUserId).distinct()
+
+                                                val chatData = mutableMapOf<String, Any>(
+                                                    "type" to "team",
+                                                    // ✅ 채팅 목록이 팀 대표사진(teams/{teamId}.teamProfileImage)을
+                                                    //    찾으려면 채팅 문서에 teamId 필드가 있어야 한다.
+                                                    "teamId" to toTeamId,
+                                                    // 더미 팀원 + 신청자 전원을 참가자로
+                                                    "participants" to FieldValue.arrayUnion(*allParticipants.toTypedArray()),
+                                                    "memberJoinedAt" to mapOf(
+                                                        fromUserId to com.google.firebase.Timestamp.now()
+                                                    )
                                                 )
-                                            )
+                                                if (toTeamName.isNotBlank()) chatData["teamName"] = toTeamName
+                                                db.collection("chats").document(toTeamId)
+                                                    .set(chatData, com.google.firebase.firestore.SetOptions.merge())
 
-                                        // 6. 시스템 메시지
-                                        val systemMessage = mapOf(
-                                            "senderId" to "system",
-                                            "senderName" to "system",
-                                            "content" to "${userName}님이 입장했습니다.",
-                                            "type" to "system",
-                                            "createdAt" to com.google.firebase.Timestamp.now()
-                                        )
-                                        db.collection("chats").document(toTeamId)
-                                            .collection("messages")
-                                            .add(systemMessage)
+                                                // 6. 시스템 메시지
+                                                val systemMessage = mapOf(
+                                                    "senderId" to "system",
+                                                    "senderName" to "system",
+                                                    "content" to "${userName}님이 입장했습니다.",
+                                                    "type" to "system",
+                                                    "createdAt" to com.google.firebase.Timestamp.now()
+                                                )
+                                                db.collection("chats").document(toTeamId)
+                                                    .collection("messages")
+                                                    .add(systemMessage)
 
-                                        onAccepted(toTeamName)
+                                                onAccepted(toTeamName)
+                                            }
+                                            .addOnFailureListener { onFailure("자동 수락 실패: ${it.message}") }
                                     }
                                     .addOnFailureListener { onFailure("자동 수락 실패: ${it.message}") }
                             }
@@ -324,6 +345,71 @@ class AdminRepository {
     fun stopAutoAcceptListener() {
         autoAcceptListener?.remove()
         autoAcceptListener = null
+        processingLikes.clear()
+    }
+
+    // ═══════════════════════════════════════
+    // 자동 수락 모드 (더미팀 전용)
+    // ═══════════════════════════════════════
+
+    /**
+     * 더미팀(isDummy=true)으로 들어온 pending 좋아요만 실시간 감시하며 자동 수락한다.
+     * 사용자가 만든 실제 팀으로 보낸 좋아요는 건드리지 않는다.
+     */
+    fun startAutoAcceptDummyListener(
+        onAccepted: (String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        stopAutoAcceptDummyListener()
+
+        // 1. 더미팀 ID 목록 먼저 수집
+        db.collection("teams")
+            .whereEqualTo("isDummy", true)
+            .get()
+            .addOnSuccessListener { teamsSnap ->
+                val dummyTeamIds = teamsSnap.documents.map { it.id }.toSet()
+
+                // 2. pending likes 실시간 감시 → 더미팀 대상만 자동 수락
+                autoAcceptDummyListener = db.collection("likes")
+                    .whereEqualTo("status", "pending")
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) {
+                            onFailure("자동 수락 리스너 에러: ${error.message}")
+                            return@addSnapshotListener
+                        }
+
+                        val pendingLikes = snapshot?.documents ?: return@addSnapshotListener
+
+                        for (likeDoc in pendingLikes) {
+                            val likeId = likeDoc.id
+                            val toTeamId = likeDoc.getString("toTeamId") ?: continue
+
+                            // ✅ 더미팀으로 보낸 좋아요만 자동 수락
+                            if (toTeamId !in dummyTeamIds) continue
+                            if (processingLikes.contains(likeId)) continue
+
+                            val fromUserId = likeDoc.getString("fromUserId") ?: continue
+                            val toTeamName = likeDoc.getString("toTeamName") ?: ""
+
+                            processingLikes.add(likeId)
+
+                            autoAcceptLike(
+                                likeId, fromUserId, toTeamId, toTeamName,
+                                onAccepted = { teamName -> onAccepted(teamName) },
+                                onFailure = { msg ->
+                                    processingLikes.remove(likeId)
+                                    onFailure(msg)
+                                }
+                            )
+                        }
+                    }
+            }
+            .addOnFailureListener { onFailure("더미팀 목록 조회 실패: ${it.message}") }
+    }
+
+    fun stopAutoAcceptDummyListener() {
+        autoAcceptDummyListener?.remove()
+        autoAcceptDummyListener = null
         processingLikes.clear()
     }
 

@@ -121,6 +121,8 @@ fun AdminScreen(
                 nonDummyTeams = viewModel.nonDummyTeams.collectAsState().value,
                 nonDummyDirectChats = viewModel.nonDummyDirectChats.collectAsState().value,
                 pendingDummyLikes = viewModel.pendingDummyLikes.collectAsState().value,
+                autoAcceptEnabled = viewModel.autoAcceptEnabled.collectAsState().value,
+                onToggleAutoAccept = { viewModel.toggleAutoAccept() },
                 actionState = actionState,
                 padding = padding,
                 onResetUser = { userId -> viewModel.resetUserDemoData(userId) },
@@ -143,6 +145,8 @@ fun DemoManagementTab(
     nonDummyTeams: List<TeamInfo>,
     nonDummyDirectChats: List<DirectChatInfo>,
     pendingDummyLikes: List<PendingLikeInfo>,
+    autoAcceptEnabled: Boolean,
+    onToggleAutoAccept: () -> Unit,
     actionState: AdminActionState,
     padding: PaddingValues,
     onResetUser: (String) -> Unit,
@@ -176,6 +180,44 @@ fun DemoManagementTab(
                 fontSize = 12.sp,
                 color = Color(0xFF6B7280)
             )
+        }
+
+        // ── 더미팀 좋아요 자동 수락 토글 ──
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(1.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "더미팀 좋아요 자동 수락",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFF111827)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "켜두면 더미팀에 들어온 좋아요만 자동으로 수락돼요. 실제 사용자 팀은 영향 없어요.",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF6B7280),
+                            lineHeight = 16.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = autoAcceptEnabled,
+                        onCheckedChange = { onToggleAutoAccept() }
+                    )
+                }
+            }
         }
 
         if (pendingDummyLikes.isEmpty()) {

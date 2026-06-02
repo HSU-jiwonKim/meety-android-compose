@@ -3,6 +3,7 @@ package com.bugzero.meety.ui.notification
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.model.InAppNotification
+import com.bugzero.meety.data.repository.FeedRepository
 import com.bugzero.meety.data.repository.InAppNotificationRepository
 import com.bugzero.meety.ui.team.FirebaseTeamRepository
 import com.bugzero.meety.ui.team.TeamRepository
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -22,12 +24,31 @@ import kotlinx.coroutines.launch
  */
 class NotificationViewModel(
     private val repository: InAppNotificationRepository = InAppNotificationRepository(),
-    private val teamRepository: TeamRepository = FirebaseTeamRepository()
+    private val teamRepository: TeamRepository = FirebaseTeamRepository(),
+    private val feedRepository: FeedRepository = FeedRepository()
 ) : ViewModel() {
 
-    val notifications: StateFlow<List<InAppNotification>> =
-        repository.observeMyNotifications()
+    /**
+     * 내가 속한 팀 ID 목록. 좋아요 알림 필터링에 사용한다.
+     */
+    private val myTeamIds: StateFlow<List<String>> =
+        feedRepository.observeMyTeamIds()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * 화면에 노출할 알림 목록.
+     *
+     * 좋아요(like) 알림은 "내가 현재 속한 팀"에 대한 것만 노출한다.
+     * 다른 사람이 내 팀이 아닌 팀에 보낸 좋아요는 숨긴다.
+     * (teamId가 비어 있는 레거시 좋아요 알림은 기존대로 노출한다.)
+     */
+    val notifications: StateFlow<List<InAppNotification>> =
+        combine(repository.observeMyNotifications(), myTeamIds) { all, teamIds ->
+            all.filter { notif ->
+                if (notif.type != InAppNotification.TYPE_LIKE) return@filter true
+                notif.teamId.isBlank() || teamIds.contains(notif.teamId)
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val unreadCount: StateFlow<Int> =
         notifications
