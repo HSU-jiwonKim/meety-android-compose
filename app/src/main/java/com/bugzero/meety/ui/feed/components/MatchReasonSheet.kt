@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.outlined.Login
 import androidx.compose.material3.Icon
@@ -27,19 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
 import com.bugzero.meety.ui.auth.BALANCE_QUESTIONS
-import com.bugzero.meety.ui.auth.BalanceGameScreen
-import com.bugzero.meety.ui.auth.SetupProfileScreen
-import com.bugzero.meety.ui.feed.MemberProfileDialog
 import com.bugzero.meety.ui.feed.CurrentUserProfile
 import com.bugzero.meety.ui.feed.FeedConstants
 import com.bugzero.meety.ui.feed.MemberDistanceResult
@@ -164,9 +154,7 @@ private sealed class Reason {
         val why: String,
         val score: String,
         val scoreVal: String,
-        val caveat: String? = null,
-        /** 가치관 일치 카드 여부 — true 면 헤더에 밸런스 게임 미리보기 "?" 버튼을 노출한다 */
-        val isBalance: Boolean = false
+        val caveat: String? = null
     ) : Reason()
 
     /** 자주 누른 태그 Top N (잠금/해금) */
@@ -185,15 +173,10 @@ private sealed class Reason {
     ) : Reason()
 }
 
-private data class Bar(val label: String, val value: Int, val locked: Boolean = false)
+/** locked: 해금 전(자물쇠). pending: 데이터 로딩/분석 중(숫자 표시 안 함). */
+private data class Bar(val label: String, val value: Int, val locked: Boolean = false, val pending: Boolean = false)
 private data class DistRow(val label: String, val distance: String, val score: Int)
-private data class MatchRow(
-    val label: String,
-    val value: String,
-    val matched: Boolean,
-    /** 이 행에 해당하는(공통점이 있는) 팀원 목록 — 비어있지 않으면 행을 펼쳐 프로필을 볼 수 있다 */
-    val members: List<MemberProfile> = emptyList()
-)
+private data class MatchRow(val label: String, val value: String, val matched: Boolean)
 
 /**
  * 매칭 근거 카드 목록을 구성한다.
@@ -218,7 +201,9 @@ private fun buildReasons(
     // ── 자주 누른 태그 Top N ──
     val topTags = userTopTags.take(FeedConstants.MATCH_TOP_TAG_N)
     val overlap = topTags.count { it in team.tags }
-    val topPercent = if (topTags.isNotEmpty()) (overlap * 100f / topTags.size).roundToInt() else 0
+    // 분모를 MATCH_TOP_TAG_N(3)으로 고정 — topTags 실제 크기와 무관하게 일관된 점수.
+    // 0개 → 0점, 1개 → 33점, 2개 → 67점, 3개 → 100점
+    val topPercent = (overlap * 100f / FeedConstants.MATCH_TOP_TAG_N).roundToInt()
 
     // ── 관심사·태그 일치 ──
     val userInterests = currentUserProfile?.interests ?: emptyList()
@@ -238,11 +223,11 @@ private fun buildReasons(
     // ── 동네 근접도 ──
     val hasDistance = distanceResults.isNotEmpty()
     val avgMinutes = if (hasDistance) distanceResults.map { it.transitMinutes }.average().toInt() else 0
-    val avgDistScore = if (hasDistance) distanceResults.map { it.score }.average().toInt() else 70
+    val avgDistScore = if (hasDistance) distanceResults.map { it.score }.average().toInt() else 0
     val distRows = if (hasDistance) {
         distanceResults.map { r ->
             val distStr = if (r.distanceKm < 1.0) "${(r.distanceKm * 1000).toInt()}m"
-            else "${"%.1f".format(r.distanceKm)}km"
+                          else "${"%.1f".format(r.distanceKm)}km"
             DistRow(
                 label    = "${r.memberName} · ${r.memberLocation}",
                 distance = "$distStr · 약 ${r.transitMinutes}분",
@@ -289,52 +274,101 @@ private fun buildReasons(
             val t = teamProfile[axis]             ?: return@mapNotNull null
             ((u * t + 1f) / 2f * 100f).coerceIn(0f, 100f)
         }.average().toInt().coerceIn(0, 100)
-    } else 75
+    } else 0
     val hasBalance = balanceRows.isNotEmpty()
 
-    // ── 팀원 공통점 ──
+    // ── 팀원 공통점 (computeCommonalityScore와 동일한 공식) ──
+    val userMbti = currentUserProfile?.mbti?.uppercase() ?: ""
+    val hasUserMbti = userMbti.length == 4
+
     val hasMemberData = memberProfiles.isNotEmpty() && currentUserProfile != null
     val commonRows: List<MatchRow>
     val membersWithCommon: Int
     val commonScore: Int
 
     if (hasMemberData) {
+        // 관심사 행: 내 관심사 항목별로 몇 명과 겹치는지
         val interestMatchRows = userInterests.map { interest ->
-            val matching = memberProfiles.filter { interest in it.interests }
-            MatchRow("공통 관심사 · $interest", "${matching.size}명", matching.isNotEmpty(), matching)
+            val cnt = memberProfiles.count { interest in it.interests }
+            MatchRow("공통 관심사 · $interest", "${cnt}명", cnt > 0)
         }.take(3)
+        // 음식 행
         val foodMatchRows = userFoodLikes.map { food ->
-            val matching = memberProfiles.filter { food in it.foodLikes }
-            MatchRow("음식 취향 · $food", "${matching.size}명", matching.isNotEmpty(), matching)
+            val cnt = memberProfiles.count { food in it.foodLikes }
+            MatchRow("음식 취향 · $food", "${cnt}명", cnt > 0)
         }.take(2)
-        commonRows = (interestMatchRows + foodMatchRows).ifEmpty {
+        // MBTI 행: 팀원마다 4축 일치도 표시
+        val mbtiRows = if (hasUserMbti) {
+            memberProfiles.mapNotNull { member ->
+                val memberMbti = member.mbti.uppercase()
+                if (memberMbti.length != 4) return@mapNotNull null
+                val axisMatch = userMbti.zip(memberMbti).count { (a, b) -> a == b }
+                MatchRow(
+                    label   = "MBTI · ${member.name} ($memberMbti)",
+                    value   = "${axisMatch}/4축 일치",
+                    matched = axisMatch >= 3
+                )
+            }
+        } else emptyList()
+
+        commonRows = (mbtiRows + interestMatchRows + foodMatchRows).ifEmpty {
             listOf(MatchRow("공통 프로필 항목 없음", "현재 데이터 기준", false))
         }
         membersWithCommon = memberProfiles.count { member ->
             userInterests.any { it in member.interests } || userFoodLikes.any { it in member.foodLikes }
         }
-        commonScore = (membersWithCommon.toDouble() / memberProfiles.size * 100).toInt().coerceIn(0, 100)
+
+        // 점수: 팀원별 [관심사 정밀도 + 음식 정밀도 + MBTI 축 일치도] 평균 + 커버리지 보너스
+        val memberScores = memberProfiles.map { member ->
+            val signals = mutableListOf<Double>()
+            if (currentUserProfile!!.interests.isNotEmpty()) {
+                val matched = currentUserProfile.interests.count { it in member.interests.toSet() }
+                signals.add(matched.toDouble() / currentUserProfile.interests.size * 100)
+            }
+            if (currentUserProfile.foodLikes.isNotEmpty()) {
+                val matched = currentUserProfile.foodLikes.count { it in member.foodLikes.toSet() }
+                signals.add(matched.toDouble() / currentUserProfile.foodLikes.size * 100)
+            }
+            val memberMbti = member.mbti.uppercase()
+            if (hasUserMbti && memberMbti.length == 4) {
+                val axisMatch = userMbti.zip(memberMbti).count { (a, b) -> a == b }
+                signals.add(axisMatch.toDouble() / 4 * 100)
+            }
+            if (signals.isEmpty()) 50.0 else signals.average()
+        }
+        val memberAvg = if (memberScores.isEmpty()) 50.0 else memberScores.average()
+        val coverageBonus = if (currentUserProfile!!.interests.isNotEmpty()) {
+            val allMemberInterests = memberProfiles.flatMap { it.interests }.toSet()
+            val covered = currentUserProfile.interests.count { it in allMemberInterests }
+            covered.toDouble() / currentUserProfile.interests.size * 20
+        } else 0.0
+        commonScore = (memberAvg + coverageBonus).toInt().coerceIn(0, 100)
     } else {
         commonRows = listOf(MatchRow("팀원 프로필 로딩 중", "잠시 후 다시 열어보세요", false))
         membersWithCommon = 0
         commonScore = 50
     }
 
-    // ── 적합도 종합 bars (시각화용 — 개별 항목 점수를 막대로 표현) ──
-    val baseBars = listOf(
-        Bar("관심사 일치",  interestScore),
-        Bar("동네 근접도",  if (hasDistance) avgDistScore else 70),
-        Bar("가치관 일치",  if (hasBalance)  balanceScore else 75),
-        Bar("팀원 공통점",  commonScore)
+    // 팀원 평균 일치도 표시용 — 커버리지 보너스 포함한 최종 점수를 % 표기로 변환
+    val commonScorePct = commonScore  // 0~100 → 그대로 % 로 표기
+
+    // ── 적합도 종합 bars ──
+    // 관심사 일치: 프로필 기반 정적 데이터 (관심사/음식취향 ∩ 팀 태그)
+    // 자주 누른 태그: 스와이프 누적 행동 기반 동적 데이터 — 둘은 출처가 달라 별도 표시
+    // pending=true: 데이터 미수집 → "—" 표시
+    val allBars = listOf(
+        Bar("관심사 일치",   interestScore),
+        Bar("가치관 일치",   if (hasBalance)  balanceScore        else 0,  pending = !hasBalance),
+        Bar("동네 근접도",   if (hasDistance) avgDistScore        else 0,  pending = !hasDistance),
+        Bar("팀원 공통점",   if (hasMemberData) commonScore else 50, pending = !hasMemberData),
+        Bar("자주 누른 태그", if (unlocked) topPercent else 0, locked = !unlocked)
     )
-    val topBar  = Bar("자주 누른 태그", if (unlocked) topPercent else 0, locked = !unlocked)
-    val allBars = baseBars + topBar
 
     // fitScore: 카드에 표시된 값과 동일 (FeedViewModel.computeFitScore 가중 평균)
-    // 막대들의 단순 평균과 다를 수 있음 — 가중치·사용 가능 컴포넌트가 다르기 때문
+    // bars 4개가 computeFitScore 컴포넌트와 1:1 대응하므로 단순 평균과의 차이는 재정규화 때문
     val calc = buildString {
         append("${fitScore}점 — 태그선호도(30%)·가치관(30%)·거리(20%)·팀원공통점(20%) 가중 평균.")
-        append(" 카드에 표시된 점수와 동일한 값이에요.")
+        append(" 데이터가 없는 항목은 제외 후 재정규화돼요.")
         if (!unlocked) {
             append(" '자주 누른 태그'는 좋아요·패스 ${FeedConstants.MATCH_UNLOCK_THRESHOLD}회를 채우면 점수에 반영돼요.")
             append(" (현재 $actionCount/${FeedConstants.MATCH_UNLOCK_THRESHOLD})")
@@ -369,19 +403,25 @@ private fun buildReasons(
         add(Reason.Distance(
             icon = "📍",
             title = "동네 근접도",
-            source = "회원님 ↔ 팀원 대중교통 거리",
+            source = "회원님 ↔ 팀원 대중교통 소요시간 기반",
             strength = if (hasDistance && avgDistScore >= 75) Strength.HI else Strength.MID,
-            strengthLabel = if (hasDistance) "평균 ${avgMinutes}분" else "계산 중",
-            statNum = if (hasDistance) "약 ${avgMinutes}분" else "—",
-            statLabel = "대중교통 평균",
+            strengthLabel = if (hasDistance) "${avgDistScore}점" else "계산 중",
+            statNum = if (hasDistance) "${avgDistScore}점" else "—",
+            statLabel = "팀원 평균 근접도",
             statSub = if (hasDistance) {
                 val loc = currentUserProfile?.location?.ifBlank { "내 동네" } ?: "내 동네"
-                "회원님($loc) 기준 · ${distanceResults.size}명 대상"
+                "회원님($loc) 기준 · 대중교통 평균 ${avgMinutes}분 · ${distanceResults.size}명 대상"
             } else "거리 데이터를 불러오는 중이에요",
             rows = distRows,
-            why = "단순 직선거리보다 대중교통 소요 시간으로 보여줘 \"얼마나 가까운지\"를 바로 체감할 수 있어요. 가까울수록 높은 점수를 줍니다.",
-            score = "팀원별 점수 (100 - 분×0.8) 평균",
-            scoreVal = "${avgDistScore}점"
+            why = buildString {
+                append("대중교통 소요시간을 점수로 변환했어요. ")
+                append("0분 → 100점 · 30분 → 76점 · 60분 → 52점 · 125분 이상 → 0점. ")
+                append("공식: 100 − (소요시간 × 0.8), 최저 0점. ")
+                append("팀원마다 계산한 뒤 평균을 냅니다. ")
+                append("아래 목록에서 팀원별 소요시간과 점수를 직접 확인할 수 있어요.")
+            },
+            score = if (hasDistance) "100 − (대중교통 소요시간 × 0.8) 팀원 평균" else "거리 계산 대기 중",
+            scoreVal = if (hasDistance) "${avgDistScore}점" else "분석 중"
         ))
         add(Reason.Rows(
             icon = "⚖️",
@@ -396,23 +436,32 @@ private fun buildReasons(
                 listOf(MatchRow("밸런스 게임 데이터 없음", "팀·유저 답변 대기 중", false))
             },
             why = "가입할 때 답한 밸런스 게임 문항을 팀 다수 응답과 비교했어요. 팀원 의견이 반반일 때는 절반 점수만 부여합니다 — 억지로 일치로 처리하지 않아요.",
-            score = "(유저답변 × 팀평균 + 1) ÷ 2 × 100의 평균",
-            scoreVal = "${balanceScore}점",
-            isBalance = true
+            score = if (hasBalance) "(유저답변 × 팀평균 + 1) ÷ 2 × 100의 평균" else "밸런스 게임 답변 대기 중",
+            scoreVal = if (hasBalance) "${balanceScore}점" else "분석 중"
         ))
         add(Reason.Rows(
             icon = "🧩",
             title = "팀원과의 공통점",
-            source = "팀원 프로필 대조",
-            strength = if (membersWithCommon > memberProfiles.size / 2) Strength.HI else Strength.MID,
-            strengthLabel = "${membersWithCommon}/${memberProfiles.size.coerceAtLeast(1)}명",
-            statNum = "${membersWithCommon}/${memberProfiles.size.coerceAtLeast(1)}",
-            statLabel = "명과 공통점",
-            statSub = "팀원 ${memberProfiles.size}명 중 ${membersWithCommon}명과 겹치는 점이 있어요",
+            source = "관심사 · 음식취향 · MBTI 4축 비교",
+            strength = if (commonScore >= 60) Strength.HI else Strength.MID,
+            strengthLabel = if (hasMemberData) "${commonScorePct}%" else "분석 중",
+            statNum = if (hasMemberData) "${commonScorePct}%" else "—",
+            statLabel = "팀원 평균 일치도",
+            statSub = if (hasMemberData)
+                "팀원 ${memberProfiles.size}명 각각과 관심사·음식·MBTI를 비교해 평균 낸 값이에요"
+            else
+                "팀원 프로필 분석 중",
             rows = commonRows,
-            why = "추상적 점수가 아니라 실제 팀원과 겹치는 사실이라 가장 와닿아요.",
-            score = "공통점 있는 멤버 ${membersWithCommon} ÷ 팀원 ${memberProfiles.size.coerceAtLeast(1)}명 × 100",
-            scoreVal = "${commonScore}점",
+            why = buildString {
+                append("팀원 한 명 한 명과 세 가지를 비교합니다. ")
+                append("① 내 관심사 중 팀원과 겹치는 비율, ")
+                append("② 내 음식취향 중 겹치는 비율, ")
+                append("③ MBTI 4개 축(E/I·N/S·F/T·J/P) 중 일치하는 수. ")
+                append("데이터가 없는 항목은 제외하고 있는 것만 평균 냅니다. ")
+                append("추가로, 팀 전체가 내 관심사를 얼마나 커버하는지도 최대 +20%p 보너스로 반영돼요.")
+            },
+            score = "팀원별 세 신호 평균 → 팀원 전체 평균 + 커버리지 보너스(최대 +20)",
+            scoreVal = if (hasMemberData) "${commonScorePct}점" else "분석 중",
             caveat = "아직 실제 활동·유지 데이터는 없어, 프로필·취향 기반으로만 계산했어요. 사용자가 늘면 결과 지표가 더해집니다."
         ))
         add(Reason.TopTags(
@@ -435,7 +484,6 @@ private fun buildReasons(
 fun MatchReasonSheet(
     team: Team,
     userTopTags: List<String>,
-    userTagScores: Map<String, Int> = emptyMap(),   // 전체 태그 가중치 기록 (Firebase tagScores) — "?" 전체 보기용
     actionCount: Int,
     currentUserProfile: CurrentUserProfile?,
     memberProfiles: List<MemberProfile>,
@@ -466,12 +514,6 @@ fun MatchReasonSheet(
     var idx by remember(team.teamId) { mutableStateOf(0) }
     // 슬라이드 방향: 1 = 다음(왼쪽에서 오른쪽으로 밀려남), -1 = 이전
     var slideDir by remember { mutableStateOf(1) }
-    // 밸런스 게임 미리보기 오버레이 표시 여부 (회원가입 화면을 그대로 띄움 · 답변은 저장되지 않음)
-    var showBalanceGame by remember { mutableStateOf(false) }
-    // 태그 가중치 전체 기록 오버레이 표시 여부 (Firebase tagScores 내림차순 전체 보기)
-    var showTagRecord by remember { mutableStateOf(false) }
-    // 프로필 설정 예시 화면 오버레이 표시 여부 (회원가입 프로필 설정 화면 · 저장 안 됨)
-    var showProfileSetup by remember { mutableStateOf(false) }
     val isLast = idx == reasons.lastIndex
 
     // 시트 슬라이드업 입장 애니메이션 (HTML의 translateY 20px → 0)
@@ -566,12 +608,7 @@ fun MatchReasonSheet(
                             .fillMaxSize()
                             .verticalScroll(scrollState)
                     ) {
-                        ReasonContent(
-                            reason = reasons[currentIdx],
-                            onOpenBalanceGame = { showBalanceGame = true },
-                            onOpenTagRecord = { showTagRecord = true },
-                            onOpenProfileSetup = { showProfileSetup = true }
-                        )
+                        ReasonContent(reasons[currentIdx])
                         Spacer(Modifier.height(8.dp))
                     }
                 }
@@ -581,9 +618,15 @@ fun MatchReasonSheet(
 
             // ── 하단 네비게이션: 이전 / dots / 다음(or CTA) ──
             Row(verticalAlignment = Alignment.CenterVertically) {
-                NavButton(Icons.Default.ChevronLeft) {
-                    slideDir = -1
-                    idx = (idx - 1 + reasons.size) % reasons.size
+                val isFirst = idx == 0
+                if (isFirst) {
+                    // 첫 번째 카드에서는 좌측 화살표 숨김 (wrap-around 방지)
+                    Spacer(Modifier.size(46.dp))
+                } else {
+                    NavButton(Icons.Default.ChevronLeft) {
+                        slideDir = -1
+                        idx -= 1
+                    }
                 }
                 Row(
                     modifier = Modifier.weight(1f),
@@ -623,7 +666,7 @@ fun MatchReasonSheet(
                     ) {
                         Icon(Icons.Outlined.Login, null, tint = Color.White, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(7.dp))
-                        Text("가입 신청하기", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("좋아요 보내기", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 } else {
                     NavButton(Icons.Default.ChevronRight) {
@@ -633,245 +676,6 @@ fun MatchReasonSheet(
                 }
             }
         }
-
-        // ── 밸런스 게임 미리보기 오버레이 ──
-        // 회원가입 때와 동일한 화면을 그대로 띄운다. 실제로 문항을 풀 수 있지만
-        // onComplete / onSkip 모두 오버레이만 닫을 뿐, 답변은 어디에도 저장되지 않는다.
-        if (showBalanceGame) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { /* 뒤쪽 시트로 탭 전달 방지 */ }
-            ) {
-                BalanceGameScreen(
-                    onComplete = { showBalanceGame = false },
-                    onSkip = { showBalanceGame = false }
-                )
-            }
-        }
-
-        // ── 태그 가중치 전체 기록 오버레이 ──
-        // Firebase tagScores 를 가중치 내림차순으로 전부 보여준다 (Top 3 카드의 "?" 버튼).
-        if (showTagRecord) {
-            TagRecordOverlay(
-                tagScores = userTagScores,
-                onClose = { showTagRecord = false }
-            )
-        }
-
-        // ── 프로필 설정 예시 화면 오버레이 ──
-        // 회원가입 때의 프로필 설정 화면을 예시 모드로 띄운다. 관심사 고르는 방법을 보여주며,
-        // 입력 내용은 저장되지 않고 닫기만 가능하다.
-        if (showProfileSetup) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.White)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { /* 뒤쪽 시트로 탭 전달 방지 */ }
-            ) {
-                SetupProfileScreen(
-                    previewMode = true,
-                    onClose = { showProfileSetup = false },
-                    onComplete = { showProfileSetup = false }
-                )
-            }
-        }
-    }
-}
-
-/**
- * 내 태그 가중치 전체 기록 오버레이.
- * Firebase 에 저장된 tagScores(=userTagScores) 를 가중치 내림차순으로 모두 나열한다.
- */
-@Composable
-private fun TagRecordOverlay(
-    tagScores: Map<String, Int>,
-    onClose: () -> Unit
-) {
-    val sorted = remember(tagScores) {
-        tagScores.entries.sortedByDescending { it.value }.map { it.key to it.value }
-    }
-    val maxAbs = remember(sorted) { (sorted.maxOfOrNull { abs(it.second) } ?: 1).coerceAtLeast(1) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xCC140C2E))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClose() }
-    ) {
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.85f)
-                .padding(8.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color.White)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { /* 흡수 */ }
-                .padding(horizontal = 16.dp, vertical = 16.dp)
-        ) {
-            // 헤더
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🔥", fontSize = 18.sp)
-                Spacer(Modifier.width(7.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("내 태그 가중치 전체 기록", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "좋아요·패스로 쌓인 태그별 점수 (가중치 높은 순)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Ink3
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(MeetySurface2)
-                        .border(1.dp, Line, CircleShape)
-                        .clickable { onClose() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Close, "닫기", tint = Ink2, modifier = Modifier.size(15.dp))
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            if (sorted.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "아직 쌓인 태그 기록이 없어요.\n좋아요·패스를 하면 태그별 가중치가 쌓여요.",
-                        fontSize = 13.sp,
-                        color = Ink3,
-                        lineHeight = 20.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(scrollState)
-                ) {
-                    sorted.forEachIndexed { i, (tag, score) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "${i + 1}",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Ink4,
-                                modifier = Modifier.width(24.dp)
-                            )
-                            Text(
-                                tag,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Ink,
-                                modifier = Modifier.width(96.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            // 가중치 막대 (양수=보라, 음수=회색)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(9.dp)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(Line2)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .fillMaxWidth((abs(score).toFloat() / maxAbs).coerceIn(0f, 1f))
-                                        .clip(RoundedCornerShape(999.dp))
-                                        .then(
-                                            if (score >= 0)
-                                                Modifier.background(FeedConstants.GradientPurplePink)
-                                            else
-                                                Modifier.background(Ink4)
-                                        )
-                                )
-                            }
-                            Spacer(Modifier.width(9.dp))
-                            Text(
-                                if (score > 0) "+$score" else "$score",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (score >= 0) Brand1 else Ink3,
-                                modifier = Modifier.width(40.dp),
-                                textAlign = TextAlign.End
-                            )
-                        }
-                        if (i < sorted.lastIndex) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(Line)
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "총 ${sorted.size}개 태그 · Firebase에 저장된 내 기록이에요",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Ink4
-                )
-            }
-        }
-    }
-}
-
-/** 카드 제목 옆 작은 원형 "?" 도움말 버튼 */
-@Composable
-private fun HelpButton(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(20.dp)
-            .clip(CircleShape)
-            .background(Brand1)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            "?",
-            color = Color.White,
-            fontSize = 13.sp,
-            lineHeight = 13.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            style = TextStyle(
-                platformStyle = PlatformTextStyle(includeFontPadding = false)
-            )
-        )
     }
 }
 
@@ -891,14 +695,9 @@ private fun NavButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onC
 }
 
 @Composable
-private fun ReasonContent(
-    reason: Reason,
-    onOpenBalanceGame: () -> Unit = {},
-    onOpenTagRecord: () -> Unit = {},
-    onOpenProfileSetup: () -> Unit = {}
-) {
+private fun ReasonContent(reason: Reason) {
     Column {
-        // 공통 헤더: 아이콘 + 제목 (+ "?" 미리보기 버튼) + 출처 + 강도배지
+        // 공통 헤더: 아이콘 + 제목 + 출처 + 강도배지
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -911,24 +710,7 @@ private fun ReasonContent(
             }
             Spacer(Modifier.width(11.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(reason.title, fontSize = 15.5.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-                    // 가치관 일치 카드: 누르면 밸런스 게임 진행 방식을 미리보기로 띄움
-                    if (reason is Reason.Rows && reason.isBalance) {
-                        Spacer(Modifier.width(7.dp))
-                        HelpButton(onClick = onOpenBalanceGame)
-                    }
-                    // 자주 누른 태그 Top N 카드: 누르면 내 태그 가중치 전체 기록을 띄움
-                    if (reason is Reason.TopTags) {
-                        Spacer(Modifier.width(7.dp))
-                        HelpButton(onClick = onOpenTagRecord)
-                    }
-                    // 관심사·태그 일치 카드: 누르면 프로필 설정 예시 화면(관심사 고르는 법)을 띄움
-                    if (reason is Reason.Chips) {
-                        Spacer(Modifier.width(7.dp))
-                        HelpButton(onClick = onOpenProfileSetup)
-                    }
-                }
+                Text(reason.title, fontSize = 15.5.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
                 Spacer(Modifier.height(2.dp))
                 Text(reason.source, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink3)
             }
@@ -1027,6 +809,7 @@ private fun OverviewBody(r: Reason.Overview) {
         StatHero("${r.fitScore}", "점 / 100", "회원님 데이터로 직접 계산")
         Spacer(Modifier.height(11.dp))
         r.bars.forEach { bar ->
+            val dimmed = bar.locked || bar.pending
             Row(
                 modifier = Modifier.padding(bottom = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1043,7 +826,7 @@ private fun OverviewBody(r: Reason.Overview) {
                         bar.label,
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (bar.locked) Ink4 else Ink2
+                        color = if (dimmed) Ink4 else Ink2
                     )
                 }
                 Spacer(Modifier.width(9.dp))
@@ -1057,17 +840,21 @@ private fun OverviewBody(r: Reason.Overview) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fillMaxWidth(if (bar.locked) 0f else bar.value / 100f)
+                            .fillMaxWidth(if (dimmed) 0f else bar.value / 100f)
                             .clip(RoundedCornerShape(999.dp))
                             .background(FeedConstants.GradientPurplePink)
                     )
                 }
                 Spacer(Modifier.width(9.dp))
                 Text(
-                    if (bar.locked) "잠금" else "${bar.value}",
+                    when {
+                        bar.locked  -> "잠금"
+                        bar.pending -> "—"
+                        else        -> "${bar.value}"
+                    },
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (bar.locked) Ink4 else Brand1,
+                    color = if (dimmed) Ink4 else Brand1,
                     modifier = Modifier.width(38.dp)
                 )
             }
@@ -1186,7 +973,19 @@ private fun RowsBody(r: Reason.Rows) {
                             .background(Line)
                     )
                 }
-                MatchRowItem(row)
+                Row(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(row.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink2, modifier = Modifier.weight(1f))
+                    Text(row.value, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+                    Spacer(Modifier.width(8.dp))
+                    if (row.matched) {
+                        Icon(Icons.Default.Check, null, tint = OkGreen, modifier = Modifier.size(17.dp))
+                    } else {
+                        Text("미일치", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink4)
+                    }
+                }
             }
         }
         Spacer(Modifier.height(11.dp))
@@ -1204,145 +1003,6 @@ private fun RowsBody(r: Reason.Rows) {
                     .padding(horizontal = 12.dp, vertical = 9.dp)
             ) {
                 Text(it, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0B7A52), lineHeight = 16.5.sp)
-            }
-        }
-    }
-}
-
-/**
- * 공통점 행 하나.
- * 매칭된 팀원(members)이 있으면 행을 탭해 펼칠 수 있고, 펼치면 해당 팀원 프로필이 보인다.
- */
-@Composable
-private fun MatchRowItem(row: MatchRow) {
-    val expandable = row.members.isNotEmpty()
-    var expanded by remember(row.label) { mutableStateOf(false) }
-    // 프로필 사진을 누르면 띄울 팀원 (MeetingDetailScreen 과 동일한 프로필 다이얼로그 재사용)
-    var selectedMember by remember(row.label) { mutableStateOf<MemberProfile?>(null) }
-    selectedMember?.let { member ->
-        MemberProfileDialog(member = member, onDismiss = { selectedMember = null })
-    }
-    val chevronRotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(200),
-        label = "chevron_rot"
-    )
-
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (expandable)
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { expanded = !expanded }
-                    else Modifier
-                )
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(row.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink2, modifier = Modifier.weight(1f))
-            Text(row.value, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-            Spacer(Modifier.width(8.dp))
-            if (row.matched) {
-                Icon(Icons.Default.Check, null, tint = OkGreen, modifier = Modifier.size(17.dp))
-            } else {
-                Text("미일치", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink4)
-            }
-            if (expandable) {
-                Spacer(Modifier.width(4.dp))
-                Icon(
-                    Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "접기" else "펼치기",
-                    tint = Ink3,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .graphicsLayer { rotationZ = chevronRotation }
-                )
-            }
-        }
-
-        AnimatedVisibility(visible = expanded && expandable) {
-            Column(
-                modifier = Modifier.padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                row.members.forEach { member ->
-                    MemberMiniCard(member, onProfileClick = { selectedMember = member })
-                }
-            }
-        }
-    }
-}
-
-/** 공통점 행을 펼쳤을 때 보이는 팀원 프로필 미니 카드. 사진을 누르면 프로필 다이얼로그가 뜬다. */
-@Composable
-private fun MemberMiniCard(member: MemberProfile, onProfileClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(13.dp))
-            .background(MeetySurface2)
-            .border(1.dp, Line, RoundedCornerShape(13.dp))
-            .padding(horizontal = 11.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 프로필 아바타 — 사진이 있으면 사진, 없으면 이름 첫 글자. 누르면 프로필 다이얼로그.
-        val firstImage = member.profileImages.firstOrNull()
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(GradSoft)
-                .clickable { onProfileClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            if (!firstImage.isNullOrBlank()) {
-                AsyncImage(
-                    model = firstImage,
-                    contentDescription = "${member.name} 프로필 사진",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Text(
-                    member.name.take(1).ifBlank { "?" },
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Brand1
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    member.name.ifBlank { "팀원" },
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Ink
-                )
-                val meta = listOfNotNull(
-                    member.age.takeIf { it > 0 }?.let { "${it}세" },
-                    member.department.ifBlank { null },
-                    member.mbti.ifBlank { null }
-                ).joinToString(" · ")
-                if (meta.isNotBlank()) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(meta, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Ink3)
-                }
-            }
-            if (member.bio.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    member.bio,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Ink2,
-                    lineHeight = 15.sp
-                )
             }
         }
     }

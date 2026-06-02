@@ -64,8 +64,10 @@ class MeetingPlaceRepository {
 
         // ── Circuit breaker 설정 ──────────────────────────────────────────────
         //   외부 엔드포인트가 연속으로 실패하면 일정 시간 호출 스킵 — 타임아웃 대기로
-        //   UI 가 50초 넘게 멈추는 것을 막는다. 2분이 지나면 카운터 리셋.
-        private const val CB_FAIL_THRESHOLD = 3
+        //   UI 가 멈추는 것을 막는다. BLACKOUT 이후 카운터 리셋되어 재시도.
+        //   transit API는 비공식 내부 API라 막혀있을 가능성이 높으므로
+        //   2회 실패 시 빠르게 포기하고 거리 기반 휴리스틱으로 전환한다.
+        private const val CB_FAIL_THRESHOLD = 2   // 3→2: 더 빠르게 CB 동작
         private const val CB_BLACKOUT_MS = 120_000L // 2분
     }
 
@@ -103,6 +105,7 @@ class MeetingPlaceRepository {
      * 네이버 Geocoding API로 주소 → 좌표 변환
      */
     private suspend fun naverGeocode(address: String): LatLng? = withContext(Dispatchers.IO) {
+        Log.d(TAG, "naverGeocode 호출: '$address'")
         try {
             val encoded = URLEncoder.encode(address, "UTF-8")
             val url = URL("$NAVER_GEO_BASE?query=$encoded")
@@ -111,12 +114,12 @@ class MeetingPlaceRepository {
                 requestMethod = "GET"
                 setRequestProperty("x-ncp-apigw-api-key-id", NCP_CLIENT_ID)
                 setRequestProperty("x-ncp-apigw-api-key", NCP_CLIENT_SECRET)
-                connectTimeout = 5000
-                readTimeout = 5000
+                connectTimeout = 3000   // 공식 API — 정상 시 1s 미만, 3s면 충분
+                readTimeout = 3000
             }
             val responseCode = conn.responseCode
             if (responseCode != 200) {
-                Log.w(TAG, "naverGeocode HTTP $responseCode for '$address'")
+                Log.w(TAG, "naverGeocode HTTP $responseCode for '$address' — API 키 만료·미등록 또는 잘못된 주소 형식일 수 있음")
                 return@withContext null
             }
             val body = conn.inputStream.bufferedReader().readText()
@@ -1105,11 +1108,12 @@ class MeetingPlaceRepository {
         sLat: Double, sLng: Double, gLat: Double, gLng: Double
     ): Int? {
         val endpoints = listOf(
-            // 네이버 지도 웹 (m.map.naver.com / map.naver.com) 내부 API. 쿼리 포맷은
-            // 시기에 따라 조금씩 달라지는 편이라 여러 경로를 시도한다.
+            // 네이버 지도 웹 내부 API — 응답 속도 기준 우선순위 순.
+            // pubtrans-mobile 이 구조화된 JSON을 주기 때문에 파싱 안정성이 가장 높고
+            // 응답도 빠른 편이라 첫 번째로 올린다.
+            "https://pubtrans-mobile.naver.com/api/v1/routes/public/transport?start=$sLng,$sLat&goal=$gLng,$gLat&lang=ko&osType=AOS",
             "https://map.naver.com/p/api/directions/public?start=$sLng,$sLat,&goal=$gLng,$gLat,&crs=EPSG%3A4326&mode=TIME&lang=ko&includeDetailOperation=true",
-            "https://map.naver.com/v5/api/directions/public?start=$sLng,$sLat&goal=$gLng,$gLat&crs=EPSG%3A4326&mode=TIME&lang=ko",
-            "https://pubtrans-mobile.naver.com/api/v1/routes/public/transport?start=$sLng,$sLat&goal=$gLng,$gLat&lang=ko&osType=AOS"
+            "https://map.naver.com/v5/api/directions/public?start=$sLng,$sLat&goal=$gLng,$gLat&crs=EPSG%3A4326&mode=TIME&lang=ko"
         )
         for (url in endpoints) {
             val min = fetchTransitEndpoint(url) ?: continue
@@ -1137,8 +1141,8 @@ class MeetingPlaceRepository {
                 setRequestProperty("Accept", "application/json, text/plain, */*")
                 setRequestProperty("Referer", "https://map.naver.com/")
                 setRequestProperty("Accept-Language", "ko-KR,ko;q=0.9")
-                connectTimeout = 1500
-                readTimeout = 2500
+                connectTimeout = 1000   // 비공식 API — 빠르게 포기하고 다음 엔드포인트 또는 휴리스틱으로
+                readTimeout = 2000
             }
             if (conn.responseCode != 200) {
                 Log.w(TAG, "transitApi HTTP ${conn.responseCode} @ $urlStr")

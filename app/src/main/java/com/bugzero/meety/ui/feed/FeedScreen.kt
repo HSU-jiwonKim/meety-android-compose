@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.*
@@ -60,21 +59,11 @@ fun FeedScreen(
     // 매칭 근거 "자주 누른 태그 Top N"용: 점수 높은 순 상위 태그 + 좋아요·패스 누적 횟수
     val userTopTags = remember(uiState.userTagScores) {
         uiState.userTagScores
-            .filterValues { it > 0 }
             .entries
-            .sortedByDescending { it.value }
+            .sortedByDescending { it.value }   // 양수/음수 무관 — FeedViewModel.computeTagScore와 동일 기준
             .map { it.key }
     }
     val actionCount = uiState.likedTeamIds.size + uiState.passedTeamIds.size
-
-    // 좋아요(함께하기 신청) 직후 하단에 띄울 안내 배너
-    var likeBanner by remember { mutableStateOf<LikeBannerData?>(null) }
-    LaunchedEffect(likeBanner) {
-        if (likeBanner != null) {
-            kotlinx.coroutines.delay(2800)
-            likeBanner = null
-        }
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -129,18 +118,12 @@ fun FeedScreen(
                                 nextTeam             = nextTeam,
                                 isLoadingMore        = uiState.isLoadingMore,
                                 userTopTags          = userTopTags,
-                                userTagScores        = uiState.userTagScores,
                                 actionCount          = actionCount,
                                 currentUserProfile   = uiState.currentUserProfile,
                                 memberProfiles       = currentMemberProfiles,
                                 distanceResults      = currentDistanceResults,
                                 fitScore             = currentFitScore,
-                                onLike               = {
-                                    currentTeam?.let {
-                                        likeBanner = LikeBannerData(it.teamName, it.teamProfileImage)
-                                    }
-                                    viewModel.onCardSwiped(true)
-                                },
+                                onLike               = { viewModel.onCardSwiped(true) },
                                 onPass               = { viewModel.onCardSwiped(false) },
                                 onInfo               = { currentTeam?.let { viewModel.selectTeam(it.teamId) } },
                                 onUndo               = { viewModel.undoSwipe() },
@@ -170,8 +153,15 @@ fun FeedScreen(
                                         }
                                     }
                                 } else {
+                                    val fitScoreCache = uiState.cardFitScoreCache
+                                    val sortedAllTeams = remember(uiState.allTeams, fitScoreCache) {
+                                        uiState.allTeams.sortedByDescending {
+                                            fitScoreCache[it.teamId] ?: -1
+                                        }
+                                    }
                                     ListContent(
-                                        teams         = uiState.allTeams,
+                                        teams         = sortedAllTeams,
+                                        fitScoreCache = fitScoreCache,
                                         likedTeamIds  = uiState.likedTeamIds,
                                         passedTeamIds = uiState.passedTeamIds,
                                         myTeamIds     = uiState.myTeamIds,
@@ -217,79 +207,6 @@ fun FeedScreen(
                 onCancelLike         = { viewModel.onCancelLikeFromDetail() },
                 onSendLikeFromPassed = { viewModel.onSendLikeFromPassed() },
                 onBackClick          = { viewModel.clearSelectedTeam() }
-            )
-        }
-
-        // ── 좋아요(함께하기 신청) 안내 배너 ──
-        AnimatedVisibility(
-            visible = likeBanner != null,
-            enter   = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit    = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            likeBanner?.let { LikeSentBanner(it) }
-        }
-    }
-}
-
-/** 좋아요 직후 하단 배너에 표시할 정보 */
-private data class LikeBannerData(val teamName: String, val teamImage: String)
-
-/** 좋아요(함께하기 신청)를 보냈을 때 하단에서 올라오는 안내 배너 */
-@Composable
-private fun LikeSentBanner(data: LikeBannerData) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-            .shadow(12.dp, RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.White)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 팀 썸네일 (없으면 ✓ 아이콘)
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFF7C5CFC), Color(0xFFB14BF4))
-                    )
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (data.teamImage.isNotBlank()) {
-                AsyncImage(
-                    model = data.teamImage,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "${data.teamName}팀에 좋아요를 보냈어요",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Gray900
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "팀장이 수락하면 채팅방으로 초대돼요",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = Gray500
             )
         }
     }
@@ -344,7 +261,6 @@ private fun RecommendContent(
     nextTeam: Team?,
     isLoadingMore: Boolean,
     userTopTags: List<String>,
-    userTagScores: Map<String, Int>,
     actionCount: Int,
     currentUserProfile: CurrentUserProfile?,
     memberProfiles: List<MemberProfile>,
@@ -460,7 +376,6 @@ private fun RecommendContent(
             MatchReasonSheet(
                 team               = currentTeam,
                 userTopTags        = userTopTags,
-                userTagScores      = userTagScores,
                 actionCount        = actionCount,
                 currentUserProfile = currentUserProfile,
                 memberProfiles     = memberProfiles,
@@ -477,6 +392,7 @@ private fun RecommendContent(
 @Composable
 private fun ListContent(
     teams: List<Team>,
+    fitScoreCache: Map<String, Int>,
     likedTeamIds: Set<String>,
     passedTeamIds: Set<String>,
     myTeamIds: Set<String>,
@@ -512,7 +428,12 @@ private fun ListContent(
                 passedTeamIds.contains(team.teamId)              -> TeamActionStatus.PASSED
                 else                                             -> TeamActionStatus.NONE
             }
-            TeamListItem(team = team, onTeamClick = onTeamClick, status = status)
+            TeamListItem(
+                team        = team,
+                onTeamClick = onTeamClick,
+                status      = status,
+                fitScore    = fitScoreCache[team.teamId]
+            )
         }
     }
 }

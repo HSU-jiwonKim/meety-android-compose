@@ -268,8 +268,6 @@ class FeedRepository(
                     body = "${displayName}님이 ${team.teamName}팀에 좋아요를 보냈어요",
                     // relatedId에 likeId를 저장해야 알림 화면에서 수락/거절 호출 가능
                     relatedId = likeId,
-                    // teamId로 좋아요 받은 팀을 식별 → 알림 화면에서 내 팀의 좋아요만 노출
-                    teamId = team.teamId,
                     fromUserName = displayName
                 )
             } catch (e: Exception) {
@@ -437,23 +435,11 @@ class FeedRepository(
 
         // set(merge=true) 한 번으로: 문서 없으면 생성, 있으면 병합
         // → 기존 2단계(set userId + update scores) 에서 Firestore 왕복 1회 절감
-        //
-        // ⚠️ 주의: set() 은 update() 와 달리 "tagScores.태그" 같은 점(.) 표기를
-        //   중첩 필드 경로로 해석하지 않고 점이 포함된 "최상위 필드명"으로 취급한다.
-        //   따라서 반드시 중첩 Map 으로 넘겨야 tagScores/{태그} 경로에 증분이 적용된다.
-        //   (FieldValue.increment 는 중첩 Map 안에서도 정상 동작한다)
-        val tagScoreUpdates = mutableMapOf<String, Any>()
-        team.tags.forEach { tag -> tagScoreUpdates[tag] = FieldValue.increment(tagWeight.toLong()) }
-        val mbtiScoreUpdates = mutableMapOf<String, Any>()
-        team.mbtiTags.forEach { mbti -> mbtiScoreUpdates[mbti] = FieldValue.increment(mbtiWeight.toLong()) }
-
-        val updates = mutableMapOf<String, Any>(
-            "userId" to userId,
-            teamIdField to FieldValue.arrayUnion(team.teamId),
-            "updatedAt" to System.currentTimeMillis()
-        )
-        if (tagScoreUpdates.isNotEmpty())  updates["tagScores"]  = tagScoreUpdates
-        if (mbtiScoreUpdates.isNotEmpty()) updates["mbtiScores"] = mbtiScoreUpdates
+        val updates = mutableMapOf<String, Any>("userId" to userId)
+        team.tags.forEach     { tag  -> updates["tagScores.$tag"]   = FieldValue.increment(tagWeight.toLong()) }
+        team.mbtiTags.forEach { mbti -> updates["mbtiScores.$mbti"] = FieldValue.increment(mbtiWeight.toLong()) }
+        updates[teamIdField] = FieldValue.arrayUnion(team.teamId)
+        updates["updatedAt"] = System.currentTimeMillis()
 
         db.collection("userPreferences").document(userId)
             .set(updates, SetOptions.merge())

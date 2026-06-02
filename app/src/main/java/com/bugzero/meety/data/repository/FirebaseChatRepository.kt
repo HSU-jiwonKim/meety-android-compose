@@ -56,9 +56,6 @@ class FirebaseChatRepository : ChatRepository {
                                 val isDirectChat = type == "direct"
                                 val isDefaultGroupChat = type == "group" && (dbTeamName.isBlank() || dbTeamName == "알 수 없는 팀" || dbTeamName.contains(","))
 
-                                // 상대방 프로필 사진 (direct/group에서 사용)
-                                var otherUserProfileImage = ""
-
                                 if (isDirectChat || isDefaultGroupChat) {
                                     val otherUserIds = participants.filter { it != userId }
 
@@ -72,21 +69,13 @@ class FirebaseChatRepository : ChatRepository {
                                                 if (!name.isNullOrBlank()) {
                                                     otherNames.add(name)
                                                 }
-                                                // 1:1 채팅이면 상대방 프로필 사진 가져오기
-                                                if (isDirectChat && otherUserProfileImage.isBlank()) {
-                                                    otherUserProfileImage =
-                                                        (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
-                                                        ?: userDoc.getString("profileImageUrl")
-                                                        ?: userDoc.getString("profileImage")
-                                                        ?: ""
-                                                }
                                             }
 
                                             if (otherNames.isNotEmpty()) {
                                                 displayTeamName = if (otherNames.size <= 3) {
-                                                    otherNames.joinToString(", ")
+                                                    otherNames.joinToString(", ") // 3명 이하면 전부 나열
                                                 } else {
-                                                    "${otherNames.take(3).joinToString(", ")} 외 ${otherNames.size - 3}명"
+                                                    "${otherNames.take(3).joinToString(", ")} 외 ${otherNames.size - 3}명" // 4명 이상이면 줄임
                                                 }
                                             }
                                         } catch (e: Exception) {
@@ -95,49 +84,23 @@ class FirebaseChatRepository : ChatRepository {
                                     }
                                 }
 
-                                // 팀/채팅 문서에 저장된 이미지 URL 우선 확인
+                                // ✨ 1. 파이어베이스 DB에서 사진 주소(URL) 찾아오기 특공대!
                                 val teamId = doc.getString("teamId") ?: ""
+
+                                // 일단 채팅 문서에 'imageUrl'이나 'teamImageUrl'이 있는지 확인합니다.
                                 var fetchedImageUrl = doc.getString("imageUrl") ?: doc.getString("teamImageUrl") ?: ""
 
-                                if (isDirectChat) {
-                                    // 개인채팅: 상대방 프로필 사진 사용
-                                    if (fetchedImageUrl.isBlank()) {
-                                        fetchedImageUrl = otherUserProfileImage
-                                    }
-                                } else if (fetchedImageUrl.isBlank() && type != "group") {
-                                    // 팀채팅: teams 컬렉션에서 대표사진 가져오기.
-                                    // teamId 필드가 비어 있어도 팀 채팅은 문서 ID == 팀 ID 이므로 doc.id 로 대체한다.
-                                    val lookupTeamId = teamId.ifBlank { doc.id }
+                                // 만약 채팅 문서에 사진이 없고, 방금 만든 팀(teamId)이라면?
+                                // -> 팀(teams) DB까지 직접 찾아가서 사진을 싹 긁어옵니다!
+                                if (fetchedImageUrl.isBlank() && teamId.isNotEmpty()) {
                                     try {
-                                        val teamDoc = db.collection("teams").document(lookupTeamId).get().await()
-                                        fetchedImageUrl = teamDoc.getString("teamProfileImage")
-                                            ?: teamDoc.getString("teamImageUrl")
-                                            ?: teamDoc.getString("imageUrl")
-                                            ?: (teamDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
-                                            ?: ""
+                                        val teamDoc = db.collection("teams").document(teamId).get().await()
+                                        fetchedImageUrl = teamDoc.getString("teamProfileImage") ?: teamDoc.getString("teamImageUrl") ?: teamDoc.getString("imageUrl") ?: ""
                                     } catch (e: Exception) {
                                         android.util.Log.e("ChatBug", "팀 사진 가져오기 실패: ${e.message}")
+                                        // 팀 문서가 없거나 에러나면 조용히 패스~
                                     }
                                 }
-
-                                // 현재 유저가 이 채팅방을 한 번이라도 열었는지 체크
-                                @Suppress("UNCHECKED_CAST")
-                                val viewedBy = (doc.get("viewedBy") as? List<String>) ?: emptyList()
-                                val isNewChat = type == "team" && !viewedBy.contains(userId)
-
-                                // 단체 채팅방: 본인 제외 최대 4명의 프로필 이미지 수집 (그리드 아바타용)
-                                val groupParticipantImages: List<String> = if (type == "group") {
-                                    val otherIds = participants.filter { it != userId }.take(4)
-                                    otherIds.map { pid ->
-                                        try {
-                                            val userDoc = db.collection("users").document(pid).get().await()
-                                            (userDoc.get("profileImages") as? List<*>)?.firstOrNull()?.toString()
-                                                ?: userDoc.getString("profileImageUrl")
-                                                ?: userDoc.getString("profileImage")
-                                                ?: ""
-                                        } catch (e: Exception) { "" }
-                                    }
-                                } else emptyList()
 
                                 ChatPreview(
                                     id = doc.id,
@@ -150,9 +113,7 @@ class FirebaseChatRepository : ChatRepository {
                                     emoji = doc.getString("emoji") ?: "👥",
                                     type = type,
                                     participantCount = participants.size,
-                                    imageUrl = fetchedImageUrl, // ✨ 2. 드디어 바구니에 사진 주소 쏙 넣기 완료!
-                                    isNew = isNewChat,
-                                    participantImages = groupParticipantImages
+                                    imageUrl = fetchedImageUrl // ✨ 2. 드디어 바구니에 사진 주소 쏙 넣기 완료!
                                 )
                             }
                         }.awaitAll()
@@ -231,13 +192,6 @@ class FirebaseChatRepository : ChatRepository {
                     val placePlaceId = doc.getString("placePlaceId") ?: ""
                     val placeLat = doc.getDouble("placeLat") ?: 0.0
                     val placeLng = doc.getDouble("placeLng") ?: 0.0
-                    val imageUrl = doc.getString("imageUrl") ?: ""
-                    val readBy = doc.get("readBy") as? List<String> ?: emptyList()
-                    val voteData = doc.get("voteData") as? Map<String, Any>
-                    // 내가 아직 읽지 않은 메시지는 readBy에 나를 추가 (자동 읽음 처리)
-                    if (senderId != currentUserId && !readBy.contains(currentUserId)) {
-                        doc.reference.update("readBy", FieldValue.arrayUnion(currentUserId))
-                    }
 
                     if (senderId == "system") {
                         messages.add(
@@ -261,10 +215,7 @@ class FirebaseChatRepository : ChatRepository {
                                 placeReviewCount = placeReviewCount,
                                 placePlaceId = placePlaceId,
                                 placeLat = placeLat,
-                                placeLng = placeLng,
-                                imageUrl = imageUrl,
-                                readBy = readBy,
-                                voteData = voteData
+                                placeLng = placeLng
                             )
                         )
                         completed++
@@ -294,9 +245,7 @@ class FirebaseChatRepository : ChatRepository {
                                 placeReviewCount = placeReviewCount,
                                 placePlaceId = placePlaceId,
                                 placeLat = placeLat,
-                                placeLng = placeLng,
-                                imageUrl = imageUrl,
-                                voteData = voteData
+                                placeLng = placeLng
                             )
                         )
                         completed++
@@ -333,9 +282,7 @@ class FirebaseChatRepository : ChatRepository {
                                         placeReviewCount = placeReviewCount,
                                         placePlaceId = placePlaceId,
                                         placeLat = placeLat,
-                                        placeLng = placeLng,
-                                        imageUrl = imageUrl,
-                                        voteData = voteData
+                                        placeLng = placeLng
                                     )
                                 )
                                 completed++
@@ -363,9 +310,7 @@ class FirebaseChatRepository : ChatRepository {
                                         placeReviewCount = placeReviewCount,
                                         placePlaceId = placePlaceId,
                                         placeLat = placeLat,
-                                        placeLng = placeLng,
-                                        imageUrl = imageUrl,
-                                        voteData = voteData
+                                        placeLng = placeLng
                                     )
                                 )
                                 completed++
@@ -658,15 +603,17 @@ class FirebaseChatRepository : ChatRepository {
     /**
      * 팀원 자동 매칭 후보자 로드
      *
-     * 알고리즘:
-     * 1. 팀 문서에서 tags + mbtiTags 추출
-     * 2. userPreferences 컬렉션 전체 조회 (최대 200명)
-     * 3. 각 사용자의 tagScores + mbtiScores 중 팀 태그와 겹치는 점수 합산
-     * 4. 점수 높은 순으로 정렬, 기존 팀원 제외, 상위 15명 추출
-     * 5. users 컬렉션에서 프로필 정보 fetch
+     * 알고리즘 (2-패스):
+     * Pass 1 — 행동 기반 (userPreferences): 팀 태그와 겹치는 tagScores + mbtiScores 합산.
+     *   net 음수(강한 비선호)만 제외, 0점(데이터 없음)은 포함해 정렬.
+     * Pass 2 — 프로필 기반 폴백 (users): Pass1 결과가 3명 미만일 때만 실행.
+     *   스와이프 이력이 없는 신규 유저도 interests × teamTags + mbti × teamMbtiTags로 점수화.
+     * 두 패스 결과를 합산·중복 제거 후 점수 내림차순 상위 15명 반환.
      */
     override suspend fun loadMatchCandidates(teamId: String): List<MatchCandidate> {
         return try {
+            val currentUserId = auth.currentUser?.uid ?: ""
+
             // 1. 팀 정보 가져오기
             val teamDoc = db.collection("teams").document(teamId).get().await()
             @Suppress("UNCHECKED_CAST")
@@ -676,42 +623,92 @@ class FirebaseChatRepository : ChatRepository {
             @Suppress("UNCHECKED_CAST")
             val existingMemberIds = ((teamDoc.get("memberIds") as? List<String>) ?: emptyList()).toSet()
 
+            // 태그가 없어도 조기 종료하지 않는다 — Pass 2(프로필 기반)가 점수 없이도 후보를 찾는다
             if (teamTags.isEmpty() && teamMbtiTags.isEmpty()) {
-                android.util.Log.w("ChatRepo", "팀에 tags/mbtiTags가 없어 매칭 불가")
-                return emptyList()
+                android.util.Log.w("ChatRepo", "팀에 tags/mbtiTags 없음 — 프로필 기반 매칭으로 진행")
             }
 
-            // 2. userPreferences 전체 조회 (최대 200명)
-            val prefSnap = db.collection("userPreferences")
-                .limit(200)
-                .get()
-                .await()
+            // 후보에서 제외할 ID: 기존 팀원 + 현재 로그인 유저
+            val excludeIds = existingMemberIds + currentUserId
 
-            // 3. 각 사용자 점수 계산 — 기존 팀원 제외
             data class ScoredUser(val userId: String, val score: Int)
 
-            val scoredUsers = prefSnap.documents
-                .filter { it.id !in existingMemberIds }
-                .mapNotNull { doc ->
+            // ── Pass 1: 행동 기반 (userPreferences) ──
+            val prefSnap = db.collection("userPreferences").limit(200).get().await()
+
+            val behavioralCandidates = prefSnap.documents
+                .filter { it.id !in excludeIds }
+                .map { doc ->
                     @Suppress("UNCHECKED_CAST")
                     val tagScores  = (doc.get("tagScores")  as? Map<String, Long>) ?: emptyMap()
                     @Suppress("UNCHECKED_CAST")
                     val mbtiScores = (doc.get("mbtiScores") as? Map<String, Long>) ?: emptyMap()
-
                     val tagScore  = teamTags.sumOf     { tag  -> (tagScores[tag]   ?: 0L).toInt() }
                     val mbtiScore = teamMbtiTags.sumOf { mbti -> (mbtiScores[mbti] ?: 0L).toInt() }
-                    val total = tagScore + mbtiScore
-
-                    if (total > 0) ScoredUser(doc.id, total) else null
+                    ScoredUser(doc.id, tagScore + mbtiScore)
                 }
+                // net 음수(= 비슷한 팀을 일관되게 패스한 유저)만 제외. 0점(이력 없음)은 포함.
+                .filter { it.score >= 0 }
                 .sortedByDescending { it.score }
                 .take(15)
 
-            if (scoredUsers.isEmpty()) return emptyList()
+            // ── Pass 2: 프로필 기반 폴백 (행동 후보 3명 미만일 때만 실행) ──
+            val behavioralIds = behavioralCandidates.map { it.userId }.toSet()
+            val profileCandidates: List<ScoredUser> = if (behavioralCandidates.size >= 3) {
+                emptyList()
+            } else {
+                val usersSnap = db.collection("users").limit(100).get().await()
+                usersSnap.documents
+                    .filter { it.id !in excludeIds && it.id !in behavioralIds }
+                    .map { doc ->
+                        @Suppress("UNCHECKED_CAST")
+                        val interests = (doc.get("interests") as? List<String>) ?: emptyList()
+                        val mbti = doc.getString("mbti") ?: ""
+                        // interests × teamTags 교집합(가중치 2) + mbti 일치(가중치 3)
+                        val score = interests.count { it in teamTags } * 2 +
+                                    if (mbti.isNotBlank() && mbti in teamMbtiTags) 3 else 0
+                        ScoredUser(doc.id, score)
+                    }
+                    .sortedByDescending { it.score }
+                    .take(15 - behavioralCandidates.size)
+            }
 
-            // 4. users 컬렉션에서 프로필 정보 병렬 fetch
+            // 두 패스 합산, 중복 제거, 점수 내림차순
+            var finalCandidates = (behavioralCandidates + profileCandidates)
+                .distinctBy { it.userId }
+                .sortedByDescending { it.score }
+                .take(15)
+
+            // ── Pass 3: 최후 폴백 — 점수 무관하게 팀원 아닌 유저 반환 ──
+            // 두 패스가 모두 빈 경우 (테스트 계정, userPreferences·users 비어 있거나 모두 팀원인 경우)
+            if (finalCandidates.isEmpty()) {
+                android.util.Log.w("ChatRepo", "Pass1·2 결과 없음 — 전체 users 폴백 시도")
+                val anySnap = db.collection("users").limit(50).get().await()
+                val fallbackCandidates = anySnap.documents
+                    .filter { it.id !in excludeIds }
+                    .map { doc ->
+                        @Suppress("UNCHECKED_CAST")
+                        val interests = (doc.get("interests") as? List<String>) ?: emptyList()
+                        val mbti = doc.getString("mbti") ?: ""
+                        val score = interests.count { it in teamTags } * 2 +
+                                    if (mbti.isNotBlank() && mbti in teamMbtiTags) 3 else 0
+                        ScoredUser(doc.id, score)
+                    }
+                    .sortedByDescending { it.score }
+                    .take(15)
+
+                if (fallbackCandidates.isEmpty()) {
+                    android.util.Log.w("ChatRepo", "매칭 후보자 없음 — 팀원·본인 제외 후 유저가 없음")
+                    return emptyList()
+                }
+                finalCandidates = fallbackCandidates
+            }
+
+            android.util.Log.d("ChatRepo", "매칭 후보자 ${finalCandidates.size}명 확정")
+
+            // ── 프로필 정보 병렬 fetch ──
             kotlinx.coroutines.coroutineScope {
-                scoredUsers.map { scored ->
+                finalCandidates.map { scored ->
                     async {
                         try {
                             val userDoc = db.collection("users").document(scored.userId).get().await()
@@ -725,9 +722,7 @@ class FirebaseChatRepository : ChatRepository {
                                 department      = userDoc.getString("department") ?: "",
                                 matchScore      = scored.score
                             )
-                        } catch (e: Exception) {
-                            null
-                        }
+                        } catch (e: Exception) { null }
                     }
                 }.awaitAll().filterNotNull()
             }

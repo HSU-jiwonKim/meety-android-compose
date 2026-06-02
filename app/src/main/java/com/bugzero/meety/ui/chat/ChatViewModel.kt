@@ -327,11 +327,11 @@ class ChatViewModel(
         val userId = currentUserIdOrNull ?: return
         // 이전 리스너 모두 제거 후 새로 구독
         removeLikesListeners()
-        teamRepository.observeReceivedLikes(
+        val registration = teamRepository.observeReceivedLikes(
             onUpdate        = { _requestList.value = it },
-            onFailure       = { _errorMessage.value = it },
-            onRegistrations = { likesListeners.addAll(it) }
+            onFailure       = { _errorMessage.value = it }
         )
+        registration?.let { likesListeners.add(it) }
     }
 
     fun acceptRequest(likeId: String) {

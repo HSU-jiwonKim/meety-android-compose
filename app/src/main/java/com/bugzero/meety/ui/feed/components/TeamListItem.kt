@@ -20,8 +20,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +39,8 @@ private val SkyBlue = Color(0xFF0EA5E9)
 fun TeamListItem(
     team: Team,
     onTeamClick: (String) -> Unit,
-    status: TeamActionStatus = TeamActionStatus.NONE
+    status: TeamActionStatus = TeamActionStatus.NONE,
+    fitScore: Int? = null
 ) {
     val colorIndex = (team.teamId.hashCode() and Int.MAX_VALUE) % FeedConstants.CardColorPalette.size
     val thumbColors = FeedConstants.CardColorPalette[colorIndex]
@@ -65,16 +64,7 @@ fun TeamListItem(
                 .background(Brush.verticalGradient(thumbColors)),
             contentAlignment = Alignment.Center
         ) {
-            if (team.teamProfileImage.isNotBlank()) {
-                AsyncImage(
-                    model              = team.teamProfileImage,
-                    contentDescription = "${team.teamName} 대표 사진",
-                    modifier           = Modifier.fillMaxSize(),
-                    contentScale       = ContentScale.Crop
-                )
-            } else {
-                Text(initial, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White.copy(alpha = 0.9f))
-            }
+            Text(initial, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White.copy(alpha = 0.9f))
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -100,9 +90,20 @@ fun TeamListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                team.mbtiTags.firstOrNull()?.takeIf { it.isNotBlank() }?.let { mbti ->
+                fitScore?.let { score ->
                     Spacer(Modifier.width(6.dp))
-                    Chip(text = mbti)
+                    Box(
+                        modifier = Modifier
+                            .background(VioletSoft, RoundedCornerShape(999.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            "${score}점",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Brand1
+                        )
+                    }
                 }
             }
             if (team.description.isNotBlank()) {

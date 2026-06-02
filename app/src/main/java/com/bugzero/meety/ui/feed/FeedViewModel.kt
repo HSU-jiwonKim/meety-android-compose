@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.bugzero.meety.data.repository.FeedRepository
 import com.bugzero.meety.data.repository.MeetingPlaceRepository
 import com.bugzero.meety.ui.team.Team
+import com.bugzero.meety.data.repository.LatLng
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +21,13 @@ class FeedViewModel(
     private val repository: FeedRepository = FeedRepository(),
     private val meetingRepo: MeetingPlaceRepository = MeetingPlaceRepository()
 ) : ViewModel() {
+
+    /**
+     * 유저 위치 geocoding 결과 캐시.
+     * location 문자열이 바뀌지 않는 한 세션 동안 재사용 — 팀마다 반복 geocoding 방지.
+     */
+    private var cachedUserLocation: String = ""
+    private var cachedUserLatLng: LatLng? = null
 
     private val _uiState = MutableStateFlow(FeedUiState())
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
@@ -242,6 +253,8 @@ class FeedViewModel(
                             allTeamsHasMore    = hasMore
                         )
                     }
+                    // 전체보기 탭 팀들에 대해서도 경량 점수 계산 (정렬·배지 표시용)
+                    computeScoresIfMissing(teams)
                 }
                 .onFailure {
                     _uiState.update { it.copy(isLoadingAllTeams = false) }
@@ -348,7 +361,9 @@ class FeedViewModel(
             loadMoreTeams()
         }
 
-        // 다음 카드 데이터 사전 fetch (거리·프로필·점수)
+        // 누적된 태그 점수 반영 — 미열람 카드 점수 전체 재계산 (캐시 데이터 재활용, 네트워크 없음)
+        recomputeUnseenFitScores()
+        // 다음 카드 상세 데이터 사전 fetch (거리·프로필 포함 정밀 점수)
         prefetchCardData(latestState.teams, latestState.currentIndex)
     }
 
@@ -380,6 +395,8 @@ class FeedViewModel(
                 passedTeamIds = updatedPassed
             )
         }
+        // 역산된 태그 점수 반영 — 미열람 카드 점수 재계산
+        recomputeUnseenFitScores()
     }
 
     // =====================
@@ -404,6 +421,7 @@ class FeedViewModel(
             repository.saveLike(team, likeId)
         }
         updatePreferenceInMemory(team, isLike = true)
+        recomputeUnseenFitScores()
 
         val isCurrentCard = state.teams.getOrNull(state.currentIndex)?.teamId == team.teamId
         if (isCurrentCard) {
@@ -453,6 +471,7 @@ class FeedViewModel(
             repository.savePass(team)
         }
         updatePreferenceInMemory(team, isLike = false)
+        recomputeUnseenFitScores()
 
         val isCurrentCard = state.teams.getOrNull(state.currentIndex)?.teamId == team.teamId
         if (isCurrentCard) {
@@ -533,6 +552,7 @@ class FeedViewModel(
             repository.reversePreferenceScores(team, wasLike = true)
         }
         reversePreferenceInMemory(team, wasLike = true)
+        recomputeUnseenFitScores()
         _uiState.update {
             // 취소된 팀을 현재 인덱스 위치에 다시 삽입 → 다음에 바로 다시 볼 수 있음
             val newTeams = it.teams.toMutableList().apply { add(it.currentIndex, team) }
@@ -565,6 +585,7 @@ class FeedViewModel(
         // 인메모리 상태: pass 역산 → like 반영
         reversePreferenceInMemory(team, wasLike = false)
         updatePreferenceInMemory(team, isLike = true)
+        recomputeUnseenFitScores()
         _uiState.update {
             // 히스토리에서 이 팀의 패스 항목 제거.
             // 남겨두면 undo 시 isLike=false 항목을 보고 reversePreferenceScores(wasLike=false)를
@@ -660,17 +681,80 @@ class FeedViewModel(
     /**
      * 앱 시작 시 1회 호출 — 현재 로그인 유저의 프로필을 로드해 UiState에 저장한다.
      * 이후 prefetchCardData()에서 매칭 근거 계산의 기준점으로 사용된다.
+     *
+     * [레이스 컨디션 대비]
+     * loadPreferenceThenFetch() → prefetchCardData() 와 동시에 실행되는 코루틴이라
+     * prefetchCardData 가 먼저 끝나는 경우 currentUserProfile 이 null → 거리 계산 스킵.
+     * 이후 prefetchCardData 는 cardMemberProfilesCache 에 등록된 팀을 건너뛰므로
+     * 거리가 영원히 계산되지 않는 문제가 생긴다.
+     * → 프로필 로드 완료 시점에 이미 멤버 캐시는 있지만 거리 캐시가 없는 팀들을 찾아
+     *    별도로 거리를 재계산한다.
      */
     private fun loadCurrentUserProfile() {
         viewModelScope.launch {
             repository.fetchCurrentUserProfile()
                 .onSuccess { profile ->
                     _uiState.update { it.copy(currentUserProfile = profile) }
-                    android.util.Log.d("FeedVM", "유저 프로필 로드 완료: ${profile.userId}")
+                    android.util.Log.d("FeedVM", "유저 프로필 로드 완료: ${profile.userId}, location='${profile.location}'")
+
+                    // 거리 캐시 누락 팀에 대해 재계산 트리거
+                    recomputeDistanceForCachedProfiles(profile)
                 }
                 .onFailure {
                     android.util.Log.w("FeedVM", "유저 프로필 로드 실패: ${it.message}")
                 }
+        }
+    }
+
+    /**
+     * 유저 프로필이 늦게 로드됐을 때 이미 캐시된 멤버 프로필에 대해 거리를 재계산한다.
+     *
+     * 조건: cardMemberProfilesCache 에 있지만 cardDistanceCache 에 없는 팀.
+     */
+    private fun recomputeDistanceForCachedProfiles(userProfile: CurrentUserProfile) {
+        if (userProfile.location.isBlank()) {
+            android.util.Log.w("FeedVM", "recomputeDistanceForCachedProfiles: location 없음 → 스킵")
+            return
+        }
+        val state = _uiState.value
+        val teamsNeedingDistance = state.teams.filter { team ->
+            state.cardMemberProfilesCache.containsKey(team.teamId) &&
+            !state.cardDistanceCache.containsKey(team.teamId)
+        }
+        if (teamsNeedingDistance.isEmpty()) {
+            android.util.Log.d("FeedVM", "recomputeDistanceForCachedProfiles: 재계산 대상 없음")
+            return
+        }
+        android.util.Log.d("FeedVM", "recomputeDistanceForCachedProfiles: ${teamsNeedingDistance.size}개 팀 거리 재계산 시작")
+
+        viewModelScope.launch {
+            teamsNeedingDistance.forEach { team ->
+                val profiles = _uiState.value.cardMemberProfilesCache[team.teamId] ?: return@forEach
+                android.util.Log.d("FeedVM", "거리 재계산 시작 — 팀 ${team.teamId}, 멤버 ${profiles.size}명")
+
+                val distanceResults = computeDistanceScores(userProfile.location, profiles)
+                android.util.Log.d("FeedVM", "거리 재계산 완료 — 팀 ${team.teamId}: ${distanceResults.size}건")
+
+                if (distanceResults.isNotEmpty()) {
+                    _uiState.update {
+                        it.copy(cardDistanceCache = it.cardDistanceCache + (team.teamId to distanceResults))
+                    }
+                }
+                // fit score도 거리 포함해서 갱신
+                val st = _uiState.value
+                val fitScore = computeFitScore(
+                    team            = team,
+                    userProfile     = userProfile,
+                    members         = profiles,
+                    distanceResults = distanceResults,
+                    userTagScores   = st.userTagScores,
+                    actionCount     = st.likedTeamIds.size + st.passedTeamIds.size
+                )
+                _uiState.update {
+                    it.copy(cardFitScoreCache = it.cardFitScoreCache + (team.teamId to fitScore))
+                }
+            }
+            applyFitScoreSort()
         }
     }
 
@@ -692,9 +776,32 @@ class FeedViewModel(
         val teamsToFetch = teams.subList(fromIndex, end)
 
         viewModelScope.launch {
+            // ── Phase 1: 상세 prefetch (멤버 프로필 + 거리 + 점수) — 다음 N장 ──
             teamsToFetch.forEach { team ->
-                val cached = _uiState.value.cardMemberProfilesCache.containsKey(team.teamId)
-                if (cached) return@forEach
+                val st = _uiState.value
+                val hasMemberCache  = st.cardMemberProfilesCache.containsKey(team.teamId)
+                val hasDistanceCache = st.cardDistanceCache.containsKey(team.teamId)
+                val userProfile     = st.currentUserProfile
+                val canComputeDist  = userProfile != null && userProfile.location.isNotBlank()
+
+                // 멤버 캐시 + 거리 캐시 모두 있으면 완전히 스킵
+                if (hasMemberCache && hasDistanceCache) return@forEach
+                // 멤버 캐시는 있지만 거리가 없고, 지금도 userProfile이 없으면 스킵
+                // (recomputeDistanceForCachedProfiles 가 나중에 처리)
+                if (hasMemberCache && !hasDistanceCache && !canComputeDist) return@forEach
+
+                // 멤버 캐시는 있지만 거리만 없는 경우 → 멤버 fetch 없이 거리만 재계산
+                if (hasMemberCache && !hasDistanceCache && canComputeDist) {
+                    val profiles = st.cardMemberProfilesCache[team.teamId] ?: return@forEach
+                    val distanceResults = computeDistanceScores(userProfile!!.location, profiles)
+                    if (distanceResults.isNotEmpty()) {
+                        _uiState.update { it.copy(cardDistanceCache = it.cardDistanceCache + (team.teamId to distanceResults)) }
+                    }
+                    val newSt = _uiState.value
+                    val fitScore = computeFitScore(team, userProfile, profiles, distanceResults, newSt.userTagScores, newSt.likedTeamIds.size + newSt.passedTeamIds.size)
+                    _uiState.update { it.copy(cardFitScoreCache = it.cardFitScoreCache + (team.teamId to fitScore)) }
+                    return@forEach
+                }
 
                 // 1. 팀원 프로필 fetch
                 val profilesResult = repository.fetchMemberProfiles(team.memberIds)
@@ -705,10 +812,22 @@ class FeedViewModel(
                 }
 
                 // 2. 거리 계산 (유저 위치가 있을 때만)
-                val userProfile = _uiState.value.currentUserProfile
+                // userProfile 은 루프 상단의 st.currentUserProfile 을 재사용 (중복 선언 제거)
+                val freshUserProfile = _uiState.value.currentUserProfile
+                if (freshUserProfile != null && freshUserProfile.location.isBlank()) {
+                    android.util.Log.w("FeedVM",
+                        "[동네 근접도 불가] users/${freshUserProfile.userId}.location 이 비어있음 → " +
+                        "프로필 설정 화면에서 location 을 입력하고 저장해야 거리 계산이 가능합니다.")
+                }
+                val membersWithoutLocation = profiles.filter { it.location.isBlank() }
+                if (membersWithoutLocation.isNotEmpty()) {
+                    android.util.Log.w("FeedVM",
+                        "[동네 근접도 불가] 팀 ${team.teamId} — location 미입력 멤버: " +
+                        membersWithoutLocation.map { it.userId })
+                }
                 val distanceResults: List<MemberDistanceResult> =
-                    if (userProfile != null && userProfile.location.isNotBlank()) {
-                        computeDistanceScores(userProfile.location, profiles)
+                    if (freshUserProfile != null && freshUserProfile.location.isNotBlank()) {
+                        computeDistanceScores(freshUserProfile.location, profiles)
                     } else {
                         emptyList()
                     }
@@ -720,22 +839,96 @@ class FeedViewModel(
                 }
 
                 // 3. 종합 fit score 계산
-                val state = _uiState.value
+                val fitScoreState = _uiState.value
                 val fitScore = computeFitScore(
                     team = team,
-                    userProfile = state.currentUserProfile,
+                    userProfile = freshUserProfile,
                     members = profiles,
                     distanceResults = distanceResults,
-                    userTagScores = state.userTagScores,
-                    actionCount = state.likedTeamIds.size + state.passedTeamIds.size
+                    userTagScores = fitScoreState.userTagScores,
+                    actionCount = fitScoreState.likedTeamIds.size + fitScoreState.passedTeamIds.size
                 )
                 _uiState.update {
                     it.copy(cardFitScoreCache = it.cardFitScoreCache + (team.teamId to fitScore))
                 }
             }
-            // 배치 전체 점수 계산 완료 후 미열람 카드를 점수 내림차순 재정렬
+            // Phase 1 완료 후 1차 정렬
             applyFitScoreSort()
+
+            // ── Phase 2: 나머지 전체 팀 경량 점수 계산 (네트워크 없음 — 정렬용) ──
+            // 멤버 프로필·거리 없이 태그+가치관만으로 근사 점수를 내서 전체 순서를 확정한다.
+            // 이후 스와이프가 다가오면 Phase 1이 실제 점수로 덮어쓴다.
+            val remaining = teams.drop(end)
+                .filter { !_uiState.value.cardFitScoreCache.containsKey(it.teamId) }
+            if (remaining.isNotEmpty()) {
+                val st = _uiState.value
+                val actionCount = st.likedTeamIds.size + st.passedTeamIds.size
+                val lightScores = remaining.associate { team ->
+                    team.teamId to computeFitScore(
+                        team            = team,
+                        userProfile     = st.currentUserProfile,
+                        members         = emptyList(),
+                        distanceResults = emptyList(),
+                        userTagScores   = st.userTagScores,
+                        actionCount     = actionCount
+                    )
+                }
+                _uiState.update { it.copy(cardFitScoreCache = it.cardFitScoreCache + lightScores) }
+                applyFitScoreSort()
+            }
         }
+    }
+
+    /**
+     * 주어진 팀 목록 중 cardFitScoreCache에 없는 팀만 경량 점수(네트워크 없음)로 계산해 캐시에 추가한다.
+     * 전체보기 탭(allTeams)처럼 prefetch 대상이 아닌 팀들의 점수 배지·정렬에 사용된다.
+     */
+    private fun computeScoresIfMissing(teams: List<Team>) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val uncached = teams.filter { !state.cardFitScoreCache.containsKey(it.teamId) }
+            if (uncached.isEmpty()) return@launch
+            val actionCount = state.likedTeamIds.size + state.passedTeamIds.size
+            val newScores = uncached.associate { team ->
+                team.teamId to computeFitScore(
+                    team            = team,
+                    userProfile     = state.currentUserProfile,
+                    members         = state.cardMemberProfilesCache[team.teamId] ?: emptyList(),
+                    distanceResults = state.cardDistanceCache[team.teamId]        ?: emptyList(),
+                    userTagScores   = state.userTagScores,
+                    actionCount     = actionCount
+                )
+            }
+            _uiState.update { it.copy(cardFitScoreCache = it.cardFitScoreCache + newScores) }
+        }
+    }
+
+    /**
+     * 미열람 카드의 fit score를 현재 userTagScores 기준으로 재계산한다.
+     *
+     * 스와이프할 때마다 userTagScores가 누적되므로 이미 캐시된 점수가 구식이 된다.
+     * 멤버 프로필·거리는 변하지 않으므로 캐시된 값을 그대로 재활용해 네트워크 호출 없이 빠르게 처리.
+     */
+    private fun recomputeUnseenFitScores() {
+        val state = _uiState.value
+        val unseen = state.teams.drop(state.currentIndex)
+        if (unseen.isEmpty()) return
+
+        val actionCount = state.likedTeamIds.size + state.passedTeamIds.size
+        val updatedScores = unseen.associate { team ->
+            val profiles  = state.cardMemberProfilesCache[team.teamId] ?: emptyList()
+            val distances = state.cardDistanceCache[team.teamId]        ?: emptyList()
+            team.teamId to computeFitScore(
+                team            = team,
+                userProfile     = state.currentUserProfile,
+                members         = profiles,
+                distanceResults = distances,
+                userTagScores   = state.userTagScores,
+                actionCount     = actionCount
+            )
+        }
+        _uiState.update { it.copy(cardFitScoreCache = it.cardFitScoreCache + updatedScores) }
+        applyFitScoreSort()
     }
 
     /**
@@ -768,39 +961,64 @@ class FeedViewModel(
      *
      * 소요시간 → 점수 공식: (100 - minutes × 0.8).coerceIn(0, 100)
      *   0분  → 100점, 30분 → 76점, 60분 → 52점, 125분 → 0점
+     *
+     * [최적화]
+     *  1. 유저 좌표 캐싱: 세션 내 동일 location 문자열이면 재geocoding 없이 재사용.
+     *     팀마다 geocodeAddress(userLocation) 를 반복 호출하던 것을 1회로 줄임.
+     *  2. 멤버 병렬 처리: 각 멤버의 geocoding + transit 조회를 async/awaitAll 로 동시 실행.
+     *     N명 직렬(N × latency) → 병렬(~max(1명 latency)) 로 단축.
      */
     private suspend fun computeDistanceScores(
         userLocation: String,
         members: List<MemberProfile>
-    ): List<MemberDistanceResult> {
-        val userLatLng = meetingRepo.geocodeAddress(userLocation) ?: return emptyList()
-
-        return members.mapNotNull { member ->
-            if (member.location.isBlank()) return@mapNotNull null
-            val memberLatLng = meetingRepo.geocodeAddress(member.location) ?: return@mapNotNull null
-
-            val distanceKm = meetingRepo.haversineKm(
-                userLatLng.lat, userLatLng.lng,
-                memberLatLng.lat, memberLatLng.lng
-            )
-            val transitMinutes = meetingRepo.fetchTransitDurationMinutes(
-                startLat = userLatLng.lat,
-                startLng = userLatLng.lng,
-                goalLat  = memberLatLng.lat,
-                goalLng  = memberLatLng.lng
-            ) ?: (distanceKm / 22.0 * 60).toInt().coerceAtLeast(5) // 실패 시 평균 22 km/h 휴리스틱
-
-            val score = (100 - transitMinutes * 0.8).toInt().coerceIn(0, 100)
-
-            MemberDistanceResult(
-                memberId        = member.userId,
-                memberName      = member.name,
-                memberLocation  = member.location,
-                transitMinutes  = transitMinutes,
-                distanceKm      = distanceKm,
-                score           = score
-            )
+    ): List<MemberDistanceResult> = coroutineScope {
+        // ── 유저 좌표: 캐시 히트 시 API 생략 ──────────────────────────────────
+        if (cachedUserLocation != userLocation || cachedUserLatLng == null) {
+            cachedUserLatLng = meetingRepo.geocodeAddress(userLocation)
+            cachedUserLocation = userLocation
+            android.util.Log.d("FeedVM", "유저 위치 지오코딩: '$userLocation' → ${cachedUserLatLng}")
+        } else {
+            android.util.Log.d("FeedVM", "유저 위치 캐시 사용: '$userLocation'")
         }
+        val userLatLng = cachedUserLatLng ?: return@coroutineScope emptyList()
+
+        // ── 멤버별 geocoding + transit을 병렬로 실행 ─────────────────────────
+        members
+            .filter { it.location.isNotBlank() }
+            .map { member ->
+                async {
+                    val memberLatLng = meetingRepo.geocodeAddress(member.location)
+                        ?: run {
+                            android.util.Log.w("FeedVM", "멤버 ${member.userId} 지오코딩 실패: '${member.location}'")
+                            return@async null
+                        }
+
+                    val distanceKm = meetingRepo.haversineKm(
+                        userLatLng.lat, userLatLng.lng,
+                        memberLatLng.lat, memberLatLng.lng
+                    )
+                    val transitMinutes = meetingRepo.fetchTransitDurationMinutes(
+                        startLat = userLatLng.lat,
+                        startLng = userLatLng.lng,
+                        goalLat  = memberLatLng.lat,
+                        goalLng  = memberLatLng.lng
+                    ) ?: (distanceKm / 22.0 * 60).toInt().coerceAtLeast(5)
+
+                    val score = (100 - transitMinutes * 0.8).toInt().coerceIn(0, 100)
+                    android.util.Log.d("FeedVM", "거리 계산 완료 — ${member.name}(${member.location}): ${transitMinutes}분 → ${score}점")
+
+                    MemberDistanceResult(
+                        memberId       = member.userId,
+                        memberName     = member.name,
+                        memberLocation = member.location,
+                        transitMinutes = transitMinutes,
+                        distanceKm     = distanceKm,
+                        score          = score
+                    )
+                }
+            }
+            .awaitAll()
+            .filterNotNull()
     }
 
     // =====================
@@ -830,7 +1048,7 @@ class FeedViewModel(
 
         // 1. 태그 선호도
         val tagScore = computeTagScore(
-            teamTags = team.tags + team.mbtiTags,
+            teamTags = team.tags,   // userTagScores에 MBTI 미포함 → mbtiTags는 0 기여라 제거
             userTagScores = userTagScores,
             actionCount = actionCount
         )
@@ -848,7 +1066,7 @@ class FeedViewModel(
             components.add(avgDistScore to 0.20)
         }
 
-        // 4. 팀원 공통점
+        // 4. 팀원 공통점 (관심사·음식 정밀도 + MBTI 축 일치도 + 팀 커버리지 보너스)
         if (userProfile != null) {
             val commonScore = computeCommonalityScore(userProfile, members)
             components.add(commonScore to 0.20)
@@ -873,14 +1091,21 @@ class FeedViewModel(
         actionCount: Int
     ): Int {
         if (actionCount < FeedConstants.MATCH_UNLOCK_THRESHOLD) return 70
+
+        // 양수/음수 관계없이 상위 N개 선택.
+        // 모두 음수(패스만 한 경우)여도 "상대적으로 덜 싫어하는" 태그를 기준으로 삼는다.
         val topTags = userTagScores.entries
-            .filter { it.value > 0 }
             .sortedByDescending { it.value }
             .take(FeedConstants.MATCH_TOP_TAG_N)
             .map { it.key }
+
         if (topTags.isEmpty()) return 70
+
         val matches = topTags.count { tag -> teamTags.contains(tag) }
-        return (50 + matches.toDouble() / topTags.size * 50).toInt()
+
+        // 분모를 MATCH_TOP_TAG_N(3)으로 고정 — topTags 실제 크기와 무관하게 일관된 점수.
+        // 0개 → 0점, 1개 → 33점, 2개 → 67점, 3개 → 100점
+        return (matches.toDouble() / FeedConstants.MATCH_TOP_TAG_N * 100).toInt()
     }
 
     /**
@@ -908,13 +1133,17 @@ class FeedViewModel(
     }
 
     /**
-     * 유저 프로필과 팀원들의 공통 관심사/음식 기반 공통점 점수 (0–100).
+     * 유저 프로필과 팀원들의 공통점 점수 (0–100).
      *
-     * 각 팀원별로 Jaccard 유사도를 계산한 뒤 평균을 낸다.
-     * 항목이 전혀 없으면 50(중립)을 기본값으로 사용한다.
+     * 팀원마다 3가지 신호를 계산한 뒤 평균 → 팀원 전체 평균 + 커버리지 보너스.
      *
-     * 확장 포인트(Direction B): 나이대, 학과, MBTI 등을 필드 추가 시
-     *   이 함수에서 추가 컴포넌트로 계산하면 된다.
+     * [신호 1] 관심사 정밀도: |내 관심사 ∩ 팀원 관심사| / |내 관심사| × 100
+     * [신호 2] 음식취향 정밀도: |내 음식취향 ∩ 팀원 음식취향| / |내 음식취향| × 100
+     * [신호 3] MBTI 축 일치도: 내 MBTI와 팀원 MBTI의 4축(E/I·N/S·F/T·J/P) 중 일치 수 / 4 × 100
+     *   데이터 없는 신호는 제외(중립 50 처리 없이 평균에서 배제).
+     *
+     * [커버리지 보너스] 내 관심사를 팀 전체 중 누군가가 커버하는 비율 × 20 (최대 +20)
+     *   팀원 평균과 독립된 팀 차원 신호. 최종 = min(100, 팀원 평균 + 보너스).
      */
     private fun computeCommonalityScore(
         userProfile: CurrentUserProfile,
@@ -922,52 +1151,49 @@ class FeedViewModel(
     ): Int {
         if (members.isEmpty()) return 50
 
-        val memberScores = members.map { member ->
-            val scores = mutableListOf<Int>()
-
-            // 관심사 Jaccard
-            val interestUnion = (userProfile.interests + member.interests).toSet().size
-            if (interestUnion > 0) {
-                val interestIntersect = userProfile.interests.toSet()
-                    .intersect(member.interests.toSet()).size
-                scores.add((interestIntersect.toDouble() / interestUnion * 100).toInt())
-            }
-
-            // 음식 취향 Jaccard
-            val foodUnion = (userProfile.foodLikes + member.foodLikes).toSet().size
-            if (foodUnion > 0) {
-                val foodIntersect = userProfile.foodLikes.toSet()
-                    .intersect(member.foodLikes.toSet()).size
-                scores.add((foodIntersect.toDouble() / foodUnion * 100).toInt())
-            }
-
-            if (scores.isEmpty()) 50 else scores.average().toInt()
+        val userMbti = userProfile.mbti.uppercase()
+        val memberSetCache = members.associate { m ->
+            m.userId to (m.interests.toSet() to m.foodLikes.toSet())
         }
-        return memberScores.average().toInt().coerceIn(0, 100)
+
+        val memberScores = members.map { member ->
+            val signals = mutableListOf<Double>()
+
+            // 신호 1: 관심사 정밀도
+            if (userProfile.interests.isNotEmpty()) {
+                val matched = userProfile.interests.count { it in (memberSetCache[member.userId]?.first ?: emptySet()) }
+                signals.add(matched.toDouble() / userProfile.interests.size * 100)
+            }
+
+            // 신호 2: 음식취향 정밀도
+            if (userProfile.foodLikes.isNotEmpty()) {
+                val matched = userProfile.foodLikes.count { it in (memberSetCache[member.userId]?.second ?: emptySet()) }
+                signals.add(matched.toDouble() / userProfile.foodLikes.size * 100)
+            }
+
+            // 신호 3: MBTI 축 일치도 (E/I·N/S·F/T·J/P)
+            val memberMbti = member.mbti.uppercase()
+            if (userMbti.length == 4 && memberMbti.length == 4) {
+                val axisMatch = userMbti.zip(memberMbti).count { (a, b) -> a == b }
+                signals.add(axisMatch.toDouble() / 4 * 100)
+            }
+
+            if (signals.isEmpty()) 50.0 else signals.average()
+        }
+
+        val memberAvg = memberScores.average()
+
+        // 커버리지 보너스: 내 관심사를 팀 전체가 얼마나 커버하나 (최대 +20)
+        val coverageBonus = if (userProfile.interests.isNotEmpty()) {
+            val allMemberInterests = members.flatMap { it.interests }.toSet()
+            val covered = userProfile.interests.count { it in allMemberInterests }
+            covered.toDouble() / userProfile.interests.size * 20
+        } else 0.0
+
+        return (memberAvg + coverageBonus).toInt().coerceIn(0, 100)
     }
 
-    // =====================
-    // 디버그 더미 데이터 주입
-    // =====================
-
-    /**
-     * 디버그 빌드에서 DummyData 를 FeedUiState 에 직접 주입한다.
-     *
-     * 사용 예시 (FeedScreen.kt 또는 Activity):
-     * ```kotlin
-     * if (BuildConfig.DEBUG) {
-     *     LaunchedEffect(Unit) { DummyData.injectTo(viewModel) }
-     * }
-     * ```
-     *
-     * @param teams           피드에 표시할 팀 목록
-     * @param currentUser     로그인 유저 프로필
-     * @param userTopTags     상위 태그 (매칭 근거 Top N 카드용)
-     * @param actionCount     좋아요+패스 누적 횟수 (>=10 이면 해금)
-     * @param memberCache     teamId → 팀원 프로필 캐시
-     * @param distanceCache   teamId → 거리 결과 캐시
-     * @param fitScoreCache   teamId → 종합 점수 캐시
-     */
+    /** 프리뷰/더미 데이터 주입용 헬퍼 */
     fun injectDummyState(
         teams         : List<com.bugzero.meety.ui.team.Team>,
         currentUser   : CurrentUserProfile,
